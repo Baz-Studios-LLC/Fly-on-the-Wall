@@ -1,0 +1,39 @@
+[package]
+name = "fly-on-the-wall"
+version = "0.1.0"
+edition = "2024"
+description = "A housefly in a family home. This crate is currently only the flight test."
+
+[dependencies]
+# One dependency, deliberately. This spike answers a question about *feel* —
+# whether being a fly is worth doing before anything else exists — and a physics
+# engine would answer it in someone else's vocabulary. The world here is two dozen
+# boxes; the queries it needs are a slab raycast and a closest-point, both of which
+# are shorter to write than the integration would be. See `world.rs`.
+# `jpeg` is not a default feature and the fly's three textures are all JPEG, so
+# without it the whole glTF fails to load with "invalid image mime type" and the
+# fly is simply absent. Worth knowing before the next model arrives.
+bevy = { version = "0.19.0", features = ["file_watcher", "jpeg"] }
+
+# Houses are drawn in Opificium and arrive as JSON. Hand-rolling a parser for
+# somebody else's format is exactly the work serde exists to delete, and every
+# other game in this studio already takes it.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Ordo is NOT here yet, on purpose. Its job in this game is the layer *outside*
+# play — the death card, the field notes, the obituary — and none of that exists.
+# The debug readout in `debug.rs` is four lines of text that will be deleted, and
+# taking a UI kit for it would put a dependency in the tree ahead of the thing it
+# is for. It goes in when the first field note does.
+
+# Bevy's recommended dev split: our own crate stays cheap to recompile, the
+# dependencies get optimised so the renderer is actually usable.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"

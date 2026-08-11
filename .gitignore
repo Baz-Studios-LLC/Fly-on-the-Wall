@@ -1,0 +1,8 @@
+/target
+.DS_Store
+
+# Screenshots. `F12` writes them into the working directory, and so does
+# `FLY_CAPTURE` unless it is pointed somewhere else. They are how the build gets
+# looked at, not part of it.
+/fly-*.png
+/*.png
