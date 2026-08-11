@@ -30,9 +30,58 @@ use serde::Deserialize;
 
 use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
 
-/// `FLY_HOUSE=<path>` loads a baked building instead of the greybox.
+/// `FLY_HOUSE=<name-or-path>` loads a baked building instead of the greybox.
 pub fn requested() -> Option<String> {
     std::env::var("FLY_HOUSE").ok().filter(|p| !p.is_empty())
+}
+
+/// Where Opificium's `install` carries finished work, relative to the game.
+///
+/// The bench's project lives at `opificium/` **beside** this folder rather than
+/// inside it, because the asset root ships verbatim in the bundle and the
+/// running game watches it for changes — a bench autosaving in here would post
+/// the workshop to every player and reload the game mid-write. `install` in
+/// `opificium/opificium.json` is the deliberate act of carrying a finished
+/// building across.
+const INSTALLED: &str = "assets/buildings";
+
+/// Turn whatever was asked for into a path that exists.
+///
+/// `FLY_HOUSE=ranch` should find the ranch. Since `install` puts baked work in
+/// one known place, a bare name is looked for there, which makes the loop from
+/// the bench to the game one word instead of a path.
+fn find(named: &str) -> Option<std::path::PathBuf> {
+    let given = std::path::PathBuf::from(named);
+    if given.is_file() {
+        return Some(given);
+    }
+    for guess in [
+        format!("{INSTALLED}/{named}"),
+        format!("{INSTALLED}/{named}.json"),
+    ] {
+        let path = std::path::PathBuf::from(guess);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Everything sitting in the installed folder, for an error message worth
+/// reading. A missing house is nearly always a typo, and the cure is the list.
+fn installed() -> Vec<String> {
+    let Ok(dir) = std::fs::read_dir(INSTALLED) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = dir
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name.strip_suffix(".json").map(str::to_owned)
+        })
+        .collect();
+    found.sort();
+    found
 }
 
 // ---------------------------------------------------------------------------
@@ -116,8 +165,17 @@ pub struct Imported {
     pub marks: Vec<Mark>,
 }
 
-pub fn load(path: &str) -> Result<Imported, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+pub fn load(named: &str) -> Result<Imported, String> {
+    let path = find(named).ok_or_else(|| {
+        let known = installed();
+        if known.is_empty() {
+            format!("no house called '{named}', and nothing is installed in {INSTALLED}/")
+        } else {
+            format!("no house called '{named}' — {INSTALLED}/ has: {}", known.join(", "))
+        }
+    })?;
+    let path = path.display().to_string();
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
     let baked: Baked = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
 
     let mut solids = Vec::with_capacity(baked.boxes.len());

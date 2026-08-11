@@ -53,7 +53,7 @@ Two more, worth as much as the first:
 
 | | |
 |---|---|
-| `FLY_HOUSE=<path>` | fly inside a building baked by Opificium instead of the greybox |
+| `FLY_HOUSE=<name>` | fly inside a building drawn in Opificium instead of the greybox. A bare name is looked up in `assets/buildings/` |
 | `FLY_MODEL=glb` | use `assets/fly.glb` instead of the procedural fly |
 | `FLY_INSPECT=<deg>` | park the camera close to the fly at that azimuth — 0 behind, 90 side-on, 180 head-on — and stand it on the living room floor. For looking at the model, not playing. |
 | `FLY_CAPTURE=<path>` | render for a moment, save a frame there, exit |
@@ -61,8 +61,31 @@ Two more, worth as much as the first:
 
 ```bash
 FLY_INSPECT=90 FLY_CAPTURE=side.png cargo run
-FLY_HOUSE="../Divus Factus/assets/buildings/house1-1couple-2kids.json" cargo run
+FLY_HOUSE=ranch cargo run
 ```
+
+## Drawing a house
+
+The floor plan is drawn in [Opificium](https://github.com/Baz-Studios-LLC/Opificium),
+the studio's bench, not typed into `world.rs`. The project lives at
+`opificium/` in this repo:
+
+```bash
+OPIFICIUM_PROJECT="$PWD/opificium" opificium
+```
+
+Draw, bake, and the manifest's `install` carries the finished building to
+`assets/buildings/`. Then `FLY_HOUSE=<name> cargo run`.
+
+**The project sits beside `assets/`, not inside it**, and that is deliberate.
+The asset folder is copied verbatim into the shipped bundle, and `file_watcher`
+has the running game watching it for changes — a bench autosaving in there would
+both post the workshop to every player and reload the game mid-write. `install`
+being an explicit step is the point: two programs writing and watching one tree
+is how you get a bug that turns up once a month.
+
+Blueprints under `opificium/out/buildings/` are tracked, because they are the
+floor plan's source and very diffable. The bake's intermediate output is not.
 
 You start hanging upside down under the living room ceiling. Falling off it is
 the intended first thirty seconds.

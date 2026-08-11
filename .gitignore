@@ -6,3 +6,14 @@
 # looked at, not part of it.
 /fly-*.png
 /*.png
+
+# Opificium's project sits BESIDE the assets rather than inside them: the asset
+# folder is copied verbatim into the shipped bundle, and `file_watcher` has the
+# running game watching it, so a bench autosaving in there would both ship the
+# workshop and reload the game mid-write. `install` in opificium.json carries
+# finished work across to assets/buildings, which is the version the game reads.
+#
+# The blueprints under out/buildings ARE tracked — they are the floor plan's
+# source and 26 KB of very diffable JSON. What is not tracked is the bake's
+# own intermediate output, which is regenerated from them.
+/opificium/out/baked/
