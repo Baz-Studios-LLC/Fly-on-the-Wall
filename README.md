@@ -40,7 +40,7 @@ Two more, worth as much as the first:
 | `W` `A` `S` `D` | thrust, or crawl when perched |
 | `Space` | climb, or take off from a surface |
 | `Left Ctrl` | descend |
-| `F` / right mouse | reach for a surface and hold on |
+| right mouse / `F` | **hold to land.** Contact only sticks while it is held; let go and the fly grazes off what it clips |
 | `E` | cycle the door: closed → ajar → open |
 | `[` `]` | narrow or widen the ajar gap, a millimetre a press |
 | `Q` | chase camera ↔ first person |
@@ -108,8 +108,13 @@ swings clear of the wall's thickness, so both constrictions open together.
   in the game and it's meant to be enough. Landing cuts it to silence, which is
   the loudest feedback in the build.
 - **Watch the legs.** They tuck in flight, splay when perched, and reach the
-  moment you hold `F`. That's the entire no-HUD thesis in one animation — if
-  nobody notices it, it needs to be bigger.
+  moment you hold to land — as does a nose-up flare of the whole body. Those are
+  the entire no-HUD thesis in one animation, and they're honest: they show
+  because you asked, not because the code guessed. If nobody notices, they need
+  to be bigger.
+- **Fly past something at speed without holding the button.** You should graze
+  off it and keep going. Then do it again holding right mouse, and you should
+  end up stuck to it. That difference is the whole control scheme.
 
 ## What this build cannot tell you
 

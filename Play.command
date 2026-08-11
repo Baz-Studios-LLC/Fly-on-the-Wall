@@ -32,7 +32,7 @@ cat <<'CONTROLS'
   W A S D          thrust, or crawl when perched
   space            climb, or take off from a surface
   left ctrl        descend
-  F / right mouse  reach for a surface and hold on
+  right mouse / F  HOLD TO LAND. Contact only sticks while held.
 
   E                cycle the door: closed -> ajar -> open
   [ ]              narrow or widen the ajar gap

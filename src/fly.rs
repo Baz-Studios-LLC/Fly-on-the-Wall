@@ -18,15 +18,16 @@
 //! - **Friction sets the top speed, thrust sets the response.** Same lesson as
 //!   the walk in Flat Earth Simulator: clamping velocity feels like a governor,
 //!   letting drag find the equilibrium feels like a body.
-//! - **Contact is landing.** Touch anything at any speed and the fly is on it.
-//!   This was built the other way first — sticking only below a speed threshold,
-//!   sliding otherwise, on the theory that being glued to a lampshade you meant
-//!   to pass would be infuriating. Playing it settled the argument: skidding off
-//!   a wall you plainly hit reads as a bug, not a mechanic, and a housefly does
-//!   not bounce. Taking off again costs one keypress, which is far cheaper than
-//!   never being sure a landing will take. The corollary is that the collision
-//!   test has to be *swept*, because at real speed the fly crosses more ground
-//!   in a tick than the window pane is thick.
+//! - **Landing is a held button.** Hold right mouse (or `F`) and any contact
+//!   sticks, at any speed; let go and the fly grazes off whatever it clips.
+//!   This took three attempts. Sticking below a speed threshold was invisible,
+//!   so a landing took or did not for reasons nobody could see. Sticking on all
+//!   contact fixed that and broke the opposite thing — a fly could not pass
+//!   anything without gluing itself to it. A held button is legible, always
+//!   obeyed, and it makes the reaching legs and the nose-up flare *honest*:
+//!   they show because the player asked, not because the code guessed. Either
+//!   way the collision test has to be **swept**, because at real speed the fly
+//!   crosses more ground in a tick than the window pane is thick.
 //! - **A perch is stored in the surface's own frame,** not the world's. One
 //!   consequence pays for the whole design: a fly standing on the door is still
 //!   standing on the door after the door swings, with no code that knows the door
@@ -499,22 +500,10 @@ fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
     let previous = fly.pos;
     fly.pos += fly.vel * dt;
 
-    // Just pushed off. Resolve overlaps and slide, but do not grab anything —
-    // without this the takeoff re-lands on the surface it left on the next tick.
-    if fly.lockout > 0.0 {
-        for solid in home.solids.iter() {
-            let near = solid.nearest(fly.pos);
-            if near.distance >= BODY_RADIUS {
-                continue;
-            }
-            fly.pos = near.point + near.normal * BODY_RADIUS;
-            let into = fly.vel.dot(near.normal);
-            if into < 0.0 {
-                fly.vel -= near.normal * into;
-            }
-        }
-        return;
-    }
+    // Is the player asking to hold on? The lockout is folded in here because a
+    // takeoff pressed while the land button is still down would otherwise
+    // re-grab the surface it just left, on the very next tick.
+    let reaching = intent.land && fly.lockout <= 0.0;
 
     // 1. Swept. Did the step *cross* a surface rather than end inside one?
     //
@@ -522,26 +511,31 @@ fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
     // visible once the speeds went real: at 200 cm/s the fly covers 3.1 cm in a
     // tick, and the thinnest solids in the house — the window pane at 2 cm, the
     // door at 4 — are thinner than that. A test that only asks "am I overlapping
-    // anything *now*" passes straight through them.
+    // anything *now*" passes straight through them. Checked whether or not a
+    // landing was asked for: going through a wall is a correctness problem, not
+    // a landing one.
     let step = fly.pos - previous;
     let travelled = step.length();
     if travelled > 1e-5
         && let Some(hit) = home.raycast(previous, step / travelled, travelled + BODY_RADIUS)
     {
-        settle(fly, home, hit.solid, hit.point, hit.normal);
-        return;
+        if reaching {
+            settle(fly, home, hit.solid, hit.point, hit.normal);
+            return;
+        }
+        deflect(fly, hit.point, hit.normal);
     }
 
-    // 2. Touching. **Contact is landing** — no speed gate, no asking.
+    // 2. Touching. Contact sticks **only while the player is asking for it**.
     //
-    // The first version of this only stuck below a speed threshold and slid
-    // along the surface otherwise, on the theory that being glued to a lampshade
-    // you meant to pass would be infuriating. Played, it was worse the other
-    // way: the fly skidded off walls it had plainly hit, which reads as a bug
-    // rather than as a mechanic, and a real housefly does not bounce off things.
-    // Getting off again is one press of `Space`, which is a much cheaper way to
-    // recover from an unwanted landing than never being sure a wanted one will
-    // take.
+    // This took three goes and the third is the right one. First it stuck below
+    // a speed threshold — invisible, so a landing either took or did not for
+    // reasons nobody could see. Then it stuck on any contact at all, which
+    // fixed that and broke the opposite thing: a fly could not pass anything
+    // without gluing itself to it. A held button answers both. It is legible,
+    // it is always obeyed, and it makes the reaching legs and the nose-up flare
+    // *honest* — they show because the player asked, not because the code
+    // guessed.
     let mut contact: Option<(usize, crate::world::Near)> = None;
     for (i, solid) in home.solids.iter().enumerate() {
         let near = solid.nearest(fly.pos);
@@ -552,16 +546,32 @@ fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
         }
     }
     if let Some((solid, near)) = contact {
-        settle(fly, home, solid, near.point, near.normal);
-        return;
+        if reaching {
+            settle(fly, home, solid, near.point, near.normal);
+            return;
+        }
+        deflect(fly, near.point, near.normal);
     }
 
     // 3. Reaching. Nothing was touched, but the player asked to hold on and
     // something is close. This is what makes landing on a shelf edge possible.
-    if intent.land
+    if reaching
         && let Some((solid, near)) = home.nearest(fly.pos, LAND_REACH)
     {
         settle(fly, home, solid, near.point, near.normal);
+    }
+}
+
+/// Come off a surface the player did not ask to land on: sit against it, and
+/// keep whatever motion was along it.
+///
+/// Killing only the component *into* the surface is what makes this a graze
+/// rather than a stop — a fly that clips a wall at speed carries on down it.
+fn deflect(fly: &mut Fly, point: Vec3, normal: Vec3) {
+    fly.pos = point + normal * BODY_RADIUS;
+    let into = fly.vel.dot(normal);
+    if into < 0.0 {
+        fly.vel -= normal * into;
     }
 }
 

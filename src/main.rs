@@ -25,7 +25,7 @@
 //! | `W` `A` `S` `D` | thrust, or crawl when perched |
 //! | `Space` | climb, or take off from a surface |
 //! | `Left Ctrl` | descend |
-//! | `F` / right mouse | reach for a surface and hold on |
+//! | right mouse / `F` | **hold to land.** Contact only sticks while it is held; let go and the fly grazes off what it clips |
 //! | `E` | cycle the door: closed → ajar → open |
 //! | `[` `]` | narrow or widen the ajar gap, a millimetre a press |
 //! | `Q` | chase camera ↔ first person |
