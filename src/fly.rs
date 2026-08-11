@@ -93,6 +93,21 @@ const THRUST: f32 = 12.0;
 /// around, which is most of what makes flight a skill.
 const DRAG: f32 = 2.2;
 
+/// How much harder the air bites while the brake is held, as a multiple of
+/// [`DRAG`].
+///
+/// `S` is a brake, not a reverse thruster, because **a housefly cannot fly
+/// backwards** — it turns around. Reverse was never a decision, it was what
+/// fell out of applying thrust along the heading in all four directions, which
+/// is a quadcopter's control scheme wearing an insect.
+///
+/// Braking is a real thing a fly does, though: flare the body into the
+/// airstream and shed speed in a body length or two. At 3.2 it bleeds from
+/// cruise to a glide in about twenty-five centimetres instead of seventy-five,
+/// which is what makes lining up on a door ajar possible without being able to
+/// stop.
+const BRAKE: f32 = 3.2;
+
 /// The speed drag will not take the fly below while it is airborne, cm/s.
 ///
 /// A housefly cannot hover. It can lose its push — and it does, fast — but what
@@ -172,6 +187,32 @@ const PITCH_LIMIT: f32 = 88.0_f32.to_radians();
 /// Mouse sensitivity, degrees of turn per unit of mouse motion.
 const SENSITIVITY: f32 = 0.09;
 
+/// The heading error that trips a saccade, radians.
+///
+/// **This is the most fly-like thing in the file.** A housefly does not turn —
+/// it flies a straight segment, changes direction in a burst of about fifty
+/// milliseconds, and flies another straight segment. Plotted, a fly's path is a
+/// polyline; almost every flying thing in a game draws a smooth curve instead,
+/// and that difference is most of why game insects look like small aircraft.
+///
+/// So the fly keeps a *committed course* separate from where the player is
+/// aiming. Thrust goes along the course. The course does not follow the aim
+/// continuously: it holds until the error passes this arc, then snaps across at
+/// [`SACCADE_RATE`] and commits again.
+///
+/// Twelve degrees is small enough that it reads as responsive rather than
+/// laggy. **Set it to 0 and flight goes back to a continuous curve**, which is
+/// the honest way to compare the two.
+const SACCADE_ARC: f32 = 12.0_f32.to_radians();
+
+/// How fast a saccade crosses, radians per second.
+///
+/// Real flies manage 1500–3000°/s in a body saccade; 1600 puts a 90° turn at
+/// about 56 ms, against the ~50 ms measured in *Musca*. Fast enough to be over
+/// before it can be watched, which is the point — what the player sees is the
+/// before and the after.
+const SACCADE_RATE: f32 = 1600.0_f32.to_radians();
+
 /// How far the body's rendered heading may drift from its true one before it
 /// snaps, radians.
 ///
@@ -230,6 +271,12 @@ pub struct Fly {
     pub yaw: f32,
     pub pitch: f32,
     pub stance: Stance,
+    /// The direction the fly is committed to flying, which is *not* where the
+    /// player is aiming. See [`SACCADE_ARC`].
+    pub course: Vec3,
+    /// Whether a saccade is in progress. Once one starts it runs to completion
+    /// rather than to the threshold, so every turn ends on the aim.
+    pub saccading: bool,
     /// Counts down after a takeoff.
     pub lockout: f32,
     /// The body's rendered orientation, which lags the true heading in jumps.
@@ -248,6 +295,8 @@ impl Default for Fly {
             yaw: 0.0,
             pitch: 0.0,
             stance: Stance::Flying,
+            course: Vec3::NEG_Z,
+            saccading: false,
             lockout: 0.0,
             body: Quat::IDENTITY,
             prev_pos: Vec3::ZERO,
@@ -431,6 +480,8 @@ pub fn step_the_fly(
         fly.prev_body = fly.body;
         fly.lockout = (fly.lockout - dt).max(0.0);
 
+        steer(&mut fly, dt);
+
         match fly.stance {
             Stance::Flying => fly_along(&mut fly, &intent, &home, dt),
             Stance::Perched(perch) => walk_about(&mut fly, &intent, &home, perch, dt),
@@ -444,6 +495,34 @@ pub fn step_the_fly(
 // ---------------------------------------------------------------------------
 // Flight
 // ---------------------------------------------------------------------------
+
+/// Move the committed course toward the aim, in saccades.
+///
+/// The whole of the polyline is here: hold, snap, hold. Note it runs whether the
+/// fly is flying or perched — a fly that lands facing one way and takes off
+/// facing another should leave along the course it has, not along a stale one.
+fn steer(fly: &mut Fly, dt: f32) {
+    let aim = fly.heading();
+    if fly.course.length_squared() < 0.5 {
+        fly.course = aim;
+        return;
+    }
+    let error = fly.course.angle_between(aim);
+    if !fly.saccading && error > SACCADE_ARC {
+        fly.saccading = true;
+    }
+    if !fly.saccading {
+        return;
+    }
+    let step = SACCADE_RATE * dt;
+    let axis = fly.course.cross(aim);
+    if error <= step || axis.length_squared() < 1e-12 {
+        fly.course = aim;
+        fly.saccading = false;
+        return;
+    }
+    fly.course = (Quat::from_axis_angle(axis.normalize(), step) * fly.course).normalize();
+}
 
 /// Quake's accelerate: it limits only the *projection* of velocity onto the wish
 /// direction, which is why the result reads as momentum rather than as a speed
@@ -466,26 +545,41 @@ fn accelerate(vel: Vec3, wish_dir: Vec3, wish_speed: f32, accel: f32, dt: f32) -
 /// it reads as the fly touching a brake. And the decay now bottoms out at
 /// [`GLIDE_SPEED`] instead of at zero, because a fly that has stopped pushing is
 /// still going somewhere.
-fn apply_drag(vel: Vec3, dt: f32) -> Vec3 {
+///
+/// `bite` is [`BRAKE`] while the brake is held and one otherwise. It multiplies
+/// the drag rather than pushing backwards, so braking can never turn into
+/// reversing, and it still cannot take the fly below the glide — the only way
+/// to actually stop is to land.
+fn apply_drag(vel: Vec3, dt: f32, bite: f32) -> Vec3 {
     let speed = vel.length();
     if speed <= GLIDE_SPEED {
         return vel;
     }
-    let kept = (speed - speed * DRAG * dt).max(GLIDE_SPEED);
+    let kept = (speed - speed * DRAG * bite * dt).max(GLIDE_SPEED);
     vel * (kept / speed)
 }
 
 fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
-    let forward = fly.heading();
+    // Along the committed course, not the aim. Between saccades the player can
+    // sweep the mouse and the fly will keep going where it was going, which is
+    // exactly what a fly does and exactly what nothing else does.
+    let forward = fly.course;
     let right = forward.cross(Vec3::Y).normalize_or_zero();
 
     // Vertical thrust is world-relative, not body-relative. A fly's lift really
     // does tilt with its body, but steering height with a stick that changes
     // meaning as you pitch is miserable, and nobody watching can tell.
-    let wish = forward * intent.thrust.z + right * intent.thrust.x + Vec3::Y * intent.thrust.y;
+    //
+    // Backward thrust is dropped on the floor: see [`BRAKE`]. The key still
+    // reverses on a surface, because a fly walking backwards is a thing that
+    // happens and `walk_about` reads the intent for itself.
+    let braking = intent.thrust.z < 0.0;
+    let wish = forward * intent.thrust.z.max(0.0)
+        + right * intent.thrust.x
+        + Vec3::Y * intent.thrust.y;
     let wish_dir = wish.normalize_or_zero();
 
-    fly.vel = apply_drag(fly.vel, dt);
+    fly.vel = apply_drag(fly.vel, dt, if braking { BRAKE } else { 1.0 });
     if wish_dir != Vec3::ZERO {
         fly.vel = accelerate(fly.vel, wish_dir, CRUISE, THRUST, dt);
     }
@@ -714,7 +808,7 @@ fn orient_the_body(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
             // look-at behind it degenerated and the body span. Blending against
             // cruise speed keeps the aim dominant until the drift is genuinely
             // comparable to flying.
-            let aim = fly.heading();
+            let aim = fly.course;
             let mut f = (aim * CRUISE + fly.vel).normalize_or_zero();
             if f == Vec3::ZERO {
                 f = aim;

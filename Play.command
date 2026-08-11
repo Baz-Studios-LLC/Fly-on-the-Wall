@@ -29,7 +29,9 @@ cat <<'CONTROLS'
   Click the window first, to give it the mouse.
 
   mouse            aim
-  W A S D          thrust, or crawl when perched
+  W / S            thrust / brake (a fly cannot fly backwards)
+  A / D            sideslip
+  W A S D          crawl, when perched
   space            climb, or take off from a surface
   left ctrl        descend
   right mouse / F  HOLD TO LAND. Contact only sticks while held.

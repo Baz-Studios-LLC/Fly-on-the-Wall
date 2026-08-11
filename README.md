@@ -37,7 +37,7 @@ Two more, worth as much as the first:
 | | |
 |---|---|
 | Mouse | aim |
-| `W` `A` `S` `D` | thrust, or crawl when perched |
+| `W` `A` `S` `D` | `W` thrust, `S` **brake** (a fly cannot fly backwards), `A` `D` sideslip. All four crawl when perched — including backwards, which flies really do |
 | `Space` | climb, or take off from a surface |
 | `Left Ctrl` | descend |
 | right mouse / `F` | **hold to land.** Contact only sticks while it is held; let go and the fly grazes off what it clips |
@@ -115,6 +115,11 @@ swings clear of the wall's thickness, so both constrictions open together.
 - **Fly past something at speed without holding the button.** You should graze
   off it and keep going. Then do it again holding right mouse, and you should
   end up stuck to it. That difference is the whole control scheme.
+- **Sweep the mouse slowly while holding `W`.** The fly should *not* follow in a
+  curve. It holds its course, then snaps across in about fifty milliseconds, then
+  holds again — a real fly's path is a polyline, not an arc, and this is the one
+  thing here that no other game does. `SACCADE_ARC` in `fly.rs` is the dial;
+  set it to 0 for the ordinary smooth curve and feel the difference.
 
 ## What this build cannot tell you
 

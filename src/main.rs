@@ -22,7 +22,7 @@
 //! | | |
 //! |---|---|
 //! | Mouse | aim |
-//! | `W` `A` `S` `D` | thrust, or crawl when perched |
+//! | `W` `A` `S` `D` | `W` thrust, `S` **brake** (a fly cannot fly backwards), `A` `D` sideslip. All four crawl when perched — including backwards, which flies really do |
 //! | `Space` | climb, or take off from a surface |
 //! | `Left Ctrl` | descend |
 //! | right mouse / `F` | **hold to land.** Contact only sticks while it is held; let go and the fly grazes off what it clips |
