@@ -30,9 +30,21 @@ use serde::Deserialize;
 
 use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
 
-/// `FLY_HOUSE=<name-or-path>` loads a baked building instead of the greybox.
+/// Which house to fly in.
+///
+/// A drawn house if one is installed, because a player launching from the
+/// launcher cannot set an environment variable and would otherwise never see
+/// anything but the movement test's two grey rooms.
+///
+/// `FLY_HOUSE=<name-or-path>` picks a particular one. `FLY_HOUSE=greybox` asks
+/// for the two-room test back, which is still the only place with a hinged door
+/// and a known pass test, and so is still where movement gets judged.
 pub fn requested() -> Option<String> {
-    std::env::var("FLY_HOUSE").ok().filter(|p| !p.is_empty())
+    match std::env::var("FLY_HOUSE") {
+        Ok(said) if said == "greybox" => None,
+        Ok(said) if !said.is_empty() => Some(said),
+        _ => installed().into_iter().next(),
+    }
 }
 
 /// Where Opificium's `install` carries finished work, relative to the game.

@@ -38,6 +38,7 @@
 //!
 //! | | |
 //! |---|---|
+//! | `FLY_PLAN=1` | look straight down at the house, roof dropped |
 //! | `FLY_MODEL=glb` | use `assets/fly.glb` instead of the procedural fly |
 //! | `FLY_INSPECT=<deg>` | park the camera close to the fly at that azimuth — 0 behind, 180 head-on — and stand it on the living room floor. For looking at the model, not playing. |
 //! | `FLY_CAPTURE=<path>` | render for a moment, save a frame there, exit |

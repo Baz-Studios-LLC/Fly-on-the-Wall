@@ -53,9 +53,10 @@ Two more, worth as much as the first:
 
 | | |
 |---|---|
-| `FLY_HOUSE=<name>` | fly inside a building drawn in Opificium instead of the greybox. A bare name is looked up in `assets/buildings/` |
+| `FLY_HOUSE=<name>` | pick a building drawn in Opificium. A bare name is looked up in `assets/buildings/`, which is where the bench's `install` puts them. **A drawn house is the default** when one is installed; `FLY_HOUSE=greybox` asks for the two-room movement test back |
 | `FLY_MODEL=glb` | use `assets/fly.glb` instead of the procedural fly |
 | `FLY_INSPECT=<deg>` | park the camera close to the fly at that azimuth — 0 behind, 90 side-on, 180 head-on — and stand it on the living room floor. For looking at the model, not playing. |
+| `FLY_PLAN=1` | look straight down at the whole house with the roof dropped — the only sane way to check a drawn floor plan |
 | `FLY_CAPTURE=<path>` | render for a moment, save a frame there, exit |
 | `FLY_CAPTURE_DELAY=<s>` | move the shutter (default 4) |
 
