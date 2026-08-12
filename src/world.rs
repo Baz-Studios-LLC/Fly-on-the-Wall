@@ -111,6 +111,10 @@ pub struct Solid {
     pub paint: Option<Color>,
     /// Drawn see-through and excluded from shadow casting: glass.
     pub sheer: bool,
+    /// Overhead: the roof, or a ceiling under it. Hidden in the plan view,
+    /// which is the only way to see a drawn house's rooms — from above, a house
+    /// is a roof, and once it has a ceiling it is a ceiling.
+    pub roof: bool,
 }
 
 /// The nearest point on a solid to some query point.
@@ -144,6 +148,7 @@ impl Solid {
             rot: Quat::IDENTITY,
             sheer: stuff.is_glass(),
             paint: None,
+            roof: false,
             stuff,
         }
     }
@@ -410,6 +415,7 @@ impl Door {
             stuff: Stuff::Wood,
             paint: None,
             sheer: false,
+            roof: false,
         }
     }
 }
@@ -718,6 +724,11 @@ fn dress_the_set(
         }
         if solid.sheer {
             entity.insert(bevy::light::NotShadowCaster);
+        }
+        // The plan view looks straight down, so the roof is all it would ever
+        // see. It stays solid — only the drawing of it goes.
+        if solid.roof && crate::camera::plan_view() {
+            entity.insert(Visibility::Hidden);
         }
     }
 }

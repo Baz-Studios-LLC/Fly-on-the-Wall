@@ -92,6 +92,18 @@ pub fn inspect_azimuth() -> Option<f32> {
 /// How far the inspection camera sits from the fly, in centimetres.
 const INSPECT_DISTANCE: f32 = 2.1;
 
+/// `FLY_PLAN=1` looks straight down at the whole house from above it.
+///
+/// Not a play mode — a way to *see a drawn house at all*. A fly's own camera is
+/// six body-lengths off the floor and usually under furniture, which is a fine
+/// way to judge flight and a hopeless way to answer "did the import work, and is
+/// the place lit". The first ranch loaded read as a black rectangle from down
+/// there whether the fault was the geometry, the lamps or the table it happened
+/// to be sitting under.
+pub fn plan_view() -> bool {
+    std::env::var("FLY_PLAN").as_deref() == Ok("1")
+}
+
 #[derive(Resource, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum View {
     #[default]
@@ -195,6 +207,28 @@ fn place_the_eye(
     let alpha = fixed.overstep_fraction();
     let (position, body) = fly.presented(alpha);
     let dt = time.delta_secs();
+
+    // Straight down at the whole house, framed by its own bounds.
+    if plan_view() {
+        let mut low = Vec3::splat(f32::INFINITY);
+        let mut high = Vec3::splat(f32::NEG_INFINITY);
+        for solid in &home.solids {
+            let reach = (solid.rot * solid.half).abs().max(solid.half);
+            low = low.min(solid.center - reach);
+            high = high.max(solid.center + reach);
+        }
+        if low.x.is_finite() {
+            let middle = (low + high) * 0.5;
+            let span = (high - low).max_element();
+            transform.translation = Vec3::new(middle.x, high.y + span * 0.9, middle.z);
+            transform.look_at(Vec3::new(middle.x, low.y, middle.z), Vec3::NEG_Z);
+            if let Projection::Perspective(perspective) = &mut *projection {
+                perspective.fov = 60.0_f32.to_radians();
+            }
+        }
+        eye.seated = true;
+        return;
+    }
 
     // Inspection overrides everything: fixed offset, no smoothing, looking
     // straight at the fly.

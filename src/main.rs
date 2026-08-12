@@ -49,6 +49,8 @@ mod camera;
 mod capture;
 mod debug;
 mod fly;
+mod lamps;
+mod rooms;
 mod wingbeat;
 mod world;
 
@@ -106,7 +108,15 @@ fn main() {
 /// which is why the numbers below look absurd and are in fact ordinary
 /// household bulbs. Directional light is unaffected: illuminance does not fall
 /// off with distance, so lux is lux.
-fn light_the_house(mut commands: Commands) {
+fn light_the_house(mut commands: Commands, home: Res<world::Home>) {
+    // A drawn house has to find its own lamps: it arrives as a couple of
+    // hundred boxes with no idea where its rooms are, and the constants below
+    // are aimed at a greybox that is not there. See `lamps`.
+    if blueprint::requested().is_some() {
+        lamps::light_a_drawn_house(&mut commands, &home);
+        return;
+    }
+
     /// Lumens are per square metre; the world is in centimetres. Ten thousand.
     const LUMEN_SCALE: f32 = world::UNITS_PER_METRE * world::UNITS_PER_METRE;
 
