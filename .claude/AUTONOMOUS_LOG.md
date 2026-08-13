@@ -610,6 +610,35 @@ Three faults, all found by playing and none by any capture I had taken.
 there is no wall behind it, and says which one and where. Four came out on the
 first run — the exact four Brett was looking at.
 
+
+## Pass thirty-two: a law that nothing floats
+
+Brett found three faults by flying that no capture of mine had shown, and the
+right response was not to fix three things — it was to make the class of fault
+impossible to ship unseen.
+
+**Every solid in the house must touch another one.** That is the whole rule.
+Bucketed on a metre grid, because otherwise it is twenty-two million pairs.
+Rotated solids are skipped: an axis-aligned half is a lie for a tilted siding
+board or a car wheel.
+
+It found **twenty-five floating objects on the first run**, in four classes I
+had no idea about:
+
+- Every **chest-of-drawers handle** in the house, a carcass-width out in front
+  of the chest. `front` already reached the drawer face and the code doubled it.
+- Every **wardrobe door leaf**, same doubling, hanging thirty-two centimetres
+  off its carcass.
+- Six **sockets screwed to thin air**, because a room bound runs across
+  doorways and cased openings as happily as across plaster.
+- Both **bath taps' handles**, offset diagonally off two axes at once so they
+  missed the tap body entirely.
+
+The house passes clean now. Fixed viewpoints are very bad at showing that a
+thing is four centimetres off the surface behind it, and that is precisely the
+mistake procedural geometry makes over and over, because every position here is
+arithmetic and arithmetic is off by two.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

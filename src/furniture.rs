@@ -438,18 +438,18 @@ fn wardrobe(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2) {
     );
     for side in [-1.0f32, 1.0] {
         let off = across * side * wide * 0.25;
-        let front = face * 2.0;
         let leaf = if across.x > 0.5 {
             Vec3::new(wide * 0.47, size.y - 18.0, 4.0)
         } else {
             Vec3::new(4.0, size.y - 18.0, wide * 0.47)
         };
+        // On the carcass face, not a carcass-width beyond it.
         slab(
             out,
             Vec3::new(
-                at.x + off.x + front.x * (size.x * 0.5),
+                at.x + off.x + face.x * (size.x * 0.5 + 2.0),
                 size.y * 0.5 + 8.0,
-                at.y + off.y + front.y * (size.z * 0.5),
+                at.y + off.y + face.y * (size.z * 0.5 + 2.0),
             ),
             leaf,
             Stuff::Wood,
@@ -522,9 +522,12 @@ fn drawers(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2, rows: usize) 
         } else {
             Vec3::new(4.0, 4.0, wide * 0.32)
         };
+        // `front` already reaches the drawer face; doubling it put every
+        // handle in this house a carcass-width out in mid-air.
+        let proud = Vec3::new(face.x, 0.0, face.y) * 3.0;
         slab(
             out,
-            Vec3::new(at.x, y, at.y) + front * 2.0,
+            Vec3::new(at.x, y, at.y) + front + proud,
             pull,
             Stuff::Metal,
             BRASS,
@@ -1789,6 +1792,36 @@ fn interior_doors(out: &mut Vec<Solid>) {
     }
 }
 
+/// The face of the nearest thing behind `at`, looking back along `normal`.
+///
+/// The same question `picture` asks, and worth having twice: anything screwed
+/// to a wall needs that wall's real face, and a room bound is not it.
+fn surface_behind(out: &[Solid], at: Vec3, normal: Vec3) -> Option<Vec3> {
+    let axis = if normal.x.abs() > 0.5 {
+        Vec3::X
+    } else {
+        Vec3::Z
+    };
+    let along = |v: Vec3| (v * axis).element_sum();
+    let here = along(at);
+    out.iter()
+        .filter(|s| s.rot == Quat::IDENTITY && s.half.max_element() > 20.0)
+        .filter(|s| {
+            let lo = s.center - s.half;
+            let hi = s.center + s.half;
+            let (cross, clo, chi) = if axis.x > 0.5 {
+                (at.z, lo.z, hi.z)
+            } else {
+                (at.x, lo.x, hi.x)
+            };
+            at.y > lo.y && at.y < hi.y && cross > clo && cross < chi
+        })
+        .map(|s| along(s.center) + along(normal) * along(s.half))
+        .filter(|face| (face - here).abs() < 24.0)
+        .min_by(|a, b| (a - here).abs().partial_cmp(&(b - here).abs()).unwrap())
+        .map(|face| at + axis * (face - here))
+}
+
 /// Switch plates and sockets.
 ///
 /// The smallest thing in the house that says a wall was built rather than
@@ -1848,15 +1881,25 @@ fn switches_and_sockets(out: &mut Vec<Solid>) {
                 -Vec3::X,
             ),
         ] {
+            // Room in front is not enough: a socket also needs a wall behind
+            // it, and a room bound runs across doorways and cased openings as
+            // happily as across plaster.
             if !has_room(out, at, normal) {
                 continue;
             }
+            // And sit on whatever is actually behind it. A room bound runs
+            // across doorways and openings as happily as across plaster, and
+            // in the garage that line is where its door hangs — four
+            // centimetres further out, which left two plates in the doorway.
+            let Some(back) = surface_behind(out, at, normal) else {
+                continue;
+            };
             let size = if normal.z.abs() > 0.5 {
                 Vec3::new(11.0, 8.0, 3.0)
             } else {
                 Vec3::new(3.0, 8.0, 11.0)
             };
-            slab(out, at, size, Stuff::Wood, plate);
+            slab(out, back + normal * 1.5, size, Stuff::Wood, plate);
         }
     }
 }
@@ -2037,15 +2080,23 @@ fn tap(out: &mut Vec<Solid>, at: Vec3, reach: Vec2) {
         Stuff::Metal,
         CHROME,
     );
+    // Handles either side of the body, across the spout — not diagonally off
+    // both axes at once, which is where they were and why they touched nothing.
+    let across = if reach.x.abs() > reach.y.abs() {
+        Vec3::Z
+    } else {
+        Vec3::X
+    };
     for side in [-1.0f32, 1.0] {
+        let size = if across.z > 0.5 {
+            Vec3::new(5.0, 4.0, 11.0)
+        } else {
+            Vec3::new(11.0, 4.0, 5.0)
+        };
         slab(
             out,
-            at + Vec3::new(
-                side * 11.0 * reach.y.signum().abs().max(0.0),
-                12.0,
-                side * 11.0,
-            ),
-            Vec3::new(9.0, 4.0, 4.0),
+            at + Vec3::new(0.0, 12.0, 0.0) + across * side * 6.0,
+            size,
             Stuff::Metal,
             CHROME,
         );

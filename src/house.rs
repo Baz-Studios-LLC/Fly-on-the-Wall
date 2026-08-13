@@ -2043,6 +2043,7 @@ pub fn audit(home: &Home) {
         }
     }
 
+    faults += floating(home);
     faults += unreachable(home, &all);
 
     let living = all.iter().filter(|r| r.use_for.habitable()).count();
@@ -2057,6 +2058,91 @@ pub fn audit(home: &Home) {
             CEILING
         );
     }
+}
+
+/// Nothing floats.
+///
+/// Every solid in this house must touch another one. That is the whole rule,
+/// and it is the one that would have caught what Brett caught by flying: a
+/// gallery hanging in mid-air over the dining table, a photograph eighteen
+/// centimetres above the media unit, a stack of boxes stepping up through
+/// nothing. Fixed viewpoints look *at* rooms from the corners; they are very
+/// bad at showing that a thing is a few centimetres off the surface behind it,
+/// and that is exactly the error a procedural house makes over and over,
+/// because every position here is arithmetic and arithmetic is off by two.
+///
+/// Bucketed on a metre grid, or it is twenty-two million pairs.
+fn floating(home: &Home) -> usize {
+    const NEAR: f32 = 3.0;
+    const CELL: f32 = 100.0;
+
+    let key = |p: Vec3| {
+        (
+            (p.x / CELL).floor() as i32,
+            (p.y / CELL).floor() as i32,
+            (p.z / CELL).floor() as i32,
+        )
+    };
+    let mut grid: std::collections::HashMap<(i32, i32, i32), Vec<usize>> =
+        std::collections::HashMap::new();
+    for (i, s) in home.solids.iter().enumerate() {
+        let lo = s.center - s.half - Vec3::splat(NEAR);
+        let hi = s.center + s.half + Vec3::splat(NEAR);
+        let (a, b) = (key(lo), key(hi));
+        for x in a.0..=b.0 {
+            for y in a.1..=b.1 {
+                for z in a.2..=b.2 {
+                    grid.entry((x, y, z)).or_default().push(i);
+                }
+            }
+        }
+    }
+
+    let touches = |a: &Solid, b: &Solid| {
+        let gap = (a.center - b.center).abs() - (a.half + b.half);
+        gap.x < NEAR && gap.y < NEAR && gap.z < NEAR
+    };
+
+    let mut faults = 0;
+    for (i, solid) in home.solids.iter().enumerate() {
+        // The ground has nothing under it, and a rotated solid's axis-aligned
+        // half is a lie — a tilted siding board or a car wheel reports a box
+        // bigger than it is, which makes this test meaningless for them.
+        if solid.stuff == Stuff::Grass || solid.rot != Quat::IDENTITY {
+            continue;
+        }
+        let lo = solid.center - solid.half - Vec3::splat(NEAR);
+        let hi = solid.center + solid.half + Vec3::splat(NEAR);
+        let (a, b) = (key(lo), key(hi));
+        let mut held = false;
+        'search: for x in a.0..=b.0 {
+            for y in a.1..=b.1 {
+                for z in a.2..=b.2 {
+                    for &j in grid.get(&(x, y, z)).into_iter().flatten() {
+                        if j != i && touches(solid, &home.solids[j]) {
+                            held = true;
+                            break 'search;
+                        }
+                    }
+                }
+            }
+        }
+        if !held {
+            error!(
+                "house fault: a {:?} box {:.0}x{:.0}x{:.0} at ({:.0},{:.0},{:.0}) \
+                 touches nothing",
+                solid.stuff,
+                solid.half.x * 2.0,
+                solid.half.y * 2.0,
+                solid.half.z * 2.0,
+                solid.center.x,
+                solid.center.y,
+                solid.center.z,
+            );
+            faults += 1;
+        }
+    }
+    faults
 }
 
 /// Can a fly actually get everywhere?
