@@ -112,6 +112,10 @@ pub struct Solid {
     /// painted by someone with an eye, and second-guessing that from a material
     /// enum would be throwing away the better answer.
     pub paint: Option<Color>,
+    /// How much this surface emits. A ceiling fixture lit only by the lamp
+    /// inside it is a grey lump: the lamp points down and away from the thing
+    /// it is supposed to be shining out of.
+    pub glow: f32,
     /// Drawn see-through and excluded from shadow casting: glass.
     pub sheer: bool,
     /// Overhead: the roof, or a ceiling under it. Hidden in the plan view,
@@ -152,6 +156,7 @@ impl Solid {
             sheer: stuff.is_glass(),
             paint: None,
             roof: false,
+            glow: 0.0,
             stuff,
         }
     }
@@ -428,6 +433,7 @@ impl Door {
                 DOOR_WIDTH * 0.5,
             ),
             rot,
+            glow: 0.0,
             stuff: Stuff::Wood,
             paint: None,
             sheer: false,
@@ -746,13 +752,14 @@ fn dress_the_set(
             byte(rgba.blue),
             byte(rgba.alpha),
             solid.stuff as u8,
-            solid.sheer as u8,
+            solid.sheer as u8 | (byte(solid.glow / 24.0) << 1),
         ];
         let material = palette
             .entry(key)
             .or_insert_with(|| {
                 materials.add(StandardMaterial {
                     base_color: colour,
+                    emissive: (rgba * solid.glow).with_alpha(1.0),
                     perceptual_roughness: solid.stuff.perceptual_roughness(),
                     metallic: if solid.stuff == Stuff::Metal {
                         0.6

@@ -809,6 +809,7 @@ pub fn build() -> Home {
 
     roof(&mut s);
     glaze(&mut s);
+    fixtures(&mut s);
     crate::furniture::furnish(&mut s);
 
     let great = room("great room");
@@ -1218,6 +1219,62 @@ fn unreachable(home: &Home, all: &[Room]) -> usize {
 ///
 /// Authored rather than found. The flood fill in `rooms` exists because a
 /// *drawn* house does not say where its rooms are; this one does.
+/// A regular octagon lying flat, out of four crossed bars.
+///
+/// Not two squares at forty-five degrees — that was the first attempt and it
+/// unions into an eight-pointed star, because the turned square's corners stand
+/// out past the straight one's edges. Four bars the width of the octagon and
+/// `2r tan(22.5°)` across, turned forty-five degrees apart, put all eight
+/// corners on the same circle. It is the wheel construction from the car, laid
+/// on its side.
+fn octagon(out: &mut Vec<Solid>, at: Vec3, across: f32, thick: f32, paint: Color, glow: f32) {
+    const SIDES: usize = 4;
+    let bar = across * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
+    for k in 0..SIDES {
+        let mut s = Solid::between(
+            Vec3::new(-across * 0.5, -thick * 0.5, -bar * 0.5),
+            Vec3::new(across * 0.5, thick * 0.5, bar * 0.5),
+            Stuff::Plaster,
+        );
+        s.center = at;
+        s.rot = Quat::from_rotation_y(k as f32 * std::f32::consts::PI / SIDES as f32);
+        s.paint = Some(paint);
+        s.glow = glow;
+        s.roof = true;
+        out.push(s);
+    }
+}
+
+/// The fixtures themselves: a ceiling rose and a glowing diffuser under it, one
+/// per room, at the same place as that room's lamp.
+///
+/// A room whose light comes from nowhere reads as a room with no light in it,
+/// however well lit the floor is — the eye looks for the source. This is also
+/// the only thing in the house that emits, which is why `Solid` needed a glow
+/// at all.
+pub fn fixtures(out: &mut Vec<Solid>) {
+    for r in rooms() {
+        let at = r.middle();
+        let wide = if r.use_for == Use::Garage { 52.0 } else { 42.0 };
+        octagon(
+            out,
+            Vec3::new(at.x, CEILING - 2.5, at.y),
+            wide + 8.0,
+            5.0,
+            Color::srgb(0.86, 0.86, 0.84),
+            0.0,
+        );
+        octagon(
+            out,
+            Vec3::new(at.x, CEILING - 8.0, at.y),
+            wide,
+            8.0,
+            Color::srgb(1.0, 0.97, 0.90),
+            11.0,
+        );
+    }
+}
+
 pub fn light_it(commands: &mut Commands) {
     use crate::world::UNITS_PER_METRE;
     let scale = UNITS_PER_METRE * UNITS_PER_METRE;
@@ -1304,6 +1361,32 @@ pub fn light_it(commands: &mut Commands) {
             },
             Transform::from_xyz(at.x, CEILING - 6.0, at.y)
                 .looking_at(Vec3::new(at.x, 0.0, at.y), Vec3::Z),
+        ));
+
+        // And the light that comes back up off the floor.
+        //
+        // Nothing bounces in this renderer, so every ceiling in the house was
+        // lit by ambient alone: the same value from every angle, over the whole
+        // plane, which is exactly what "no shading" looks like and is why the
+        // ceilings read as flat grey fields in every interior capture. A wide,
+        // dim spot from about table height aimed straight up is a cheap stand-in
+        // for the one bounce that matters — it comes from where the real light
+        // would come from, and it falls off toward the corners the way real
+        // bounce does. No shadow map: bounce light does not have a sharp one.
+        commands.spawn((
+            Name::new(format!("{} bounce", r.name)),
+            SpotLight {
+                color: colour,
+                intensity: lumens * scale * 0.85,
+                range: 700.0,
+                radius: 40.0,
+                outer_angle: 1.45,
+                inner_angle: 0.30,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(at.x, 92.0, at.y)
+                .looking_at(Vec3::new(at.x, CEILING, at.y), Vec3::Z),
         ));
     }
 }
