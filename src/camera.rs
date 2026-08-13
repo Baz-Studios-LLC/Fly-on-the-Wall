@@ -426,9 +426,13 @@ fn place_the_eye(
     // Standing in front of somebody, looking at them.
     if let Some(degrees) = folk_view() {
         if let Some(person) = folk.iter().next() {
-            let heart = person.translation() + Vec3::Y * 22.0;
+            // Framed on the *whole* person, not the chest. The first version
+            // stood too close and too high and cut the feet off, which is a
+            // poor showing for a viewpoint whose only job is looking at a body
+            // — and the feet were on backwards at the time.
+            let heart = person.translation() - Vec3::Y * 4.0;
             let a = degrees.to_radians();
-            transform.translation = heart + Vec3::new(a.sin() * 215.0, 24.0, a.cos() * 215.0);
+            transform.translation = heart + Vec3::new(a.sin() * 330.0, 26.0, a.cos() * 330.0);
             transform.look_at(heart, Vec3::Y);
             if let Projection::Perspective(perspective) = &mut *projection {
                 perspective.fov = 42.0_f32.to_radians();

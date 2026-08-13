@@ -829,6 +829,20 @@ family simulation is a long way off and this is the body it will be given.
 room views frame rooms and neither they nor the fly's inspect view can show
 whether a knee bends the right way.
 
+
+## Pass forty-two: his feet were on backwards
+
+Brett, immediately. The body faces −z — nose, brow and fringe are all on that
+side — and the shoe's long axis was laid on +z, so he stood in his own living
+room with his feet the wrong way round. Invisible in the numbers, unmissable to
+anybody who looks at him.
+
+Worth recording the second half of it: the viewpoint I had just added to look
+at people **could not show his feet**. It framed the chest at three metres and
+cut off below the knee, which is a poor showing for a camera whose only job is
+looking at a body — and it is why I did not catch this myself. It frames the
+whole person now.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

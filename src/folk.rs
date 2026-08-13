@@ -275,12 +275,18 @@ fn raise_the_father(
                 Visibility::default(),
             ))
             .id();
-        // A shoe: sole, upper, and a toe box, so it is not a brick.
+        // A shoe: sole and upper, with the toe toward the front of the body.
+        //
+        // This whole body faces −z — nose, brow and fringe are all on that
+        // side — and the first version of the shoe put its long end on +z, so
+        // he stood in the great room with his feet on backwards. It is the
+        // kind of mistake that is invisible in the numbers and unmissable the
+        // moment somebody looks at him.
         block(
             &mut commands,
             meshes,
             ankle,
-            Vec3::new(0.0, -2.5, 3.0),
+            Vec3::new(0.0, -2.5, -3.0),
             Vec3::new(11.0, 5.0, 26.0),
             &shoe,
         );
@@ -288,7 +294,7 @@ fn raise_the_father(
             &mut commands,
             meshes,
             ankle,
-            Vec3::new(0.0, 1.5, -1.0),
+            Vec3::new(0.0, 1.5, 1.0),
             Vec3::new(10.0, 6.0, 15.0),
             &shoe,
         );
