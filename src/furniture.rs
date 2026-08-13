@@ -823,24 +823,59 @@ fn shelves(out: &mut Vec<Solid>, at: Vec2, size: Vec2, high: f32, boards: usize,
             Stuff::Wood,
             OAK,
         );
-        // A few books, sized off their own position so the row is never a comb.
-        let n = 5;
-        for b in 0..n {
-            let t = (b as f32 + 0.5) / n as f32 - 0.5;
+        // A row of books. Five evenly spaced blocks in two colours is a comb;
+        // what makes a shelf read is uneven widths, a couple of leaners, a
+        // stack lying flat, and a gap where somebody took something out.
+        let mut along = -(w * 0.5) + 12.0;
+        let stop = w * 0.5 - 12.0;
+        let mut b = 0usize;
+        while along < stop {
+            let n = wobble(at.x + along, at.y + i as f32 * 13.0);
+            let m = wobble(at.y + i as f32 * 31.0, along * 1.7);
+            b += 1;
+
+            // A gap, now and then.
+            if m > 0.62 {
+                along += 14.0 + m * 10.0;
+                continue;
+            }
             let p = if along_x {
-                Vec2::new(at.x + t * (w - 20.0), at.y)
+                Vec2::new(at.x + along, at.y)
             } else {
-                Vec2::new(at.x, at.y + t * (w - 20.0))
+                Vec2::new(at.x, at.y + along)
             };
-            let h = 20.0 + wobble(p.x, p.y + i as f32 * 13.0) * 5.0;
-            let s = dim(12.0, d * 0.7);
-            slab(
+
+            // A stack lying on its side.
+            if n > 0.55 {
+                books(out, Vec3::new(p.x, y + 1.5, p.y), 2 + (b % 2), along);
+                along += 26.0;
+                continue;
+            }
+
+            let thick = 6.0 + (n + 1.0) * 5.0;
+            let h = 19.0 + m.abs() * 9.0;
+            let s = dim(thick, d * 0.66);
+            let lean = if n < -0.72 { 0.16 } else { 0.0 };
+            let paint = [
+                Color::srgb(0.42, 0.24, 0.20),
+                Color::srgb(0.24, 0.30, 0.36),
+                Color::srgb(0.52, 0.46, 0.30),
+                Color::srgb(0.30, 0.36, 0.28),
+                Color::srgb(0.46, 0.36, 0.44),
+            ][b % 5];
+            turned(
                 out,
                 Vec3::new(p.x, y + 1.5 + h * 0.5, p.y),
-                Vec3::new(s.x, h, s.z),
+                Vec3::new(s.x.max(3.0), h, s.z.max(3.0)),
+                if along_x {
+                    Quat::from_rotation_z(lean)
+                } else {
+                    Quat::from_rotation_x(lean)
+                },
                 Stuff::Wood,
-                if b % 2 == 0 { WOOL_WARM } else { SLATE },
+                paint,
             );
+            along += thick + 1.5;
         }
     }
 }

@@ -323,6 +323,15 @@ the session. Do not treat one room or prop as completion.
   which is exactly the kind of route the quality standard means by "sheltered
   spaces".
 
+
+## Pass sixteen: the bookshelf
+
+- Every shelf held five evenly spaced blocks alternating between two colours,
+  which is a comb, not a bookshelf. What makes a shelf read is uneven widths, a
+  couple of leaners, a stack lying flat, and a gap where somebody took something
+  out. The row now walks along the board placing whichever of those the position
+  calls for, so it is different on every shelf and the same on every run.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
