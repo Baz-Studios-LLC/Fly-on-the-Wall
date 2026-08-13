@@ -44,6 +44,7 @@
 //! | `FLY_CAPTURE=<path>` | render for a moment, save a frame there, exit |
 //! | `FLY_CAPTURE_DELAY=<s>` | move the shutter (default 4) |
 //! | `FLY_UNCAPPED=1` | drop vsync, so the frame rate means something |
+//! | `FLY_OUTSIDE=<deg>` | stand outdoors and look at the whole house — 0 south, 90 east |
 
 mod blueprint;
 mod body;

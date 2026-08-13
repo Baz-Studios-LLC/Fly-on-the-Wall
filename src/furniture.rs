@@ -353,11 +353,11 @@ fn appliance(out: &mut Vec<Solid>, at: Vec2, size: Vec3, paint: Color) {
 
 /// Open shelving: uprights and boards, so every board is a landing.
 fn shelves(out: &mut Vec<Solid>, at: Vec2, size: Vec2, high: f32, boards: usize, along_x: bool) {
-    let (w, d) = if along_x {
-        (size.x, size.y)
-    } else {
-        (size.y, size.x)
-    };
+    // `size` is (length, depth) and `along_x` says which way the length runs;
+    // `dim` already does the axis mapping, so swapping the pair here as well
+    // undid it. The garage's shelving came out three metres wide across the
+    // wrong axis and stood a metre outside the east wall of the house.
+    let (w, d) = (size.x, size.y);
     let dim = |a: f32, b: f32| {
         if along_x {
             Vec3::new(a, 0.0, b)

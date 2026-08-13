@@ -106,6 +106,16 @@ pub fn room_view() -> Option<String> {
     std::env::var("FLY_ROOM").ok().filter(|r| !r.is_empty())
 }
 
+/// `FLY_OUTSIDE=<deg>` stands back and looks at the whole house from outdoors.
+///
+/// Every viewpoint so far has been inside the building or straight above it,
+/// which between them can show every room and still never answer what the place
+/// looks like — whether it has a roof, whether the windows line up, whether the
+/// eaves throw a shadow. Zero is due south, ninety is due east.
+pub fn outside_view() -> Option<f32> {
+    std::env::var("FLY_OUTSIDE").ok()?.trim().parse().ok()
+}
+
 /// `FLY_PLAN=1` looks straight down at the whole house from above it.
 ///
 /// Not a play mode — a way to *see a drawn house at all*. A fly's own camera is
@@ -276,11 +286,39 @@ fn place_the_eye(
         warn!("no room called '{name}'");
     }
 
+    // Outdoors, standing back far enough to see the whole building.
+    if let Some(degrees) = outside_view() {
+        let (lo, hi) = crate::house::bounds();
+        let middle = (lo + hi) * 0.5;
+        let reach = (hi - lo).length();
+        let a = degrees.to_radians();
+        transform.translation = Vec3::new(
+            middle.x + a.sin() * reach * 0.86,
+            reach * 0.34,
+            middle.y + a.cos() * reach * 0.86,
+        );
+        transform.look_at(
+            Vec3::new(middle.x, crate::house::CEILING * 0.45, middle.y),
+            Vec3::Y,
+        );
+        if let Projection::Perspective(perspective) = &mut *projection {
+            perspective.fov = 46.0_f32.to_radians();
+        }
+        eye.seated = true;
+        return;
+    }
+
     // Straight down at the whole house, framed by its own bounds.
     if plan_view() {
         let mut low = Vec3::splat(f32::INFINITY);
         let mut high = Vec3::splat(f32::NEG_INFINITY);
         for solid in &home.solids {
+            // Not the ground. It runs forty metres past the house on every
+            // side, so framing by it puts the whole building in a thumbnail in
+            // the middle of a field.
+            if solid.stuff == crate::world::Stuff::Grass {
+                continue;
+            }
             let reach = (solid.rot * solid.half).abs().max(solid.half);
             low = low.min(solid.center - reach);
             high = high.max(solid.center + reach);

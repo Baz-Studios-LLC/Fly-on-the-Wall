@@ -431,6 +431,192 @@ fn envelope() -> (f32, f32, f32, f32, f32, f32) {
     )
 }
 
+// ---------------------------------------------------------------------------
+// The roof
+// ---------------------------------------------------------------------------
+
+/// Four in twelve, which is a ranch's pitch and shallow enough that the ridge
+/// does not tower over a single-storey plan.
+const PITCH: f32 = 4.0 / 12.0;
+/// How far the roof reaches past the wall. The shadow this throws is the whole
+/// reason a house reads as built rather than extruded, and its underside is a
+/// sheltered ledge a fly can sit on out of the weather.
+const OVERHANG: f32 = 46.0;
+const ROOF_THICK: f32 = 16.0;
+const FASCIA_DEEP: f32 = 20.0;
+
+const SHINGLE: Color = Color::srgb(0.27, 0.25, 0.24);
+const TRIM: Color = Color::srgb(0.90, 0.89, 0.85);
+const SIDING: Color = Color::srgb(0.74, 0.73, 0.69);
+
+/// A gabled roof over one rectangle, ridge along whichever axis is asked for.
+///
+/// Everything here is still a box: the two slopes are boxes with a turn on
+/// them, and the triangular gable ends are courses of box, each stopping where
+/// the slope above it would cut through. Stepping a triangle out of rectangles
+/// leaves a staircase along the rake, which is what the barge boards are for —
+/// they are a real piece of a real roof and they cover the one artifact this
+/// construction cannot avoid.
+fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32) {
+    // `a` runs along the ridge, `c` across it.
+    let (a0, a1, c0, c1) = if along_x {
+        (lo.x, hi.x, lo.y, hi.y)
+    } else {
+        (lo.y, hi.y, lo.x, hi.x)
+    };
+    let place = |a: f32, y: f32, c: f32| {
+        if along_x {
+            Vec3::new(a, y, c)
+        } else {
+            Vec3::new(c, y, a)
+        }
+    };
+    let size = |along: f32, y: f32, across: f32| {
+        if along_x {
+            Vec3::new(along, y, across)
+        } else {
+            Vec3::new(across, y, along)
+        }
+    };
+
+    let (ea0, ea1) = (a0 - OVERHANG, a1 + OVERHANG);
+    let (ec0, ec1) = (c0 - OVERHANG, c1 + OVERHANG);
+    let ridge_c = (ec0 + ec1) * 0.5;
+    let half = (ec1 - ec0) * 0.5;
+    let rise = half * PITCH;
+    let ridge_y = eave + rise;
+    let slope = (half * half + rise * rise).sqrt();
+    let theta = rise.atan2(half);
+    let along_len = ea1 - ea0;
+    let along_mid = (ea0 + ea1) * 0.5;
+
+    // The two slopes.
+    for side in [-1.0f32, 1.0] {
+        let turn = if along_x { side * theta } else { -side * theta };
+        let rot = if along_x {
+            Quat::from_rotation_x(turn)
+        } else {
+            Quat::from_rotation_z(turn)
+        };
+        let mut plane = Solid::between(
+            -size(along_len, ROOF_THICK, slope) * 0.5,
+            size(along_len, ROOF_THICK, slope) * 0.5,
+            Stuff::Stone,
+        );
+        plane.center = place(
+            along_mid,
+            (eave + ridge_y) * 0.5 + ROOF_THICK * 0.5,
+            ridge_c + side * half * 0.5,
+        );
+        plane.rot = rot;
+        plane.paint = Some(SHINGLE);
+        plane.roof = true;
+        out.push(plane);
+
+        // Fascia, hung off the eave, and the soffit that closes the gap back to
+        // the wall.
+        let edge = ridge_c + side * half;
+        let mut fascia = Solid::between(
+            place(ea0, eave - FASCIA_DEEP, edge - side * 9.0).min(place(ea1, eave, edge)),
+            place(ea0, eave - FASCIA_DEEP, edge - side * 9.0).max(place(ea1, eave, edge)),
+            Stuff::Wood,
+        );
+        fascia.paint = Some(TRIM);
+        fascia.roof = true;
+        out.push(fascia);
+
+        let wall_line = if side < 0.0 { c0 } else { c1 };
+        let mut soffit = Solid::between(
+            place(ea0, eave - FASCIA_DEEP, edge).min(place(
+                ea1,
+                eave - FASCIA_DEEP + 7.0,
+                wall_line,
+            )),
+            place(ea0, eave - FASCIA_DEEP, edge).max(place(
+                ea1,
+                eave - FASCIA_DEEP + 7.0,
+                wall_line,
+            )),
+            Stuff::Wood,
+        );
+        soffit.paint = Some(TRIM);
+        soffit.roof = true;
+        out.push(soffit);
+    }
+
+    // The gable ends: courses of siding, each cut off under the slope, and a
+    // barge board down each rake to hide the steps.
+    const COURSES: usize = 26;
+    for end in [-1.0f32, 1.0] {
+        let wall = if end < 0.0 { a0 } else { a1 };
+        // The gable stands on the wall it caps, and never wider than that wall:
+        // the roof's half-span includes the overhang, and a gable built out to
+        // *that* would hang in mid-air past the corner of the house.
+        let base = CEILING;
+        let wall_half = half - OVERHANG;
+        for k in 0..COURSES {
+            let y0 = base + (ridge_y - ROOF_THICK - base) * k as f32 / COURSES as f32;
+            let y1 = base + (ridge_y - ROOF_THICK - base) * (k + 1) as f32 / COURSES as f32;
+            // Measured at the course's *bottom*, so each one runs a little way
+            // up into the slab above it rather than stopping under it. Cutting
+            // at the top edge instead leaves a triangular gap per course, and
+            // eighteen of those in a row is a row of shark's teeth along the
+            // rake — which is exactly how the first capture came back.
+            let reach = ((ridge_y - ROOF_THICK - y0) / PITCH).clamp(0.0, wall_half);
+            if reach < 1.0 {
+                continue;
+            }
+            let mut course = Solid::between(
+                place(wall - OUTER * 0.5, y0, ridge_c - reach),
+                place(wall + OUTER * 0.5, y1, ridge_c + reach),
+                Stuff::Plaster,
+            );
+            course.paint = Some(SIDING);
+            course.roof = true;
+            out.push(course);
+        }
+
+        for side in [-1.0f32, 1.0] {
+            let turn = if along_x { side * theta } else { -side * theta };
+            let rot = if along_x {
+                Quat::from_rotation_x(turn)
+            } else {
+                Quat::from_rotation_z(turn)
+            };
+            let mut barge = Solid::between(
+                -size(14.0, 22.0, slope) * 0.5,
+                size(14.0, 22.0, slope) * 0.5,
+                Stuff::Wood,
+            );
+            barge.center = place(
+                wall + end * (OUTER * 0.5 + 7.0),
+                (eave + ridge_y) * 0.5 - 6.0,
+                ridge_c + side * half * 0.5,
+            );
+            barge.rot = rot;
+            barge.paint = Some(TRIM);
+            barge.roof = true;
+            out.push(barge);
+        }
+    }
+}
+
+/// The whole roof: a long gable down the house, and a second one turned
+/// ninety degrees over the garage so its end faces the drive, which is what an
+/// attached garage on a plan this shape actually gets built with.
+fn roof(out: &mut Vec<Solid>) {
+    let (w, e, n, so, garage_south, house_east) = envelope();
+    let eave = CEILING + SLAB + 8.0;
+    gable_roof(out, Vec2::new(w, n), Vec2::new(house_east, so), true, eave);
+    gable_roof(
+        out,
+        Vec2::new(house_east, n),
+        Vec2::new(e, garage_south),
+        false,
+        eave,
+    );
+}
+
 pub fn build() -> Home {
     let mut s: Vec<Solid> = Vec::new();
     let top = CEILING;
@@ -619,6 +805,7 @@ pub fn build() -> Home {
         s.push(slab);
     }
 
+    roof(&mut s);
     glaze(&mut s);
     crate::furniture::furnish(&mut s);
 
@@ -699,6 +886,12 @@ pub const WALL_OUTER: f32 = OUTER;
 /// wall, so "which side is the room on" is answered by "the side the middle of
 /// the house is on" — which is how curtains work out where to hang.
 pub fn centre() -> Vec2 {
+    let (lo, hi) = bounds();
+    (lo + hi) * 0.5
+}
+
+/// The footprint's corners, between finished interior surfaces.
+pub fn bounds() -> (Vec2, Vec2) {
     let rooms = rooms();
     let mut lo = rooms[0].min;
     let mut hi = rooms[0].max;
@@ -706,7 +899,7 @@ pub fn centre() -> Vec2 {
         lo = lo.min(r.min);
         hi = hi.max(r.max);
     }
-    (lo + hi) * 0.5
+    (lo, hi)
 }
 
 pub fn window_openings() -> Vec<(Vec3, Vec3)> {
@@ -745,6 +938,24 @@ pub fn window_openings() -> Vec<(Vec3, Vec3)> {
 /// *measures* fifteen feet once every wall around it has taken its thickness,
 /// and the cheapest way to be sure of that forever is to check on every run
 /// rather than to be careful once.
+/// Is this point within the building's outline?
+///
+/// The plan is an L: a rectangle with the corner south of the garage bitten
+/// out of it.
+fn inside_envelope(p: Vec2) -> bool {
+    let (w, e, n, so, garage_south, house_east) = envelope();
+    // Measured to the outer face of the wall *plus its trim*, not the
+    // centreline. Floors are laid a little way into the wall on purpose so no
+    // seam can open at a threshold, and the skirting and cornice stand proud of
+    // the plaster on both faces; a line drawn down the middle of the wall calls
+    // every floorboard and every length of moulding in the house an escapee.
+    let m = OUTER * 0.5 + CORNICE_PROUD + HAIR;
+    if p.x < w - m || p.x > e + m || p.y < n - m || p.y > so + m {
+        return false;
+    }
+    !(p.x > house_east + m && p.y > garage_south + m)
+}
+
 pub fn audit(home: &Home) {
     let mut faults = 0;
     let all = rooms();
@@ -820,6 +1031,38 @@ pub fn audit(home: &Home) {
                 );
                 faults += 1;
             }
+        }
+    }
+
+    // Nothing built indoors may stand outdoors.
+    //
+    // An exterior view found a shelf unit sticking a metre through the east
+    // wall, which no interior capture in the house had been able to show: from
+    // inside, furniture that has escaped just looks small. The roof is exempt —
+    // hanging past the walls is its whole job.
+    for solid in &home.solids {
+        // Every solid, not just the ones whose middle is still indoors: a test
+        // that skips anything already outside excuses exactly the pieces that
+        // got furthest out, and the shelf unit used to prove it walked straight
+        // through this check.
+        if solid.roof || solid.stuff == Stuff::Grass {
+            continue;
+        }
+        let (lo, hi) = (solid.center - solid.half, solid.center + solid.half);
+        let escaped = [
+            Vec2::new(lo.x, lo.z),
+            Vec2::new(hi.x, lo.z),
+            Vec2::new(lo.x, hi.z),
+            Vec2::new(hi.x, hi.z),
+        ]
+        .into_iter()
+        .find(|c| !inside_envelope(*c));
+        if let Some(c) = escaped {
+            error!(
+                "house fault: something at {:.0},{:.0} reaches outside the walls at {:.0},{:.0}",
+                solid.center.x, solid.center.z, c.x, c.y
+            );
+            faults += 1;
         }
     }
 

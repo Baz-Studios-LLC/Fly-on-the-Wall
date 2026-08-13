@@ -104,6 +104,36 @@ the session. Do not treat one room or prop as completion.
   of the back of a shelf unit; `FLY_ROOM=<room>:<corner>` now walks the camera
   along its own sightline until it is 75 cm clear of everything solid.
 
+
+## Pass three: the outside of the house
+
+- **`FLY_OUTSIDE=<deg>` exists because nothing else could see this.** Every
+  viewpoint so far was inside the building or straight above it, and between
+  them they could show every room and still never answer what the place looks
+  like. The first exterior capture was a flat white lid: the house had no roof
+  at all, only per-room ceiling slabs.
+- **A gable roof, in boxes.** Two turned slabs per roof, fascia and soffit at
+  each eave, and the triangular gable ends built as courses of siding cut off
+  under the slope. The main house runs its ridge east-west; the garage's turns
+  ninety degrees so its gable faces the drive, which is what this plan gets
+  built with. Two faults found by capture: the slope rotations were sign-flipped
+  so both planes tilted the wrong way, and cutting each gable course at its
+  *top* edge left a triangular gap per course — eighteen shark's teeth along the
+  rake. Cutting at the bottom edge buries the overshoot in the slab above.
+- **A shelf unit was standing outside the house.** `shelves` swapped its own
+  axes on top of the mapping its `dim` closure already did, so `along_x: false`
+  still ran the boards along x: the garage's shelving came out three metres wide
+  and stood a metre through the east wall. No interior capture could show this —
+  from inside, furniture that has escaped just looks small.
+- **A law for it.** Nothing that is not roof or ground may cross the outer face
+  of the walls. Tested by shoving the shelf back out: 92 faults. The first
+  version only checked solids whose *centre* was still indoors, which excused
+  exactly the pieces that got furthest out — the same shape of hole as the
+  traversal law's.
+- **The plan view had been framing the lawn**, which runs forty metres past the
+  house on every side, so the whole building sat in a thumbnail in the middle of
+  a field. It frames on the building now.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -115,8 +145,9 @@ the session. Do not treat one room or prop as completion.
 
 ## Next
 
-- **A roof.** The house has never been looked at from outside, and there is
-  nothing on top of it. This is the largest remaining structural gap.
+- The south elevation is the front and has neither a front door that reads nor
+  any approach — no path, drive, step or porch.
+- Exterior walls are flat untextured plaster; the house wants cladding courses.
 - Ceilings read dead flat: nothing bounces, and the room spots point straight
   down at the floor by design. Wants a visible fixture at least.
 - Service rooms are furnished but thin — the laundry has a blank long wall.
