@@ -723,6 +723,8 @@ pub fn audit(home: &Home) {
         }
     }
 
+    faults += unreachable(home, &all);
+
     let living = all.iter().filter(|r| r.use_for.habitable()).count();
     if faults == 0 {
         info!(
@@ -735,6 +737,118 @@ pub fn audit(home: &Home) {
             CEILING
         );
     }
+}
+
+/// Can a fly actually get everywhere?
+///
+/// A blocked doorway and a room walled off by accident look identical to a
+/// correct house in every screenshot ever taken of it, because a screenshot only
+/// shows the room the camera is in. This flood-fills the open air of the whole
+/// house from the great room and reports any room it could not reach.
+///
+/// Filled on one horizontal slice at 150 cm — above the furniture that stands on
+/// the floor, below the head of every door — because that is the height at which
+/// the house is a single connected volume if it is connected at all. A fill in
+/// three dimensions would be a hundred times the work to answer the same
+/// question.
+///
+/// **Confined to the footprint.** The first version let the fill run outdoors,
+/// and it promptly proved a bricked-up laundry door was fine — because a fly can
+/// leave by the front door, fly round the house and come back in through the
+/// open garage. True, and useless: a law that cannot fail is not a law. Going
+/// outside is a route, not a corridor, so the question this asks is whether the
+/// house is connected *to itself*.
+fn unreachable(home: &Home, all: &[Room]) -> usize {
+    const CELL: f32 = 16.0;
+    const AT: f32 = 150.0;
+
+    let (lo, hi) = (
+        Vec2::new(ft(0.0) - OUTER, ft(0.0) - OUTER),
+        Vec2::new(ft(68.0) + OUTER, ft(34.5) + OUTER),
+    );
+    let wide = (((hi.x - lo.x) / CELL).ceil() as usize).max(1);
+    let deep = (((hi.y - lo.y) / CELL).ceil() as usize).max(1);
+    let point = |ix: usize, iz: usize| {
+        Vec3::new(
+            lo.x + (ix as f32 + 0.5) * CELL,
+            AT,
+            lo.y + (iz as f32 + 0.5) * CELL,
+        )
+    };
+
+    // Inside the house proper, or inside the garage. Anything else is outdoors.
+    let indoors = |p: Vec3| {
+        let house = p.x > ft(0.0) && p.x < ft(46.0) && p.z > ft(0.0) && p.z < ft(34.5);
+        let garage = p.x > ft(46.0) && p.x < ft(68.0) && p.z > ft(0.0) && p.z < ft(24.0);
+        house || garage
+    };
+
+    let mut open = vec![false; wide * deep];
+    for iz in 0..deep {
+        for ix in 0..wide {
+            let p = point(ix, iz);
+            open[iz * wide + ix] = indoors(p)
+                && !home
+                    .solids
+                    .iter()
+                    .any(|solid| solid.nearest(p).distance < 0.0);
+        }
+    }
+
+    // Start in the great room, which is where a fly hatches.
+    let start = room("great room").middle();
+    let sx = (((start.x - lo.x) / CELL) as usize).min(wide - 1);
+    let sz = (((start.y - lo.y) / CELL) as usize).min(deep - 1);
+    let mut seen = vec![false; wide * deep];
+    let mut stack = vec![sz * wide + sx];
+    seen[sz * wide + sx] = true;
+    while let Some(cell) = stack.pop() {
+        let (ix, iz) = (cell % wide, cell / wide);
+        let mut push = |nx: usize, nz: usize, stack: &mut Vec<usize>| {
+            let n = nz * wide + nx;
+            if open[n] && !seen[n] {
+                seen[n] = true;
+                stack.push(n);
+            }
+        };
+        if ix > 0 {
+            push(ix - 1, iz, &mut stack);
+        }
+        if iz > 0 {
+            push(ix, iz - 1, &mut stack);
+        }
+        if ix + 1 < wide {
+            push(ix + 1, iz, &mut stack);
+        }
+        if iz + 1 < deep {
+            push(ix, iz + 1, &mut stack);
+        }
+    }
+
+    let mut faults = 0;
+    for r in all {
+        // Sample the room rather than trusting its middle, which may have a bed
+        // in it.
+        let mut found = false;
+        for gx in 1..=4 {
+            for gz in 1..=4 {
+                let at = Vec2::new(
+                    r.min.x + r.wide() * gx as f32 * 0.2,
+                    r.min.y + r.deep() * gz as f32 * 0.2,
+                );
+                let ix = (((at.x - lo.x) / CELL) as usize).min(wide - 1);
+                let iz = (((at.y - lo.y) / CELL) as usize).min(deep - 1);
+                if seen[iz * wide + ix] {
+                    found = true;
+                }
+            }
+        }
+        if !found {
+            error!("{}: a fly cannot reach it from the great room", r.name);
+            faults += 1;
+        }
+    }
+    faults
 }
 
 // ---------------------------------------------------------------------------
