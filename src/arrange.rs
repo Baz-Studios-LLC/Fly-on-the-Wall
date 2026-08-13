@@ -15,12 +15,17 @@
 //!
 //! | | |
 //! |---|---|
-//! | `Tab` | arrange mode on and off |
-//! | look | whatever is in front of the fly is highlighted |
-//! | `E` | take hold of it, and let go of it |
-//! | `Q` `R` | turn it, fifteen degrees a press |
+//! | `Tab` or `F4` | arrange mode on and off |
+//! | look | whatever the crosshair is on is highlighted |
+//! | left mouse or `G` | take hold of it, and let go of it |
+//! | `←` `→` | turn it, twelve degrees a press |
 //! | `Ctrl` `S` | save the arrangement |
 //! | `Backspace` | put everything back where the generator had it |
+//!
+//! None of those are the game's. `Q` is the first-person toggle, `R` rolls the
+//! camera and `E` cycles the ajar door, so the first pass at this fought the
+//! game for three keys out of four — and it had no crosshair, which meant
+//! there was no way to tell what you were pointing at in the first place.
 
 use bevy::prelude::*;
 use bevy::text::FontSize;
@@ -47,6 +52,9 @@ pub struct Arranging {
 
 #[derive(Component)]
 struct Marker;
+
+#[derive(Component)]
+struct Crosshair;
 
 #[derive(Component)]
 struct Readout;
@@ -88,6 +96,25 @@ fn spawn_marker(
         bevy::light::NotShadowCaster,
     ));
 
+    // A crosshair. Without one there is no way to know what the ray is on, and
+    // "point at the thing" is the whole interface.
+    commands.spawn((
+        Crosshair,
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Percent(50.0),
+            top: Val::Percent(50.0),
+            width: Val::Px(7.0),
+            height: Val::Px(7.0),
+            margin: UiRect::all(Val::Px(-3.5)),
+            border: UiRect::all(Val::Px(1.0)),
+            ..default()
+        },
+        BorderColor::all(Color::srgba(0.42, 0.90, 0.80, 0.95)),
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.35)),
+        Visibility::Hidden,
+    ));
+
     commands.spawn((
         Readout,
         Text::new(""),
@@ -107,7 +134,7 @@ fn spawn_marker(
 }
 
 fn toggle(keys: Res<ButtonInput<KeyCode>>, mut arranging: ResMut<Arranging>) {
-    if keys.just_pressed(KeyCode::Tab) {
+    if keys.just_pressed(KeyCode::Tab) || keys.just_pressed(KeyCode::F4) {
         arranging.on = !arranging.on;
         if !arranging.on {
             arranging.held = None;
@@ -197,6 +224,7 @@ fn carry(
     mut arranging: ResMut<Arranging>,
     mut home: ResMut<Home>,
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
     eyes: Query<&GlobalTransform, With<Camera3d>>,
     mut parts: Query<(&Part, &mut Transform), Without<Marker>>,
 ) {
@@ -205,7 +233,8 @@ fn carry(
     }
     let Ok(eye) = eyes.single() else { return };
 
-    if keys.just_pressed(KeyCode::KeyE) {
+    let take = keys.just_pressed(KeyCode::KeyG) || mouse.just_pressed(MouseButton::Left);
+    if take {
         arranging.held = match arranging.held {
             Some(_) => None,
             None => arranging.looking_at.map(|piece| {
@@ -241,9 +270,9 @@ fn carry(
     // A little damping, or the piece jitters with every twitch of the mouse.
     by *= 0.35;
 
-    let turn = if keys.just_pressed(KeyCode::KeyQ) {
+    let turn = if keys.just_pressed(KeyCode::ArrowLeft) {
         -TURN
-    } else if keys.just_pressed(KeyCode::KeyR) {
+    } else if keys.just_pressed(KeyCode::ArrowRight) {
         TURN
     } else {
         0.0
@@ -357,7 +386,15 @@ fn show(
     arranging: Res<Arranging>,
     home: Res<Home>,
     mut readouts: Query<(&mut Text, &mut Visibility), With<Readout>>,
+    mut crosshairs: Query<&mut Visibility, (With<Crosshair>, Without<Readout>)>,
 ) {
+    for mut seen in &mut crosshairs {
+        *seen = if arranging.on {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+    }
     let Ok((mut text, mut seen)) = readouts.single_mut() else {
         return;
     };
@@ -378,7 +415,7 @@ fn show(
         })
         .unwrap_or_else(|| "nothing in front of you".into());
     text.0 = format!(
-        "ARRANGING   -   {}{}\nE take / drop   Q R turn   Ctrl+S save   Backspace put it all back   Tab done",
+        "ARRANGING   -   {}{}\nclick or G take / drop    left right arrows turn    Ctrl+S save    Backspace put it all back    Tab done",
         size,
         if arranging.held.is_some() {
             "   -   carrying"

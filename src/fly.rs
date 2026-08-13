@@ -478,11 +478,21 @@ fn look_around(
 pub fn step_the_fly(
     time: Res<Time<Fixed>>,
     home: Res<Home>,
+    arranging: Res<crate::arrange::Arranging>,
     mut flies: Query<(&mut Fly, &mut Intent)>,
 ) {
     let dt = time.delta_secs();
 
     for (mut fly, mut intent) in &mut flies {
+        // Arranging is not flying. The whole flight model is built so that a
+        // fly cannot hold a position — no lift without thrust, no reverse, a
+        // committed course that snaps rather than steers — and every one of
+        // those is wrong for somebody trying to line a sofa up with a wall.
+        // While the furniture is being moved the fly hovers: direct control,
+        // full stop when you let go, and reverse works.
+        if arranging.on {
+            fly.stance = Stance::Flying;
+        }
         fly.prev_pos = fly.pos;
         fly.prev_body = fly.body;
         fly.lockout = (fly.lockout - dt).max(0.0);
@@ -490,6 +500,7 @@ pub fn step_the_fly(
         steer(&mut fly, dt);
 
         match fly.stance {
+            Stance::Flying if arranging.on => hover_about(&mut fly, &intent, &home, dt),
             Stance::Flying => fly_along(&mut fly, &intent, &home, dt),
             Stance::Perched(perch) => walk_about(&mut fly, &intent, &home, perch, dt),
         }
@@ -502,6 +513,32 @@ pub fn step_the_fly(
 // ---------------------------------------------------------------------------
 // Flight
 // ---------------------------------------------------------------------------
+
+/// Editor flight: point and go, and stop when you stop asking.
+///
+/// Deliberately not the flight model. That one is the game and it is approved;
+/// this one exists for the twenty minutes somebody spends pushing furniture
+/// around, where what is wanted is the old MMO hover — hold a key to move, let
+/// go and stay exactly where you are, back up when you need to.
+fn hover_about(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
+    const HOVER: f32 = 150.0;
+    let forward = fly.heading();
+    let right = forward.cross(Vec3::Y).normalize_or_zero();
+    // Reverse included: an editor camera that cannot back away from what it is
+    // looking at is no use.
+    let wish = forward * intent.thrust.z + right * intent.thrust.x + Vec3::Y * intent.thrust.y;
+    fly.vel = wish.normalize_or_zero() * HOVER;
+
+    let previous = fly.pos;
+    let step = fly.vel * dt;
+    if step.length_squared() > 1e-9 {
+        let dir = step.normalize();
+        match home.raycast(previous, dir, step.length() + BODY_RADIUS) {
+            Some(hit) => deflect(fly, hit.point, hit.normal),
+            None => fly.pos = previous + step,
+        }
+    }
+}
 
 /// Move the committed course toward the aim, in saccades.
 ///

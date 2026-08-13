@@ -689,6 +689,26 @@ the generator ever said which forty.
   capture: the grab and the save keystrokes, which a screenshot cannot press —
   they share `shift` with the load path, which is exercised.
 
+
+## Pass thirty-five: arrange mode, as reported from actually using it
+
+Brett tried it and found three things, two of which were my fault outright.
+
+- **It fought the game for its keys.** `Q` is the first-person toggle, `R` rolls
+  the camera and `E` cycles the ajar door — three of the four keys I picked were
+  already bound. Take and drop is a click or `G`, turning is the arrow keys, and
+  `F4` toggles the mode as well as `Tab`.
+- **There was no crosshair.** "Point at the thing" is the entire interface and
+  there was nothing on screen saying where the ray went. That is almost
+  certainly why `E` looked broken: with nothing to aim, most looks land on a
+  wall, and a wall is not a piece.
+- **The flight model is wrong for this job, and that is not a bug.** It is built
+  so a fly *cannot* hold a position: no lift without thrust, no reverse, a
+  committed course that snaps rather than steers. All correct, all miserable
+  when you are lining a sofa up with a wall. While arranging, the fly hovers —
+  direct control, full stop when you let go, reverse included. The flight model
+  itself is untouched.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
