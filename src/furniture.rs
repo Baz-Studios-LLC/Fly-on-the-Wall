@@ -410,12 +410,107 @@ fn rug(out: &mut Vec<Solid>, at: Vec2, size: Vec2, paint: Color) {
     );
 }
 
+/// A framed picture on a wall: a frame and a canvas set inside it.
+///
+/// Two boxes rather than one, because the frame standing proud of the canvas is
+/// what makes it read as a picture instead of a painted rectangle — and because
+/// the rebate between them is a two-centimetre shelf a fly can stand on.
+fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, tone: Color) {
+    let d = |t: f32| {
+        if along_x {
+            Vec3::new(wide, tall, t)
+        } else {
+            Vec3::new(t, tall, wide)
+        }
+    };
+    // Frame first, then the canvas standing PROUD of it rather than buried
+    // inside it — the first version put a two-centimetre canvas inside a
+    // three-centimetre frame, so every picture in the house rendered as its own
+    // dark surround and nothing else.
+    slab(out, at, d(2.0), Stuff::Wood, DARK_OAK);
+    let out_of = if along_x {
+        Vec3::new(0.0, 0.0, 1.4)
+    } else {
+        Vec3::new(1.4, 0.0, 0.0)
+    };
+    // Which way is "into the room"? Whichever side of the wall the frame's own
+    // centre is not: the canvas goes toward the viewer.
+    let face = if along_x {
+        Vec3::new(0.0, 0.0, 1.0)
+    } else {
+        Vec3::new(1.0, 0.0, 0.0)
+    };
+    let s = d(1.6);
+    slab(
+        out,
+        at + out_of * face.length(),
+        Vec3::new(
+            (s.x - 9.0).max(1.6),
+            (s.y - 9.0).max(1.6),
+            (s.z - 9.0).max(1.6),
+        ),
+        Stuff::Fabric,
+        tone,
+    );
+}
+
+/// Curtains: a pair of panels either side of a window, and a pole across it.
+///
+/// Hung on every window in the house from one pass, because the windows already
+/// know where they are and asking them is the only way this stays right when one
+/// moves.
+fn dress_the_windows(out: &mut Vec<Solid>) {
+    for (lo, hi) in crate::house::window_openings() {
+        let mid = (lo + hi) * 0.5;
+        let span = hi - lo;
+        // The thin axis is the wall's own; the wide one is the window's.
+        let along_x = span.x > span.z;
+        let wide = if along_x { span.x } else { span.z };
+        let head = hi.y;
+
+        // The pole, a little wider than the opening.
+        let pole = if along_x {
+            Vec3::new(wide + 44.0, 3.0, 3.0)
+        } else {
+            Vec3::new(3.0, 3.0, wide + 44.0)
+        };
+        slab(
+            out,
+            Vec3::new(mid.x, head + 12.0, mid.z),
+            pole,
+            Stuff::Metal,
+            SLATE,
+        );
+
+        // A panel each side, hanging nearly to the floor, and standing fully
+        // clear of the opening rather than lapping over its edge — a real
+        // curtain laps the reveal, but the law says nothing stands in a window
+        // and a law with exceptions in it is not worth having.
+        let drop = head + 10.0 - 12.0;
+        for side in [-1.0f32, 1.0] {
+            let off = (wide * 0.5 + 26.0) * side;
+            let at = if along_x {
+                Vec3::new(mid.x + off, 12.0 + drop * 0.5, mid.z)
+            } else {
+                Vec3::new(mid.x, 12.0 + drop * 0.5, mid.z + off)
+            };
+            let size = if along_x {
+                Vec3::new(34.0, drop, 8.0)
+            } else {
+                Vec3::new(8.0, drop, 34.0)
+            };
+            slab(out, at, size, Stuff::Fabric, WOOL_WARM);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The rooms
 // ---------------------------------------------------------------------------
 
 /// Furnish every room. Called once, after the shell.
 pub fn furnish(out: &mut Vec<Solid>) {
+    dress_the_windows(out);
     for r in house::rooms() {
         match r.use_for {
             Use::Living => living(out, &r),
@@ -481,6 +576,16 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         4,
         true,
     );
+    // A picture over the sofa, which is where a house puts one.
+    picture(
+        out,
+        Vec3::new(r.min.x + 6.0, 168.0, m.y),
+        130.0,
+        84.0,
+        false,
+        Color::srgb(0.62, 0.58, 0.50),
+    );
+
     // A side table by the sofa's arm.
     legged(
         out,
@@ -677,7 +782,18 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
 
 fn bedroom(out: &mut Vec<Solid>, r: &Room) {
     let m = r.middle();
-    let double = r.wide() * r.deep() > 250_000.0;
+    // The headboard wall has windows in it, so the bed and the picture over it
+    // both go where there are none. Hanging art over glass is exactly the fault
+    // the window law exists to catch, and it caught this one.
+    let (gap_lo, gap_hi) = clear_of_windows(r);
+    let head_x = (gap_lo + gap_hi) * 0.5;
+    // Art is sized to the wall it has, not to a fixed width that then has to be
+    // clamped somewhere — clamping is what pushed the last picture a centimetre
+    // into a window.
+    let art_wide = (gap_hi - gap_lo - 24.0).clamp(50.0, 130.0);
+    // Which bed by which room it is, not by floor area: the main bedroom of a
+    // house has a double in it whether or not it happens to be the largest.
+    let double = r.name == "main bedroom";
     let size = if double {
         Vec2::new(150.0, 200.0)
     } else {
@@ -687,7 +803,7 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
     rug(out, m, Vec2::new(r.wide() * 0.5, r.deep() * 0.35), WOOL);
     bed(
         out,
-        Vec2::new(m.x, r.min.y + size.y * 0.5 + 40.0),
+        Vec2::new(head_x, r.min.y + size.y * 0.5 + 40.0),
         size,
         Vec2::new(0.0, 1.0),
     );
@@ -695,7 +811,7 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
     for s in [-1.0f32, 1.0] {
         legged(
             out,
-            Vec2::new(m.x + s * (size.x * 0.5 + 32.0), r.min.y + 60.0),
+            Vec2::new(head_x + s * (size.x * 0.5 + 32.0), r.min.y + 60.0),
             Vec2::new(44.0, 40.0),
             54.0,
             4.0,
@@ -704,6 +820,16 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
             DARK_OAK,
         );
     }
+    // A picture over the headboard.
+    picture(
+        out,
+        Vec3::new(head_x, 186.0, r.min.y + 8.0),
+        art_wide,
+        art_wide * 0.66,
+        true,
+        Color::srgb(0.38, 0.42, 0.40),
+    );
+
     // A chest of drawers against the far wall.
     slab(
         out,

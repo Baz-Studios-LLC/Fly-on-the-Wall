@@ -74,6 +74,13 @@ const SLAB: f32 = 12.0;
 const SKIRT_HIGH: f32 = 9.0;
 const SKIRT_PROUD: f32 = 2.0;
 
+/// Cornice, at the other end of the wall. Same argument as the skirting: it
+/// breaks an otherwise unbroken expanse of plaster where the wall meets the
+/// ceiling, and it is a ledge running the perimeter of every room at the exact
+/// height a fly wants to sit and watch from.
+const CORNICE_HIGH: f32 = 7.0;
+const CORNICE_PROUD: f32 = 3.0;
+
 const DOOR_WIDE: f32 = 92.0;
 const DOOR_HIGH: f32 = 205.0;
 const SILL: f32 = 100.0;
@@ -233,6 +240,26 @@ fn wall_run(
         };
         out.push(Solid::between(min, max, stuff));
 
+        // Cornice, on any piece that reaches the ceiling.
+        if high >= CEILING - 0.01 && low < CEILING - CORNICE_HIGH {
+            for face in [-1.0f32, 1.0] {
+                let (cmin, cmax) = if along_x {
+                    (
+                        Vec3::new(a.x + s, CEILING - CORNICE_HIGH, a.y + face * half),
+                        Vec3::new(a.x + e, CEILING, a.y + face * (half + CORNICE_PROUD)),
+                    )
+                } else {
+                    (
+                        Vec3::new(a.x + face * half, CEILING - CORNICE_HIGH, a.y + s),
+                        Vec3::new(a.x + face * (half + CORNICE_PROUD), CEILING, a.y + e),
+                    )
+                };
+                let mut trim = Solid::between(cmin.min(cmax), cmin.max(cmax), Stuff::Wood);
+                trim.paint = Some(Color::srgb(0.93, 0.92, 0.90));
+                out.push(trim);
+            }
+        }
+
         // Skirting, on any piece that reaches the floor.
         //
         // Emitted here rather than around the room afterwards, because a run
@@ -287,6 +314,13 @@ const SOUTH_WINDOWS: [f32; 4] = [6.0, 21.0, 30.0, 41.0];
 const WEST_WINDOWS: [f32; 3] = [6.0, 17.0, 29.0];
 const EAST_WINDOW: f32 = 29.0;
 
+/// Deterministic grain, from a position. Never a generator: two captures of the
+/// same house have to be comparable.
+fn grain(v: f32) -> f32 {
+    let x = (v * 0.37).sin() * 43758.547;
+    (x - x.floor()) * 2.0 - 1.0
+}
+
 fn envelope() -> (f32, f32, f32, f32, f32, f32) {
     let h = OUTER * 0.5;
     (
@@ -316,12 +350,37 @@ pub fn build() -> Home {
         Stuff::Grass,
     ));
 
-    // -- Floor -------------------------------------------------------------
-    s.push(Solid::between(
-        Vec3::new(w, -SLAB, n),
-        Vec3::new(house_east, 0.0, so),
-        Stuff::Floorboard,
-    ));
+    // -- Floor, as boards --------------------------------------------------
+    //
+    // The largest single surface in every shot, and it was one flat brown
+    // plane. Boards cost nothing — they tile the same rectangle, so the
+    // collision is identical to the slab they replace — and they are the
+    // difference between a floor and a colour. Each takes its tone from its own
+    // position, so the grain never repeats and never differs between runs.
+    {
+        const BOARD: f32 = 19.0;
+        let mut z = n;
+        let mut i = 0;
+        while z < so {
+            let to = (z + BOARD).min(so);
+            let mut plank = Solid::between(
+                Vec3::new(w, -SLAB, z),
+                Vec3::new(house_east, 0.0, to),
+                Stuff::Floorboard,
+            );
+            // A hair of variation, and every fourth board a shade darker, which
+            // is what stops a run of boards reading as stripes.
+            let t = grain(z) * 0.06 + if i % 4 == 0 { -0.03 } else { 0.0 };
+            plank.paint = Some(Color::srgb(
+                (0.45 + t).clamp(0.0, 1.0),
+                (0.33 + t * 0.8).clamp(0.0, 1.0),
+                (0.22 + t * 0.6).clamp(0.0, 1.0),
+            ));
+            s.push(plank);
+            z = to;
+            i += 1;
+        }
+    }
     // The garage slab is concrete and lower — a step down from the laundry, the
     // way every ranch does it, and a fly-scale ledge into the bargain.
     s.push(Solid::between(
