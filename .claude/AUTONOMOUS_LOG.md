@@ -450,6 +450,19 @@ relief into the bargain.
   three centimetres low, and above a window that is three centimetres of
   cladding inside the opening. Boards sit *on* their line now.
 
+
+## Pass twenty-four: paint
+
+- Every wall in the house was the same grey, which is the strongest single
+  reason the rooms all read alike however differently they were furnished. A
+  family does not paint a house one colour: the living rooms go warm, the wet
+  rooms go cool, and the children get to choose.
+- Done as a skin half a centimetre proud of the plaster, coloured by the room
+  it faces. Which room that is comes from the same trick the cladding uses to
+  find the outdoors — a probe thirty centimetres off the face, asking `room_at`.
+  A wall between two rooms gets painted twice, once on each side, which is what
+  happens in a house.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

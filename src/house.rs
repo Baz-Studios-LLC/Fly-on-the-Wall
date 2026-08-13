@@ -157,6 +157,34 @@ const PLAN: [(&str, Use, f32, f32, f32, f32); 10] = [
     ("garage", Use::Garage, 46.0, 0.0, 68.0, 24.0),
 ];
 
+/// Which room a point is in, if any.
+pub fn room_at(p: Vec2) -> Option<Room> {
+    rooms()
+        .into_iter()
+        .find(|r| p.x > r.min.x && p.x < r.max.x && p.y > r.min.y && p.y < r.max.y)
+}
+
+/// What colour a room is painted.
+///
+/// Every wall in this house was the same grey, which is the strongest single
+/// reason the rooms all read alike however differently they were furnished. A
+/// family does not paint a house one colour: the living rooms go warm, the wet
+/// rooms go cool, and the children get to choose.
+fn wall_colour(r: &Room) -> Color {
+    match (r.use_for, r.name) {
+        (Use::Living, _) => Color::srgb(0.86, 0.83, 0.76),
+        (Use::Kitchen, _) => Color::srgb(0.88, 0.87, 0.82),
+        (Use::Hall, _) => Color::srgb(0.83, 0.81, 0.78),
+        (Use::Bath, "bathroom") => Color::srgb(0.78, 0.84, 0.85),
+        (Use::Bath, _) => Color::srgb(0.82, 0.85, 0.83),
+        (Use::Bed, "main bedroom") => Color::srgb(0.80, 0.80, 0.78),
+        (Use::Bed, "bedroom two") => Color::srgb(0.76, 0.81, 0.85),
+        (Use::Bed, _) => Color::srgb(0.85, 0.82, 0.74),
+        (Use::Utility, _) => Color::srgb(0.87, 0.88, 0.87),
+        (Use::Garage, _) => Color::srgb(0.79, 0.79, 0.77),
+    }
+}
+
 pub fn rooms() -> Vec<Room> {
     PLAN.iter()
         .map(|&(name, use_for, x0, z0, x1, z1)| Room {
@@ -272,6 +300,38 @@ fn wall_run(
             )
         };
         out.push(Solid::between(min, max, stuff));
+
+        // Paint, on whichever face looks into a room.
+        //
+        // A skin half a centimetre proud of the plaster, coloured by the room
+        // it faces — which the run works out the same way the cladding works
+        // out which way is outdoors: a probe thirty centimetres off the face,
+        // asking which room that point is in. A wall between two rooms is
+        // painted twice, once on each side, which is what happens in a house.
+        for face in [-1.0f32, 1.0] {
+            let probe = if along_x {
+                Vec2::new((a.x + s + a.x + e) * 0.5, a.y + face * (half + 30.0))
+            } else {
+                Vec2::new(a.x + face * (half + 30.0), (a.y + s + a.y + e) * 0.5)
+            };
+            let Some(room) = room_at(probe) else {
+                continue;
+            };
+            let (pmin, pmax) = if along_x {
+                (
+                    Vec3::new(a.x + s, low, a.y + face * half),
+                    Vec3::new(a.x + e, high, a.y + face * (half + 0.6)),
+                )
+            } else {
+                (
+                    Vec3::new(a.x + face * half, low, a.y + s),
+                    Vec3::new(a.x + face * (half + 0.6), high, a.y + e),
+                )
+            };
+            let mut paint = Solid::between(pmin.min(pmax), pmin.max(pmax), Stuff::Plaster);
+            paint.paint = Some(wall_colour(&room));
+            out.push(paint);
+        }
 
         // Lap siding, on whichever face of an exterior wall looks outward.
         //
