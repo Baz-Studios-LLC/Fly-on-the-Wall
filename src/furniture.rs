@@ -333,10 +333,11 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
         }
     };
     let d = bed_size(duvet, size.x.min(size.y) + 12.0);
-    slab(
+    soft(
         out,
         Vec3::new(foot.x, top + 1.0, foot.y),
         Vec3::new(d.x, 11.0, d.z),
+        3.5,
         Stuff::Fabric,
         DUVET,
     );
@@ -352,10 +353,11 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
     // A throw folded across the foot.
     let throw_at = at + facing * (long * 0.5 - 26.0);
     let t = bed_size(44.0, size.x.min(size.y) + 13.0);
-    slab(
+    soft(
         out,
         Vec3::new(throw_at.x, top + 9.0, throw_at.y),
         Vec3::new(t.x, 6.0, t.z),
+        2.0,
         Stuff::Fabric,
         THROW,
     );
@@ -364,10 +366,11 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
     for s in [-1.0f32, 1.0] {
         let p = at - facing * (size.y.max(size.x) * 0.34)
             + Vec2::new(across.x, across.y) * s * size.x.min(size.y) * 0.24;
-        slab(
+        soft(
             out,
             Vec3::new(p.x, CLEAR + FRAME + MATTRESS + 7.0, p.y),
             Vec3::new(48.0, 14.0, 32.0),
+            4.0,
             Stuff::Fabric,
             PORCELAIN,
         );
@@ -715,6 +718,24 @@ fn lamp(out: &mut Vec<Solid>, at: Vec3) {
     }
 }
 
+/// A box with its corners taken off: three crossed slabs, each full length on
+/// one axis and inset on the other two.
+///
+/// Everything soft in this house has been a hard-edged box, and a cushion with
+/// eight sharp corners is the one shape upholstery never has. Three boxes
+/// instead of one is the cheapest thing that fixes it — the corners go, the
+/// silhouette softens, and at the size a cushion is drawn nobody counts faces.
+fn soft(out: &mut Vec<Solid>, at: Vec3, size: Vec3, round: f32, stuff: Stuff, paint: Color) {
+    let r = round.min(size.min_element() * 0.34);
+    for cut in [
+        Vec3::new(0.0, r, r),
+        Vec3::new(r, 0.0, r),
+        Vec3::new(r, r, 0.0),
+    ] {
+        slab(out, at, size - cut * 2.0, stuff, paint);
+    }
+}
+
 /// A sofa: plinth, seat cushion, back, and two arms — five parts, so it has
 /// seams, an underside and a gap behind the cushion.
 fn sofa(out: &mut Vec<Solid>, at: Vec2, size: Vec2, back: Vec2) {
@@ -738,34 +759,67 @@ fn sofa(out: &mut Vec<Solid>, at: Vec2, size: Vec2, back: Vec2) {
         DARK_OAK,
     );
     let s = dim(long - 28.0, deep - 12.0);
-    slab(
+    soft(
         out,
         Vec3::new(at.x, 34.0, at.y),
         Vec3::new(s.x, 20.0, s.z),
+        5.0,
         Stuff::Fabric,
         WOOL,
     );
     // Back.
     let b = at + back * (deep * 0.5 - 8.0);
     let s = dim(long, 16.0);
-    slab(
+    soft(
         out,
         Vec3::new(b.x, 56.0, b.y),
         Vec3::new(s.x, 64.0, s.z),
+        4.0,
         Stuff::Fabric,
         WOOL,
     );
-    // Arms.
+    // Arms, with a roll along the top. A square arm is the giveaway that a
+    // sofa was made of boxes; the roll is eight bars round a cylinder and it
+    // is the first thing the eye reads on the silhouette.
     for side in [-1.0f32, 1.0] {
         let a = at + across * side * (long * 0.5 - 8.0);
         let s = dim(16.0, deep);
         slab(
             out,
-            Vec3::new(a.x, 40.0, a.y),
-            Vec3::new(s.x, 32.0, s.z),
+            Vec3::new(a.x, 34.0, a.y),
+            Vec3::new(s.x, 20.0, s.z),
             Stuff::Fabric,
             WOOL,
         );
+        const SIDES: usize = 4;
+        let across_bar = 16.0 * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
+        for k in 0..SIDES {
+            let turn = k as f32 * std::f32::consts::PI / SIDES as f32;
+            let (rot, bar) = if across.x > 0.5 {
+                (
+                    Quat::from_rotation_x(turn),
+                    Vec3::new(16.0, 32.0, across_bar),
+                )
+            } else {
+                (
+                    Quat::from_rotation_z(turn),
+                    Vec3::new(across_bar, 32.0, 16.0),
+                )
+            };
+            let long_bar = if across.x > 0.5 {
+                Vec3::new(bar.x, bar.y, bar.z)
+            } else {
+                Vec3::new(bar.x, bar.y, bar.z)
+            };
+            turned(
+                out,
+                Vec3::new(a.x, 50.0, a.y),
+                long_bar,
+                rot,
+                Stuff::Fabric,
+                WOOL,
+            );
+        }
     }
 }
 
@@ -1080,9 +1134,24 @@ fn car(out: &mut Vec<Solid>, at: Vec2) {
     let (x, z) = (at.x, at.y);
     let body = |o: &mut Vec<Solid>, c: Vec3, s: Vec3| slab(o, c, s, Stuff::Metal, PAINTWORK);
 
-    // Sill and shoulder: the car's mass, in two steps rather than one slab.
-    body(out, Vec3::new(x, 53.0, z), Vec3::new(178.0, 54.0, 430.0));
-    body(out, Vec3::new(x, 97.0, z), Vec3::new(172.0, 34.0, 418.0));
+    // Sill and shoulder: the car's mass, in two steps rather than one slab,
+    // with the corners taken off both.
+    soft(
+        out,
+        Vec3::new(x, 53.0, z),
+        Vec3::new(178.0, 54.0, 430.0),
+        7.0,
+        Stuff::Metal,
+        PAINTWORK,
+    );
+    soft(
+        out,
+        Vec3::new(x, 97.0, z),
+        Vec3::new(172.0, 34.0, 418.0),
+        6.0,
+        Stuff::Metal,
+        PAINTWORK,
+    );
     // Rocker panels, darker, between the wheels.
     for side in [-1.0f32, 1.0] {
         slab(
@@ -1148,10 +1217,16 @@ fn car(out: &mut Vec<Solid>, at: Vec2) {
     );
 
     // The glasshouse. Roof, pillars, and glass between them.
-    body(
+    //
+    // The roof is softened: a car has no square corner anywhere on it, and the
+    // roofline is the edge the eye checks first.
+    soft(
         out,
         Vec3::new(x, 157.0, z - 8.0),
         Vec3::new(150.0, 14.0, 184.0),
+        5.0,
+        Stuff::Metal,
+        PAINTWORK,
     );
     for side in [-1.0f32, 1.0] {
         for (pz, pw) in [(84.0, 9.0), (-6.0, 7.0), (-96.0, 10.0)] {
@@ -1853,10 +1928,11 @@ fn towel_rail(out: &mut Vec<Solid>, at: Vec3, wide: f32, along_x: bool, face: f3
         } else {
             Vec3::new(5.0, hang, wide * 0.36)
         };
-        slab(
+        soft(
             out,
             centre,
             size,
+            2.0,
             Stuff::Fabric,
             if i == 0 { TOWEL_A } else { TOWEL_B },
         );
@@ -1930,10 +2006,21 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
             if k == 1 { WOOL_WARM } else { THROW },
         );
     }
-    slab(
+    // A throw over the near arm. Flat on top of it, it read as a plank; what
+    // makes a blanket a blanket is the part hanging down the outside.
+    soft(
         out,
-        Vec3::new(r.min.x + 66.0, 68.0, m.y + 106.0),
-        Vec3::new(66.0, 10.0, 40.0),
+        Vec3::new(r.min.x + 66.0, 70.0, m.y + 102.0),
+        Vec3::new(62.0, 9.0, 48.0),
+        3.0,
+        Stuff::Fabric,
+        DUVET,
+    );
+    soft(
+        out,
+        Vec3::new(r.min.x + 66.0, 48.0, m.y + 124.0),
+        Vec3::new(58.0, 46.0, 8.0),
+        3.0,
         Stuff::Fabric,
         DUVET,
     );

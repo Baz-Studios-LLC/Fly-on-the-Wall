@@ -403,6 +403,21 @@ read as siding. Tilting each board fifteen hundredths of a radian covers the
 tops *and* puts no two faces on a plane, and the sunlit elevation gained real
 relief into the bargain.
 
+
+## Pass twenty-one: taking the corners off
+
+- Everything soft in the house was a hard-edged box, and a cushion with eight
+  sharp corners is the one shape upholstery never has. `soft` builds a box as
+  three crossed slabs, each full length on one axis and inset on the other two:
+  the corners go for the price of two extra boxes.
+- Applied to the sofa's seat and back, the bed's pillows, duvet and throw, the
+  towels, and the car's sill, shoulder and roofline — a car has no square corner
+  anywhere on it and the roofline is the edge the eye checks first.
+- The sofa's arms are **rolled**: four crossed bars round a cylinder. A square
+  arm is the giveaway that a sofa was made of boxes.
+- The blanket over the arm read as a plank until it got the part that hangs
+  down the outside. That is what makes a blanket a blanket.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
