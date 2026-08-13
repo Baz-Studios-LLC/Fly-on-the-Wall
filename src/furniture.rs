@@ -515,6 +515,93 @@ fn disc(out: &mut Vec<Solid>, at: Vec3, across: f32, thick: f32, paint: Color, g
     }
 }
 
+/// A stack of books, each one a shade and a size off the one under it, with
+/// the top one nudged out of square.
+fn books(out: &mut Vec<Solid>, at: Vec3, how_many: usize, seed: f32) {
+    let mut y = at.y;
+    for k in 0..how_many {
+        let n = wobble(at.x + seed, at.z + k as f32 * 13.0);
+        let thick = 3.5 + n.abs() * 2.5;
+        let wide = 20.0 + n * 3.0;
+        let deep = 15.0 + n.abs() * 2.0;
+        turned(
+            out,
+            Vec3::new(at.x + n * 2.4, y + thick * 0.5, at.z + n * 1.8),
+            Vec3::new(wide, thick, deep),
+            Quat::from_rotation_y(n * 0.22),
+            Stuff::Wood,
+            Color::srgb(
+                0.34 + (k as f32 * 0.13 + seed * 0.7).sin().abs() * 0.36,
+                0.28 + (k as f32 * 0.31 + seed).sin().abs() * 0.30,
+                0.26 + (k as f32 * 0.47 + seed * 1.3).sin().abs() * 0.34,
+            ),
+        );
+        y += thick;
+    }
+}
+
+/// A mug: a body and a handle, both small enough that a fly could stand on the
+/// rim and look in.
+fn mug(out: &mut Vec<Solid>, at: Vec3, paint: Color) {
+    disc(out, at + Vec3::new(0.0, 5.0, 0.0), 9.0, 10.0, paint, 0.0);
+    slab(
+        out,
+        at + Vec3::new(6.0, 5.5, 0.0),
+        Vec3::new(4.0, 5.0, 2.5),
+        Stuff::Stone,
+        paint,
+    );
+}
+
+/// A pot plant: a tapered pot, a little soil, and a mass of leaves.
+fn pot_plant(out: &mut Vec<Solid>, at: Vec2, tall: f32) {
+    let pot = tall * 0.28;
+    disc(
+        out,
+        Vec3::new(at.x, pot * 0.5, at.y),
+        pot * 0.86,
+        pot,
+        Color::srgb(0.44, 0.30, 0.22),
+        0.0,
+    );
+    disc(
+        out,
+        Vec3::new(at.x, pot + 1.0, at.y),
+        pot * 0.94,
+        6.0,
+        Color::srgb(0.48, 0.33, 0.24),
+        0.0,
+    );
+    // A stem, then leaves. Six fat boxes at half the plant's height across read
+    // as a hedge in a pot; nine thin ones on a stem read as a plant.
+    slab(
+        out,
+        Vec3::new(at.x, pot + tall * 0.22, at.y),
+        Vec3::new(4.0, tall * 0.44, 4.0),
+        Stuff::Wood,
+        Color::srgb(0.34, 0.29, 0.20),
+    );
+    for k in 0..9 {
+        let n = wobble(at.x + k as f32 * 19.0, at.y + k as f32 * 7.0);
+        let lift = 0.40 + k as f32 * 0.062;
+        let wide = tall * (0.30 - k as f32 * 0.022) * (1.0 + n * 0.22);
+        let mut leaf = Solid::between(
+            Vec3::new(-wide * 0.5, -tall * 0.035, -wide * 0.22),
+            Vec3::new(wide * 0.5, tall * 0.035, wide * 0.22),
+            Stuff::Grass,
+        );
+        leaf.center = Vec3::new(at.x + n * 6.0, tall * lift, at.y + n * 5.0);
+        leaf.rot = Quat::from_rotation_y(k as f32 * 0.71 + n * 0.6)
+            * Quat::from_rotation_z(0.18 + n * 0.22);
+        leaf.paint = Some(Color::srgb(
+            0.15 + k as f32 * 0.009,
+            0.29 + k as f32 * 0.017,
+            0.16 + k as f32 * 0.008,
+        ));
+        out.push(leaf);
+    }
+}
+
 /// A ceiling fan: downrod, motor, five pitched blades and a light under it.
 ///
 /// The ceiling had one flush fixture in it and was otherwise a featureless
@@ -1682,10 +1769,31 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         Vec2::new(96.0, 220.0),
         Vec2::new(-1.0, 0.0),
     );
-    // Coffee table on the rug.
+    // Cushions along the back of it, and a blanket over one arm.
+    for k in 0..3 {
+        let z = m.y + (k as f32 - 1.0) * 62.0;
+        turned(
+            out,
+            Vec3::new(r.min.x + 62.0, 62.0, z),
+            Vec3::new(14.0, 40.0, 44.0),
+            Quat::from_rotation_z(0.22 + wobble(z, 3.0) * 0.08),
+            Stuff::Fabric,
+            if k == 1 { WOOL_WARM } else { THROW },
+        );
+    }
+    slab(
+        out,
+        Vec3::new(r.min.x + 66.0, 68.0, m.y + 106.0),
+        Vec3::new(66.0, 10.0, 40.0),
+        Stuff::Fabric,
+        DUVET,
+    );
+
+    // Coffee table on the rug, with the things that live on one.
+    let table = Vec2::new(m.x - 40.0, m.y);
     legged(
         out,
-        Vec2::new(m.x - 40.0, m.y),
+        table,
         Vec2::new(110.0, 62.0),
         42.0,
         5.0,
@@ -1693,6 +1801,23 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         OAK,
         DARK_OAK,
     );
+    books(out, Vec3::new(table.x - 28.0, 42.0, table.y + 8.0), 3, 1.0);
+    mug(
+        out,
+        Vec3::new(table.x + 22.0, 42.0, table.y - 12.0),
+        Color::srgb(0.80, 0.82, 0.84),
+    );
+    slab(
+        out,
+        Vec3::new(table.x + 34.0, 44.0, table.y + 16.0),
+        Vec3::new(6.0, 3.0, 20.0),
+        Stuff::Metal,
+        Color::srgb(0.18, 0.18, 0.19),
+    );
+
+    // A plant in the corner, and a stack of books beside the sofa.
+    pot_plant(out, Vec2::new(r.min.x + 82.0, r.max.y - 96.0), 138.0);
+    books(out, Vec3::new(r.min.x + 62.0, 0.0, m.y - 148.0), 5, 4.0);
     // Media unit opposite the sofa, with the television standing on it.
     let east = Vec2::new(r.max.x - 34.0, m.y);
     slab(
@@ -1907,6 +2032,70 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
             Vec3::new(34.0, 64.0, 34.0),
             Stuff::Wood,
             DARK_OAK,
+        );
+    }
+
+    // What lives on a worktop. A kitchen with nothing on its counters is a
+    // showroom; a bowl, a board and a kettle are what say somebody cooks here.
+    disc(
+        out,
+        Vec3::new(island.x - 46.0, 96.0, island.y),
+        30.0,
+        10.0,
+        Color::srgb(0.72, 0.70, 0.64),
+        0.0,
+    );
+    for k in 0..4 {
+        let n = wobble(island.x + k as f32 * 11.0, island.y);
+        slab(
+            out,
+            Vec3::new(
+                island.x - 46.0 + n * 8.0,
+                100.0 + (k % 2) as f32 * 5.0,
+                island.y + n * 7.0,
+            ),
+            Vec3::splat(9.0),
+            Stuff::Fabric,
+            [
+                Color::srgb(0.72, 0.24, 0.16),
+                Color::srgb(0.80, 0.62, 0.16),
+                Color::srgb(0.42, 0.56, 0.22),
+                Color::srgb(0.66, 0.30, 0.14),
+            ][k],
+        );
+    }
+    turned(
+        out,
+        Vec3::new(island.x + 44.0, 94.0, island.y - 6.0),
+        Vec3::new(46.0, 3.0, 30.0),
+        Quat::from_rotation_y(0.22),
+        Stuff::Wood,
+        OAK,
+    );
+    // A kettle on the run under the window, and two jars beside it.
+    disc(
+        out,
+        Vec3::new(r.min.x + 150.0, 104.0, north),
+        20.0,
+        26.0,
+        Color::srgb(0.74, 0.76, 0.78),
+        0.0,
+    );
+    slab(
+        out,
+        Vec3::new(r.min.x + 150.0, 122.0, north + 12.0),
+        Vec3::new(4.0, 14.0, 12.0),
+        Stuff::Metal,
+        Color::srgb(0.24, 0.24, 0.26),
+    );
+    for (i, tall) in [22.0f32, 16.0].into_iter().enumerate() {
+        disc(
+            out,
+            Vec3::new(r.min.x + 186.0 + i as f32 * 26.0, 92.0 + tall * 0.5, north),
+            15.0 - i as f32 * 2.0,
+            tall,
+            Color::srgb(0.80, 0.78, 0.70),
+            0.0,
         );
     }
 

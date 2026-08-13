@@ -248,6 +248,20 @@ the session. Do not treat one room or prop as completion.
 - The eight-sided disc is a shared constructor now — the car's wheels, the
   ceiling roses, the lamp shade and the fan all use it.
 
+
+## Pass ten: things on surfaces
+
+- The House Quality Standard asks for restrained clutter, and every horizontal
+  surface in the house was bare. The great room has cushions along the sofa back
+  and a blanket over one arm, a stack of books, a mug and a remote on the coffee
+  table, more books on the floor beside the sofa, and a pot plant in the corner.
+  The kitchen has a fruit bowl, a chopping board, a kettle and two jars.
+- **The first plant read as a hedge.** Six fat boxes at half the plant's height
+  across is a shrub in a pot; nine thin ones on a visible stem is a plant. Same
+  construction as the foundation planting outside, tuned the other way.
+- New constructors: `books` (each volume a shade and a size off the one under
+  it, top one out of square), `mug`, `pot_plant`.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
