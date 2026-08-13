@@ -172,7 +172,78 @@ impl Plugin for CameraPlugin {
     }
 }
 
-fn spawn_eye(mut commands: Commands) {
+/// A sky, as a cubemap, for glass to reflect.
+///
+/// A pane with nothing to bounce is a tinted hole however smooth it is: the
+/// sun gives it one highlight from one angle and nothing from any other. Six
+/// faces of a very small sky — bright overhead, pale at the horizon, ground
+/// below — give every window a sheen that changes as you move past it, which
+/// is the whole of what reads as glass.
+///
+/// Deliberately tiny. It is thirty-two pixels a face and it is never seen
+/// directly; it exists to be blurred into a reflection.
+fn sky_cubemap(images: &mut Assets<Image>) -> Handle<Image> {
+    use bevy::render::render_resource::{
+        Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
+    };
+    const N: u32 = 32;
+
+    // wgpu face order: +X, -X, +Y, -Y, +Z, -Z.
+    let mut data = Vec::with_capacity((N * N * 6 * 4) as usize);
+    for face in 0..6u32 {
+        for y in 0..N {
+            for x in 0..N {
+                let v = (y as f32 + 0.5) / N as f32;
+                let (r, g, b) = match face {
+                    // Straight up.
+                    2 => (0.42, 0.58, 0.86),
+                    // Straight down. Not grass, however true that is outside:
+                    // a ceiling faces down and therefore samples this face, so
+                    // painting it green turns every ceiling in the house olive.
+                    // Neutral, like the floor of a room.
+                    3 => (0.30, 0.29, 0.27),
+                    // The four sides run sky at the top to haze at the horizon.
+                    _ => {
+                        let t = (1.0 - v).clamp(0.0, 1.0);
+                        (
+                            0.40 + (1.0 - t) * 0.36,
+                            0.55 + (1.0 - t) * 0.26,
+                            0.84 - (1.0 - t) * 0.06,
+                        )
+                    }
+                };
+                let _ = x;
+                data.extend_from_slice(&[
+                    (r * 255.0) as u8,
+                    (g * 255.0) as u8,
+                    (b * 255.0) as u8,
+                    255,
+                ]);
+            }
+        }
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: N,
+            height: N * 6,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    );
+    image.reinterpret_stacked_2d_as_array(6);
+    image.texture_view_descriptor = Some(TextureViewDescriptor {
+        dimension: Some(TextureViewDimension::Cube),
+        ..default()
+    });
+    images.add(image)
+}
+
+fn spawn_eye(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
+    let sky = sky_cubemap(&mut images);
     commands.spawn((
         Name::new("Eye"),
         Camera3d::default(),
@@ -197,6 +268,19 @@ fn spawn_eye(mut commands: Commands) {
             Exposure::BLENDER
         } else {
             Exposure::INDOOR
+        },
+        // Low intensity on purpose. This is here for the specular — the sheen
+        // on glass and the gleam on chrome — not to relight the house, which
+        // took a lot of getting right.
+        bevy::light::EnvironmentMapLight {
+            diffuse_map: sky.clone(),
+            specular_map: sky,
+            // Enough for a sheen on glass and chrome; not enough to relight
+            // the house. At 260 the sky's blue washed every warm wall in the
+            // building cold, which is a lot of ground to give up for a
+            // reflection.
+            intensity: 85.0,
+            ..default()
         },
         Transform::default(),
         bevy::ui::IsDefaultUiCamera,

@@ -572,29 +572,14 @@ fn frames(out: &mut Vec<Solid>, at: Vec3, along_x: bool, spread: f32, seed: f32)
         let up = m * 16.0 + if k % 2 == 0 { 10.0 } else { -10.0 };
         let wide = 30.0 + n.abs() * 24.0;
         let high = wide * (0.72 + m * 0.26);
-        let put = |o: &mut Vec<Solid>, w: f32, h: f32, out_by: f32, paint: Color| {
-            let centre = if along_x {
-                Vec3::new(at.x + along, at.y + up, at.z + out_by)
-            } else {
-                Vec3::new(at.x + out_by, at.y + up, at.z + along)
-            };
-            let size = if along_x {
-                Vec3::new(w, h, 2.0)
-            } else {
-                Vec3::new(2.0, h, w)
-            };
-            slab(o, centre, size, Stuff::Wood, paint);
+        let centre = if along_x {
+            Vec3::new(at.x + along, at.y + up, at.z)
+        } else {
+            Vec3::new(at.x, at.y + up, at.z + along)
         };
-        let face = if along_x { 1.0 } else { -1.0 };
-        put(out, wide, high, 0.0, DARK_OAK);
-        put(
-            out,
-            wide - 7.0,
-            high - 7.0,
-            face * 1.4,
-            Color::srgb(0.92, 0.91, 0.88),
-        );
-        put(out, wide - 19.0, high - 19.0, face * 2.2, art[k]);
+        // Through `picture`, so the gallery gets the same frame, mount and
+        // wall-snapping as every other framed thing.
+        picture(out, centre, wide, high, along_x, art[k]);
     }
 }
 
@@ -1056,11 +1041,6 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
             Vec3::new(t, tall, wide)
         }
     };
-    // Frame first, then the canvas standing PROUD of it rather than buried
-    // inside it — the first version put a two-centimetre canvas inside a
-    // three-centimetre frame, so every picture in the house rendered as its own
-    // dark surround and nothing else.
-    slab(out, at, d(2.0), Stuff::Wood, DARK_OAK);
     // Which way is "into the room"? The comment here used to claim it worked
     // this out and the code just used +z, so every picture on a south or east
     // wall had its mount and image buried inside the plaster and rendered as a
@@ -1083,6 +1063,52 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
             if toward < 0.0 { -1.0 } else { 1.0 }
         })
         .unwrap_or(1.0);
+    // Sit the frame *on* the wall it is hung on.
+    //
+    // Callers place a picture at a hand-picked offset from the room bound, and
+    // `Room` bounds are the plan's centrelines rather than the finished faces —
+    // so "r.min.x + 7" lands one centimetre off the plaster on a twelve-thick
+    // partition and three centimetres *inside* a twenty-thick exterior wall.
+    // One centimetre is nothing to a person and four body lengths to a fly,
+    // which is how Brett spotted it: pictures floating off the wall.
+    //
+    // So do not trust the offset, and do not try to work out the wall's
+    // thickness either. Look for the nearest surface behind the picture that is
+    // big enough to hang it on, and sit on that.
+    let axis_of = |v: Vec3| if along_x { v.z } else { v.x };
+    let here = axis_of(at);
+    let back = out
+        .iter()
+        .filter(|solid| solid.rot == Quat::IDENTITY && solid.half.max_element() > 30.0)
+        .filter(|solid| {
+            // Overlapping the picture head-on, in both of the other two axes.
+            let lo = solid.center - solid.half;
+            let hi = solid.center + solid.half;
+            let across = if along_x {
+                (lo.x, hi.x, at.x)
+            } else {
+                (lo.z, hi.z, at.z)
+            };
+            at.y > lo.y && at.y < hi.y && across.2 > across.0 && across.2 < across.1
+        })
+        // The surface facing the room, not the far side of the same slab.
+        .map(|solid| axis_of(solid.center) + side * axis_of(solid.half))
+        // Nearest, either way. Not "nearest behind": a caller's offset can put
+        // the picture *inside* the wall as easily as in front of it, and both
+        // want the same answer.
+        .min_by(|a, b| (a - here).abs().partial_cmp(&(b - here).abs()).unwrap());
+    let at = match back {
+        Some(face) => {
+            let flush = face + side * 1.0;
+            if along_x {
+                Vec3::new(at.x, at.y, flush)
+            } else {
+                Vec3::new(flush, at.y, at.z)
+            }
+        }
+        None => at,
+    };
+    slab(out, at, d(2.0), Stuff::Wood, DARK_OAK);
     let out_of = axis * side * 1.4;
     let face = Vec3::ONE;
     // Mount, then image. Frame and image alone, both dark, read as one dark

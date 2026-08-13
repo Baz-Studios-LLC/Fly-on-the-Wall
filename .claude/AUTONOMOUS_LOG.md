@@ -532,6 +532,29 @@ happens to be oriented, and Bevy's cuboid UVs put v across the horizontal on
 some faces. Wood grain is mostly isotropic now, which it can afford to be:
 almost all the wood in this house is painted trim.
 
+
+## Pass twenty-nine: glass, and pictures off the wall
+
+- **Reflective glass.** Brett asked for it and he was right: a pane with nothing
+  to bounce is a tinted hole. Reflectance up to 1.0, and a thirty-pixel-a-face
+  procedural sky cubemap on the camera so there is something to reflect from any
+  angle rather than one sun glint from one angle.
+  - Intensity had to come down from 260 to 85. At 260 the sky's blue washed
+    every warm wall in the house cold. And the cubemap's *down* face was grass
+    green, which turned every ceiling olive — a ceiling faces down, so that is
+    the face it samples. Neutral floor-grey instead.
+- **Pictures were hanging off the wall.** Brett found it flying. `Room` bounds
+  are the plan's centrelines, not the finished faces, so a caller writing
+  `r.min.x + 7` lands one centimetre off the plaster on a twelve-thick partition
+  and three centimetres *inside* a twenty-thick exterior wall. A centimetre is
+  nothing to a person and four body lengths to a fly.
+  - Two failed fixes first. Snapping to the room bound put every picture in the
+    middle of the wall. Then the frame was still being drawn *before* the snap,
+    so it floated while its mount and image moved flush behind it — dark blocks
+    again.
+  - What works: ignore the caller's offset and the wall's thickness both, and
+    hang on the nearest large room-facing surface behind the picture.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

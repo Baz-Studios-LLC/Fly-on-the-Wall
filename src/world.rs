@@ -884,6 +884,16 @@ fn dress_the_set(
                     uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(tile)),
                     emissive: (rgba * solid.glow).with_alpha(1.0),
                     perceptual_roughness: solid.stuff.perceptual_roughness(),
+                    // Glass is the one surface here whose whole character is
+                    // what bounces off it rather than what colour it is. It
+                    // was already smooth; what it lacked was reflectance, so
+                    // the sun and the room lamps slid over it without leaving
+                    // a highlight and every pane read as a tinted hole.
+                    reflectance: if solid.stuff == Stuff::Glass {
+                        1.0
+                    } else {
+                        0.5
+                    },
                     metallic: if solid.stuff == Stuff::Metal {
                         0.6
                     } else {
