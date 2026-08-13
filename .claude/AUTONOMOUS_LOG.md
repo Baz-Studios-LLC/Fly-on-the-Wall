@@ -134,6 +134,34 @@ the session. Do not treat one room or prop as completion.
   house on every side, so the whole building sat in a thumbnail in the middle of
   a field. It frames on the building now.
 
+
+## Pass four: doors, light, and the bathrooms
+
+- **A front door.** The front elevation had a black hole in it. Stile-and-rail
+  construction — two stiles, three rails, two recessed panels — built in the
+  door's own frame and then swung, plus casing both faces, a threshold, a knob,
+  a stoop and a step. Hung ajar: it is the only opening in the house that is not
+  glazed shut, so closing it walls the fly in. The envelope law caught the first
+  version swinging out into the garden.
+- **Fixtures and bounce.** Every ceiling was a flat grey field, because the room
+  lamps are downlights by design and nothing bounces, so the plaster was lit by
+  ambient alone. There is a rose and a glowing diffuser in every room now —
+  which is what `Solid` needed a `glow` term for — and a wide, dim spot from
+  table height aimed straight up as a stand-in for the one bounce that matters.
+  The fixture was two squares at forty-five degrees, which unions into an
+  eight-pointed *star*; four crossed bars gives the octagon.
+- **The bathrooms were the weakest rooms in the house.** The main bath is
+  sixteen by twenty feet at this plan's scale, and it held a plain box for a
+  basin, two boxes for a lavatory, and one small tub adrift in the middle of a
+  tiled hall. It now has: a proper lavatory (foot, waisted pedestal, bowl, seat,
+  cistern, raised lid), basins sunk into the vanity with mixer taps, a bath with
+  a riser, head and glass screen, a linen press, a corner shower, towels on a
+  rail, a mat, a basket, and tiling where a bathroom is actually tiled.
+- **Corner viewpoints kept lying to me about layout.** Three separate rooms
+  looked under-furnished from one corner and turned out to be fine — the laundry
+  has had its washer and dryer all along. The whole-house plan is the honest
+  view for judging arrangement; corners are for judging how a room reads.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -145,10 +173,9 @@ the session. Do not treat one room or prop as completion.
 
 ## Next
 
-- The south elevation is the front and has neither a front door that reads nor
-  any approach — no path, drive, step or porch.
+- No drive to the garage door and no path to the front step.
 - Exterior walls are flat untextured plaster; the house wants cladding courses.
-- Ceilings read dead flat: nothing bounces, and the room spots point straight
-  down at the floor by design. Wants a visible fixture at least.
-- Service rooms are furnished but thin — the laundry has a blank long wall.
+- Interior openings are still honest holes — no leaves on any internal door.
+  Shutting them would break the traversal law, so they need to hang ajar.
+- Bedrooms have had one pass and no second look since the whole house was lit.
 - Then: fly-scale routes, undersides and landing surfaces; restrained clutter.

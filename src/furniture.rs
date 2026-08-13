@@ -47,6 +47,10 @@ const BUMPER: Color = Color::srgb(0.20, 0.21, 0.23);
 const LAMP: Color = Color::srgb(0.96, 0.94, 0.84);
 const TAIL: Color = Color::srgb(0.54, 0.10, 0.09);
 const PLATE: Color = Color::srgb(0.88, 0.88, 0.85);
+const SEAT_RING: Color = Color::srgb(0.93, 0.93, 0.91);
+const CHROME: Color = Color::srgb(0.78, 0.80, 0.82);
+const TOWEL_A: Color = Color::srgb(0.66, 0.72, 0.74);
+const TOWEL_B: Color = Color::srgb(0.82, 0.80, 0.74);
 const DOOR_FACE: Color = Color::srgb(0.30, 0.22, 0.16);
 const DOOR_PANEL: Color = Color::srgb(0.26, 0.19, 0.14);
 const TRIMWORK: Color = Color::srgb(0.92, 0.91, 0.88);
@@ -1019,6 +1023,210 @@ fn front_door(out: &mut Vec<Solid>) {
 }
 
 // ---------------------------------------------------------------------------
+// Sanitaryware
+// ---------------------------------------------------------------------------
+
+/// A lavatory, facing `out_of` — the way somebody sitting on it would look.
+///
+/// It was two white boxes, which is what a bathroom looks like when nobody has
+/// built one: a pedestal, a bowl, a seat, a raised lid and a cistern are five
+/// silhouettes people read instantly, and the difference between them and a
+/// stack of cubes is the difference between a room and a placeholder.
+fn toilet(out: &mut Vec<Solid>, at: Vec2, out_of: Vec2) {
+    // Local frame: +z is the way it faces, +x across.
+    let turn = Quat::from_rotation_y(out_of.x.atan2(out_of.y));
+    let put = |o: &mut Vec<Solid>, local: Vec3, size: Vec3, paint: Color, stuff: Stuff| {
+        turned(
+            o,
+            Vec3::new(at.x, 0.0, at.y) + turn * local,
+            size,
+            turn,
+            stuff,
+            paint,
+        );
+    };
+    // Foot, waisted pedestal, bowl, seat.
+    put(
+        out,
+        Vec3::new(0.0, 6.0, 2.0),
+        Vec3::new(26.0, 12.0, 32.0),
+        PORCELAIN,
+        Stuff::Stone,
+    );
+    put(
+        out,
+        Vec3::new(0.0, 26.0, 0.0),
+        Vec3::new(20.0, 28.0, 24.0),
+        PORCELAIN,
+        Stuff::Stone,
+    );
+    put(
+        out,
+        Vec3::new(0.0, 46.0, 4.0),
+        Vec3::new(36.0, 14.0, 46.0),
+        PORCELAIN,
+        Stuff::Stone,
+    );
+    put(
+        out,
+        Vec3::new(0.0, 55.0, 5.0),
+        Vec3::new(38.0, 4.0, 46.0),
+        SEAT_RING,
+        Stuff::Fabric,
+    );
+    // Cistern behind it, and the lid standing up against the wall.
+    put(
+        out,
+        Vec3::new(0.0, 76.0, -22.0),
+        Vec3::new(44.0, 48.0, 20.0),
+        PORCELAIN,
+        Stuff::Stone,
+    );
+    put(
+        out,
+        Vec3::new(0.0, 101.0, -22.0),
+        Vec3::new(48.0, 4.0, 24.0),
+        PORCELAIN,
+        Stuff::Stone,
+    );
+    put(
+        out,
+        Vec3::new(0.0, 14.0, -3.0),
+        Vec3::new(12.0, 6.0, 12.0),
+        CHROME,
+        Stuff::Metal,
+    );
+    turned(
+        out,
+        Vec3::new(at.x, 0.0, at.y) + turn * Vec3::new(0.0, 79.0, -9.0),
+        Vec3::new(38.0, 46.0, 4.0),
+        turn * Quat::from_rotation_x(-0.16),
+        Stuff::Fabric,
+        SEAT_RING,
+    );
+}
+
+/// A mixer tap: a body and a spout reaching out over whatever it fills.
+fn tap(out: &mut Vec<Solid>, at: Vec3, reach: Vec2) {
+    slab(
+        out,
+        at + Vec3::new(0.0, 7.0, 0.0),
+        Vec3::new(6.0, 14.0, 6.0),
+        Stuff::Metal,
+        CHROME,
+    );
+    slab(
+        out,
+        at + Vec3::new(reach.x * 0.5, 15.0, reach.y * 0.5),
+        Vec3::new(4.0 + reach.x.abs(), 4.0, 4.0 + reach.y.abs()),
+        Stuff::Metal,
+        CHROME,
+    );
+    for side in [-1.0f32, 1.0] {
+        slab(
+            out,
+            at + Vec3::new(
+                side * 11.0 * reach.y.signum().abs().max(0.0),
+                12.0,
+                side * 11.0,
+            ),
+            Vec3::new(9.0, 4.0, 4.0),
+            Stuff::Metal,
+            CHROME,
+        );
+    }
+}
+
+/// A basin sunk into a counter: a rim, four thin sides and a floor, so it holds
+/// a shape rather than being a lump on a worktop.
+fn basin(out: &mut Vec<Solid>, at: Vec3, wide: f32, deep: f32) {
+    let (w, d, high, side) = (wide, deep, 15.0, 4.0);
+    slab(
+        out,
+        Vec3::new(at.x, at.y + 2.0, at.z),
+        Vec3::new(w, 4.0, d),
+        Stuff::Stone,
+        PORCELAIN,
+    );
+    for s in [-1.0f32, 1.0] {
+        slab(
+            out,
+            Vec3::new(at.x + s * (w * 0.5 - side * 0.5), at.y + high * 0.5, at.z),
+            Vec3::new(side, high, d),
+            Stuff::Stone,
+            PORCELAIN,
+        );
+        slab(
+            out,
+            Vec3::new(at.x, at.y + high * 0.5, at.z + s * (d * 0.5 - side * 0.5)),
+            Vec3::new(w, high, side),
+            Stuff::Stone,
+            PORCELAIN,
+        );
+    }
+}
+
+/// A tiled panel: a dark backing with courses of tile standing proud of it, so
+/// the joints read as joints rather than as painted lines.
+///
+/// Courses only, no vertical joints. Six boxes a panel instead of fifty, and at
+/// the distance a wall is looked at from, the horizontal bands are what the eye
+/// picks up — the floor already has its cross-cut for the close read.
+fn tiling(out: &mut Vec<Solid>, at: Vec3, size: Vec3, along_x: bool) {
+    slab(out, at, size, Stuff::Stone, Color::srgb(0.55, 0.56, 0.55));
+    let course = 23.0;
+    let rows = (size.y / course).floor().max(1.0) as usize;
+    let (wide, deep) = if along_x {
+        (size.x - 2.0, size.z + 2.0)
+    } else {
+        (size.x + 2.0, size.z - 2.0)
+    };
+    for k in 0..rows {
+        let y = at.y - size.y * 0.5 + course * (k as f32 + 0.5);
+        let shade = 0.83 + wobble(at.x + k as f32 * 31.0, y) * 0.025;
+        slab(
+            out,
+            Vec3::new(at.x, y, at.z),
+            Vec3::new(wide, course - 2.5, deep),
+            Stuff::Stone,
+            Color::srgb(shade, shade + 0.015, shade + 0.01),
+        );
+    }
+}
+
+/// A towel rail with two towels over it. The towels are the only soft thing in
+/// a tiled room and they are what stops it reading as a showroom.
+fn towel_rail(out: &mut Vec<Solid>, at: Vec3, wide: f32, along_x: bool, face: f32) {
+    let bar = if along_x {
+        Vec3::new(wide, 3.0, 3.0)
+    } else {
+        Vec3::new(3.0, 3.0, wide)
+    };
+    slab(out, at, bar, Stuff::Metal, CHROME);
+    for (i, side) in [-1.0f32, 1.0].into_iter().enumerate() {
+        let along = side * wide * 0.28;
+        let hang = 52.0 - i as f32 * 9.0;
+        let centre = if along_x {
+            Vec3::new(at.x + along, at.y - hang * 0.5, at.z + face * 3.0)
+        } else {
+            Vec3::new(at.x + face * 3.0, at.y - hang * 0.5, at.z + along)
+        };
+        let size = if along_x {
+            Vec3::new(wide * 0.36, hang, 5.0)
+        } else {
+            Vec3::new(5.0, hang, wide * 0.36)
+        };
+        slab(
+            out,
+            centre,
+            size,
+            Stuff::Fabric,
+            if i == 0 { TOWEL_A } else { TOWEL_B },
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The rooms
 // ---------------------------------------------------------------------------
 
@@ -1380,50 +1588,69 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
 }
 
 fn bathroom(out: &mut Vec<Solid>, r: &Room) {
-    let m = r.middle();
-    // A vanity run with a basin sunk into it.
+    // Everything stands against a wall, which is what bathrooms do and also
+    // what keeps the middle clear — the main bath was a tiled hall with one
+    // small tub adrift in it.
+    //
+    // North wall: the vanity run, with the basin sunk into it and the mirror
+    // over. South wall: the bath, in the corner, under a shower. East wall: the
+    // towels. The lavatory takes the north-east corner, facing into the room.
     counter_run(
         out,
         Vec2::new(r.min.x + 24.0, r.min.y + 34.0),
-        Vec2::new(r.min.x + 190.0, r.min.y + 34.0),
+        Vec2::new(r.min.x + 200.0, r.min.y + 34.0),
         58.0,
         Vec2::new(0.0, 1.0),
         &[],
     );
-    slab(
+    basin(
         out,
-        Vec3::new(r.min.x + 100.0, 96.0, r.min.y + 30.0),
-        Vec3::new(52.0, 12.0, 40.0),
-        Stuff::Stone,
-        PORCELAIN,
+        Vec3::new(r.min.x + 106.0, 90.0, r.min.y + 32.0),
+        56.0,
+        42.0,
     );
-    // Mirror over it.
+    tap(
+        out,
+        Vec3::new(r.min.x + 106.0, 92.0, r.min.y + 8.0),
+        Vec2::new(0.0, 16.0),
+    );
+    // Mirror, and a shelf under it for the things that live on one.
     slab(
         out,
-        Vec3::new(r.min.x + 100.0, 155.0, r.min.y + 8.0),
-        Vec3::new(90.0, 80.0, 3.0),
+        Vec3::new(r.min.x + 106.0, 158.0, r.min.y + 7.0),
+        Vec3::new(96.0, 84.0, 3.0),
         Stuff::Glass,
         Color::srgb(0.80, 0.85, 0.88),
     );
-    // The lavatory.
     slab(
         out,
-        Vec3::new(r.max.x - 50.0, 20.0, r.min.y + 46.0),
-        Vec3::new(40.0, 40.0, 60.0),
+        Vec3::new(r.min.x + 106.0, 113.0, r.min.y + 11.0),
+        Vec3::new(100.0, 4.0, 12.0),
         Stuff::Stone,
         PORCELAIN,
     );
-    slab(
+    for (i, tall) in [13.0f32, 9.0, 16.0, 11.0].into_iter().enumerate() {
+        let x = r.min.x + 74.0 + i as f32 * 21.0;
+        slab(
+            out,
+            Vec3::new(x, 115.0 + tall * 0.5, r.min.y + 11.0),
+            Vec3::new(6.0, tall, 6.0),
+            Stuff::Glass,
+            if i % 2 == 0 { TOWEL_A } else { TOWEL_B },
+        );
+    }
+
+    // Cistern against the wall, not thirty centimetres off it.
+    toilet(
         out,
-        Vec3::new(r.max.x - 50.0, 52.0, r.min.y + 24.0),
-        Vec3::new(42.0, 64.0, 20.0),
-        Stuff::Stone,
-        PORCELAIN,
+        Vec2::new(r.max.x - 64.0, r.min.y + 44.0),
+        Vec2::new(0.0, 1.0),
     );
-    // A bath along the far wall: four sides and a floor, so it is a basin rather
-    // than a block, and a fly can get down inside it.
-    let b = Vec2::new(m.x, r.max.y - 46.0);
-    let (bw, bd, bh, wall) = (170.0, 76.0, 56.0, 6.0);
+
+    // The bath, in the south-west corner: four sides and a floor, so it holds a
+    // shape and a fly can get down inside it.
+    let (bw, bd, bh, wall) = (176.0, 82.0, 58.0, 6.0);
+    let b = Vec2::new(r.min.x + 8.0 + bw * 0.5, r.max.y - 6.0 - bd * 0.5);
     slab(
         out,
         Vec3::new(b.x, wall * 0.5, b.y),
@@ -1447,6 +1674,180 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
             PORCELAIN,
         );
     }
+    // Bath tap at the far end, a riser and a head above it, and a glass screen
+    // at the open end so the shower has somewhere for the water to stop.
+    tap(
+        out,
+        Vec3::new(b.x + bw * 0.5 - 16.0, bh, b.y),
+        Vec2::new(-22.0, 0.0),
+    );
+    slab(
+        out,
+        Vec3::new(b.x + bw * 0.5 - 5.0, 130.0, b.y),
+        Vec3::new(5.0, 150.0, 5.0),
+        Stuff::Metal,
+        CHROME,
+    );
+    slab(
+        out,
+        Vec3::new(b.x + bw * 0.5 - 22.0, 202.0, b.y),
+        Vec3::new(34.0, 5.0, 22.0),
+        Stuff::Metal,
+        CHROME,
+    );
+    slab(
+        out,
+        Vec3::new(b.x + bw * 0.5 - 3.0, 128.0, b.y),
+        Vec3::new(6.0, 132.0, bd - 10.0),
+        Stuff::Glass,
+        Color::srgba(0.84, 0.90, 0.92, 0.30),
+    );
+    // A mat to step out onto.
+    rug(
+        out,
+        Vec2::new(b.x, b.y - bd * 0.5 - 34.0),
+        Vec2::new(bw * 0.62, 52.0),
+        TOWEL_A,
+    );
+
+    // Tiling where a bathroom is actually tiled: behind the basins, and around
+    // the bath, which is the wall the shower is aimed at.
+    tiling(
+        out,
+        Vec3::new(r.min.x + 112.0, 122.0, r.min.y + 4.0),
+        Vec3::new(198.0, 68.0, 4.0),
+        true,
+    );
+    tiling(
+        out,
+        Vec3::new(b.x, 128.0, r.max.y - 4.0),
+        Vec3::new(bw + 16.0, 140.0, 4.0),
+        true,
+    );
+    tiling(
+        out,
+        Vec3::new(r.min.x + 4.0, 128.0, b.y),
+        Vec3::new(4.0, 140.0, bd + 12.0),
+        false,
+    );
+
+    towel_rail(
+        out,
+        Vec3::new(r.max.x - 8.0, 148.0, r.max.y - 120.0),
+        84.0,
+        false,
+        -1.0,
+    );
+
+    // A bathroom this size wants more than three fixtures against two walls.
+    // The plan's scale makes the main bath sixteen feet by twenty, and a bath,
+    // a basin and a lavatory in a room that big read as a tiled hall with
+    // plumbing in the corners.
+    if r.deep() < 520.0 {
+        return;
+    }
+
+    // A second basin, because the run is long enough to have wanted one.
+    basin(
+        out,
+        Vec3::new(r.min.x + 172.0, 90.0, r.min.y + 32.0),
+        50.0,
+        42.0,
+    );
+    tap(
+        out,
+        Vec3::new(r.min.x + 172.0, 92.0, r.min.y + 8.0),
+        Vec2::new(0.0, 16.0),
+    );
+
+    // A linen press against the east wall: two doors, two handles, and a plinth
+    // it stands on.
+    let press = Vec2::new(r.max.x - 34.0, r.min.y + 210.0);
+    slab(
+        out,
+        Vec3::new(press.x, 6.0, press.y),
+        Vec3::new(56.0, 12.0, 122.0),
+        Stuff::Wood,
+        Color::srgb(0.30, 0.30, 0.31),
+    );
+    slab(
+        out,
+        Vec3::new(press.x, 112.0, press.y),
+        Vec3::new(60.0, 200.0, 128.0),
+        Stuff::Wood,
+        PORCELAIN,
+    );
+    for side in [-1.0f32, 1.0] {
+        slab(
+            out,
+            Vec3::new(press.x - 31.0, 108.0, press.y + side * 32.0),
+            Vec3::new(4.0, 176.0, 56.0),
+            Stuff::Wood,
+            Color::srgb(0.88, 0.88, 0.86),
+        );
+        slab(
+            out,
+            Vec3::new(press.x - 34.0, 108.0, press.y + side * 8.0),
+            Vec3::new(4.0, 20.0, 4.0),
+            Stuff::Metal,
+            CHROME,
+        );
+    }
+
+    // A shower in the far corner: a tray, two glass sides, and a riser.
+    let tray = Vec2::new(r.max.x - 66.0, r.max.y - 72.0);
+    let (sw, sd) = (118.0, 130.0);
+    slab(
+        out,
+        Vec3::new(tray.x, 5.0, tray.y),
+        Vec3::new(sw, 10.0, sd),
+        Stuff::Stone,
+        PORCELAIN,
+    );
+    slab(
+        out,
+        Vec3::new(tray.x - sw * 0.5 + 3.0, 106.0, tray.y),
+        Vec3::new(6.0, 192.0, sd),
+        Stuff::Glass,
+        Color::srgba(0.84, 0.90, 0.92, 0.26),
+    );
+    slab(
+        out,
+        Vec3::new(tray.x, 106.0, tray.y - sd * 0.5 + 3.0),
+        Vec3::new(sw, 192.0, 6.0),
+        Stuff::Glass,
+        Color::srgba(0.84, 0.90, 0.92, 0.26),
+    );
+    slab(
+        out,
+        Vec3::new(r.max.x - 12.0, 130.0, tray.y),
+        Vec3::new(5.0, 150.0, 5.0),
+        Stuff::Metal,
+        CHROME,
+    );
+    slab(
+        out,
+        Vec3::new(r.max.x - 30.0, 202.0, tray.y),
+        Vec3::new(36.0, 5.0, 22.0),
+        Stuff::Metal,
+        CHROME,
+    );
+
+    // And a laundry basket, because clothes come off somewhere.
+    slab(
+        out,
+        Vec3::new(r.min.x + 46.0, 26.0, r.max.y - 60.0),
+        Vec3::new(46.0, 52.0, 40.0),
+        Stuff::Fabric,
+        Color::srgb(0.68, 0.64, 0.56),
+    );
+    slab(
+        out,
+        Vec3::new(r.min.x + 46.0, 54.0, r.max.y - 60.0),
+        Vec3::new(50.0, 6.0, 44.0),
+        Stuff::Fabric,
+        Color::srgb(0.76, 0.72, 0.64),
+    );
 }
 
 fn laundry(out: &mut Vec<Solid>, r: &Room) {
