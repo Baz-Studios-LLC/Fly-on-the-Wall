@@ -1442,6 +1442,78 @@ fn interior_doors(out: &mut Vec<Solid>) {
     }
 }
 
+/// Switch plates and sockets.
+///
+/// The smallest thing in the house that says a wall was built rather than
+/// extruded — and at fly scale they are landmarks: a switch is four body
+/// lengths across, standing a centimetre off an otherwise featureless plain.
+///
+/// A switch goes beside every internal doorway, on the side away from the
+/// hinge, which is where a hand reaches. Sockets go round the skirting, and any
+/// that would end up inside a wardrobe or behind a bath are dropped — the room
+/// is furnished by the time this runs, so it can simply ask.
+fn switches_and_sockets(out: &mut Vec<Solid>) {
+    let plate = Color::srgb(0.94, 0.93, 0.90);
+
+    // Is there room to stand in front of this plate? Probed *off* the wall
+    // rather than at it — the wall is a solid too, and testing at the plate
+    // rejects every plate in the house for touching the thing it is screwed to.
+    let has_room = |out: &Vec<Solid>, at: Vec3, normal: Vec3| {
+        !clashes(out, at + normal * 16.0, Vec3::splat(26.0))
+    };
+
+    for (lo, hi) in crate::house::interior_doors() {
+        let x = (lo.x + hi.x) * 0.5;
+        let thick = hi.x - lo.x;
+        for face in [-1.0f32, 1.0] {
+            let normal = Vec3::new(face, 0.0, 0.0);
+            let at = Vec3::new(x + face * (thick * 0.5 + 1.5), 122.0, lo.z - 26.0);
+            if !has_room(out, at, normal) {
+                continue;
+            }
+            slab(out, at, Vec3::new(3.0, 13.0, 9.0), Stuff::Wood, plate);
+            slab(
+                out,
+                at + normal * 1.6 + Vec3::Y,
+                Vec3::new(2.0, 6.0, 5.0),
+                Stuff::Wood,
+                Color::srgb(0.85, 0.84, 0.81),
+            );
+        }
+    }
+
+    for r in house::rooms() {
+        for (at, normal) in [
+            (
+                Vec3::new(r.min.x + r.wide() * 0.33, 28.0, r.min.y + 2.0),
+                Vec3::Z,
+            ),
+            (
+                Vec3::new(r.min.x + r.wide() * 0.68, 28.0, r.max.y - 2.0),
+                -Vec3::Z,
+            ),
+            (
+                Vec3::new(r.min.x + 2.0, 28.0, r.min.y + r.deep() * 0.62),
+                Vec3::X,
+            ),
+            (
+                Vec3::new(r.max.x - 2.0, 28.0, r.min.y + r.deep() * 0.28),
+                -Vec3::X,
+            ),
+        ] {
+            if !has_room(out, at, normal) {
+                continue;
+            }
+            let size = if normal.z.abs() > 0.5 {
+                Vec3::new(11.0, 8.0, 3.0)
+            } else {
+                Vec3::new(3.0, 8.0, 11.0)
+            };
+            slab(out, at, size, Stuff::Wood, plate);
+        }
+    }
+}
+
 /// The front door: cased both sides, hung ajar, with a stoop to stand on.
 ///
 /// Ajar because it is the only opening in the house that is not glazed shut,
@@ -1739,6 +1811,7 @@ pub fn furnish(out: &mut Vec<Solid>) {
     }
     front_door(out);
     interior_doors(out);
+    switches_and_sockets(out);
     // Last, so a curtain can see what is already standing under its window.
     dress_the_windows(out);
 }

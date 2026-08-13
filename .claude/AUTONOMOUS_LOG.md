@@ -278,6 +278,22 @@ the session. Do not treat one room or prop as completion.
   a dryer. Same lesson as the toilet and the wardrobe: the carcass is never the
   part that identifies the thing.
 
+
+## Pass twelve: photographs, switches, sockets
+
+- **Photographs down the hall**, two or three to a stretch, stepped in height,
+  placed in the gaps between the bedroom doors — worked out from where the
+  doorways are rather than at hand-picked offsets. A frame over an architrave is
+  the same mistake as one over a window.
+- **Switch plates beside every internal doorway and sockets round the skirting.**
+  The smallest thing that says a wall was built rather than extruded, and at fly
+  scale they are landmarks: a switch is four body lengths across, standing a
+  centimetre off an otherwise featureless plain.
+- The clash test had to probe *off* the wall rather than at the plate. Testing
+  at the plate rejects every plate in the house, because the wall is a solid too
+  and the plate is screwed to it. First version placed six of sixty-eight.
+- Cost: 2837 draws, 15 meshes, 278 materials, 20 lights, still display-bound.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
