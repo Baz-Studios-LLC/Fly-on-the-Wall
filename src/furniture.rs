@@ -37,6 +37,19 @@ const WOOL: Color = Color::srgb(0.42, 0.44, 0.50);
 const WOOL_WARM: Color = Color::srgb(0.55, 0.45, 0.38);
 const LINEN: Color = Color::srgb(0.86, 0.85, 0.80);
 const SLATE: Color = Color::srgb(0.20, 0.21, 0.24);
+
+/// The car.
+const GLASS: Color = Color::srgba(0.78, 0.86, 0.90, 0.34);
+const PAINTWORK: Color = Color::srgb(0.17, 0.28, 0.24);
+const TYRE: Color = Color::srgb(0.07, 0.07, 0.08);
+const HUB: Color = Color::srgb(0.62, 0.64, 0.66);
+const BUMPER: Color = Color::srgb(0.20, 0.21, 0.23);
+const LAMP: Color = Color::srgb(0.96, 0.94, 0.84);
+const TAIL: Color = Color::srgb(0.54, 0.10, 0.09);
+const PLATE: Color = Color::srgb(0.88, 0.88, 0.85);
+const CABIN: Color = Color::srgb(0.20, 0.20, 0.21);
+const SEAT: Color = Color::srgb(0.32, 0.30, 0.28);
+const DOOR_SKIN: Color = Color::srgb(0.80, 0.80, 0.78);
 const PORCELAIN: Color = Color::srgb(0.93, 0.94, 0.94);
 
 /// Deterministic variation from a position: never a generator.
@@ -467,6 +480,8 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
 /// had them, and not one showed. They now stand proud of the inside face, which
 /// is also the only place a fly could ever land on one.
 fn dress_the_windows(out: &mut Vec<Solid>) {
+    /// Where a window's sill sits, and so where a short curtain stops.
+    const SILL_CLEAR: f32 = 100.0;
     let heart = crate::house::centre();
     // Clear of the plaster by a centimetre, so the fabric reads as hanging in
     // front of the wall rather than growing out of it.
@@ -512,13 +527,349 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
             } else {
                 Vec3::new(mid.x, 12.0 + drop * 0.5, mid.z + off)
             };
-            let size = if along_x {
+            let full = if along_x {
                 Vec3::new(34.0, drop, 8.0)
             } else {
                 Vec3::new(8.0, drop, 34.0)
             };
-            slab(out, at + inward, size, Stuff::Fabric, WOOL_WARM);
+            // Full length unless a counter, a vanity or a bed head is already
+            // standing there. A kitchen curtain drawn through a worktop was the
+            // giveaway that this was being hung blind; the same question the
+            // wall cabinets already ask about windows, asked the other way
+            // round.
+            if !clashes(out, at + inward, full) {
+                slab(out, at + inward, full, Stuff::Fabric, WOOL_WARM);
+                continue;
+            }
+            let short = head + 10.0 - (SILL_CLEAR - 6.0);
+            let size = if along_x {
+                Vec3::new(34.0, short, 8.0)
+            } else {
+                Vec3::new(8.0, short, 34.0)
+            };
+            let raised = Vec3::new(at.x, SILL_CLEAR - 6.0 + short * 0.5, at.z) + inward;
+            if !clashes(out, raised, size) {
+                slab(out, raised, size, Stuff::Fabric, WOOL_WARM);
+            }
         }
+    }
+}
+
+/// A box with a turn on it. The collision is already oriented — `Solid` carries
+/// a quaternion — so a raked windscreen costs exactly as much as a flat one.
+fn turned(out: &mut Vec<Solid>, at: Vec3, size: Vec3, rot: Quat, stuff: Stuff, paint: Color) {
+    let mut s = Solid::between(-size * 0.5, size * 0.5, stuff);
+    s.center = at;
+    s.rot = rot;
+    s.paint = Some(paint);
+    out.push(s);
+}
+
+/// A wheel, out of the only primitive there is.
+///
+/// Four rectangles of the same length crossed at forty-five degrees union into
+/// an octagon, which at the size of a road wheel is round enough to read and
+/// round enough to walk on. The width across a rectangle is `2r tan(22.5°)`,
+/// which is what puts all eight corners on the same circle. The axle runs along
+/// x, because every wheel in this house is on a car pointing down the garage.
+fn wheel(out: &mut Vec<Solid>, at: Vec3, radius: f32, width: f32) {
+    const SIDES: usize = 4;
+    let across = 2.0 * radius * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
+    for k in 0..SIDES {
+        let a = k as f32 * std::f32::consts::PI / SIDES as f32;
+        turned(
+            out,
+            at,
+            Vec3::new(width, radius * 2.0, across),
+            Quat::from_rotation_x(a),
+            Stuff::Metal,
+            TYRE,
+        );
+    }
+    // The hub, proud of the tyre on both faces so one pair of boxes reads from
+    // either side of the car.
+    for k in 0..2 {
+        let a = k as f32 * std::f32::consts::FRAC_PI_2 + std::f32::consts::FRAC_PI_4;
+        turned(
+            out,
+            at,
+            Vec3::new(width + 2.0, radius * 0.60, radius * 0.42),
+            Quat::from_rotation_x(a),
+            Stuff::Metal,
+            HUB,
+        );
+    }
+}
+
+/// The family car: nose toward the door, down the length of the garage.
+///
+/// It was a single slate box, which is a shipping container in a room whose
+/// whole identity is the thing parked in it. Built the way the house is built —
+/// a sill, a shoulder, decks front and rear, a glasshouse on top — it reads at
+/// human scale, and at fly scale it becomes the most interesting furniture in
+/// the building: warm metal, a dozen ledges, and a sheltered underside.
+fn car(out: &mut Vec<Solid>, at: Vec2) {
+    let (x, z) = (at.x, at.y);
+    let body = |o: &mut Vec<Solid>, c: Vec3, s: Vec3| slab(o, c, s, Stuff::Metal, PAINTWORK);
+
+    // Sill and shoulder: the car's mass, in two steps rather than one slab.
+    body(out, Vec3::new(x, 53.0, z), Vec3::new(178.0, 54.0, 430.0));
+    body(out, Vec3::new(x, 97.0, z), Vec3::new(172.0, 34.0, 418.0));
+    // Rocker panels, darker, between the wheels.
+    for side in [-1.0f32, 1.0] {
+        slab(
+            out,
+            Vec3::new(x + 89.0 * side, 36.0, z),
+            Vec3::new(6.0, 18.0, 250.0),
+            Stuff::Metal,
+            BUMPER,
+        );
+    }
+    // Bonnet and boot decks.
+    body(
+        out,
+        Vec3::new(x, 118.0, z + 150.0),
+        Vec3::new(168.0, 8.0, 118.0),
+    );
+    body(
+        out,
+        Vec3::new(x, 118.0, z - 152.0),
+        Vec3::new(168.0, 8.0, 100.0),
+    );
+
+    // The cabin, before the glass goes in. You could see clean through the car
+    // to the wall behind it, which reads as a shell rather than a vehicle, and
+    // a lit interior is most of what tells you a car is a car from outside.
+    slab(
+        out,
+        Vec3::new(x, 116.0, z - 8.0),
+        Vec3::new(152.0, 6.0, 186.0),
+        Stuff::Fabric,
+        CABIN,
+    );
+    for (sz, back) in [(52.0f32, 86.0f32), (-46.0, -12.0)] {
+        slab(
+            out,
+            Vec3::new(x, 130.0, z + sz),
+            Vec3::new(140.0, 22.0, 46.0),
+            Stuff::Fabric,
+            SEAT,
+        );
+        slab(
+            out,
+            Vec3::new(x, 140.0, z + back),
+            Vec3::new(140.0, 44.0, 12.0),
+            Stuff::Fabric,
+            SEAT,
+        );
+    }
+    slab(
+        out,
+        Vec3::new(x, 128.0, z + 76.0),
+        Vec3::new(146.0, 26.0, 26.0),
+        Stuff::Metal,
+        CABIN,
+    );
+    turned(
+        out,
+        Vec3::new(x - 44.0, 134.0, z + 60.0),
+        Vec3::new(4.0, 30.0, 30.0),
+        Quat::from_rotation_z(std::f32::consts::FRAC_PI_2 * 0.72),
+        Stuff::Metal,
+        BUMPER,
+    );
+
+    // The glasshouse. Roof, pillars, and glass between them.
+    body(
+        out,
+        Vec3::new(x, 157.0, z - 8.0),
+        Vec3::new(150.0, 14.0, 184.0),
+    );
+    for side in [-1.0f32, 1.0] {
+        for (pz, pw) in [(84.0, 9.0), (-6.0, 7.0), (-96.0, 10.0)] {
+            body(
+                out,
+                Vec3::new(x + 72.0 * side, 133.0, z + pz),
+                Vec3::new(6.0, 42.0, pw),
+            );
+        }
+        // Side glass, in two lights split by the middle pillar.
+        for pz in [42.0, -50.0] {
+            slab(
+                out,
+                Vec3::new(x + 72.0 * side, 133.0, z + pz),
+                Vec3::new(3.0, 36.0, 78.0),
+                Stuff::Glass,
+                GLASS,
+            );
+        }
+        // Mirror, on a stalk at the front pillar.
+        body(
+            out,
+            Vec3::new(x + 84.0 * side, 130.0, z + 80.0),
+            Vec3::new(20.0, 12.0, 7.0),
+        );
+        // Door handles.
+        for hz in [46.0, -42.0] {
+            slab(
+                out,
+                Vec3::new(x + 88.0 * side, 104.0, z + hz),
+                Vec3::new(5.0, 6.0, 22.0),
+                Stuff::Metal,
+                HUB,
+            );
+        }
+    }
+    // Windscreen and backlight, raked the way glass is: the top of each leans
+    // toward the middle of the car.
+    turned(
+        out,
+        Vec3::new(x, 134.0, z + 90.0),
+        Vec3::new(144.0, 52.0, 4.0),
+        Quat::from_rotation_x(-0.52),
+        Stuff::Glass,
+        GLASS,
+    );
+    turned(
+        out,
+        Vec3::new(x, 134.0, z - 100.0),
+        Vec3::new(144.0, 48.0, 4.0),
+        Quat::from_rotation_x(0.46),
+        Stuff::Glass,
+        GLASS,
+    );
+
+    // Wheels, tucked just inside the flanks.
+    for sx in [-1.0f32, 1.0] {
+        for sz in [-1.0f32, 1.0] {
+            wheel(
+                out,
+                Vec3::new(x + 76.0 * sx, 34.0, z + 142.0 * sz),
+                34.0,
+                26.0,
+            );
+        }
+    }
+
+    // The ends: bumpers, lamps, a grille and a plate.
+    for (sz, lamp) in [(1.0f32, LAMP), (-1.0f32, TAIL)] {
+        slab(
+            out,
+            Vec3::new(x, 54.0, z + 221.0 * sz),
+            Vec3::new(176.0, 26.0, 14.0),
+            Stuff::Metal,
+            BUMPER,
+        );
+        for sx in [-1.0f32, 1.0] {
+            slab(
+                out,
+                Vec3::new(x + 60.0 * sx, 78.0, z + 217.0 * sz),
+                Vec3::new(36.0, 15.0, 8.0),
+                Stuff::Glass,
+                lamp,
+            );
+        }
+    }
+    slab(
+        out,
+        Vec3::new(x, 78.0, z + 217.0),
+        Vec3::new(76.0, 13.0, 8.0),
+        Stuff::Metal,
+        BUMPER,
+    );
+    slab(
+        out,
+        Vec3::new(x, 40.0, z + 229.0),
+        Vec3::new(62.0, 15.0, 3.0),
+        Stuff::Metal,
+        PLATE,
+    );
+}
+
+/// The sectional door, shut.
+///
+/// A garage with a hole in the wall is a carport. Four panels with a reveal
+/// between them and a row of lights in the top one, which is what keeps the
+/// room from going pitch dark with the door closed — and gives the fly a two
+/// metre climb with a view.
+fn garage_door(out: &mut Vec<Solid>) {
+    let (lo, hi) = crate::house::vehicle_door();
+    let wide = hi.x - lo.x;
+    let mid_x = (lo.x + hi.x) * 0.5;
+    let z = (lo.z + hi.z) * 0.5;
+    let top = hi.y;
+    const PANELS: usize = 4;
+    let panel = top / PANELS as f32;
+
+    for i in 0..PANELS {
+        let low = i as f32 * panel;
+        let centre = low + panel * 0.5;
+        // The reveal between sections, set back so the joint reads as a shadow.
+        slab(
+            out,
+            Vec3::new(mid_x, low, z),
+            Vec3::new(wide, 3.0, 6.0),
+            Stuff::Metal,
+            BUMPER,
+        );
+        if i + 1 < PANELS {
+            slab(
+                out,
+                Vec3::new(mid_x, centre, z),
+                Vec3::new(wide, panel - 6.0, 9.0),
+                Stuff::Metal,
+                DOOR_SKIN,
+            );
+            continue;
+        }
+        // The top section is glazed: a frame, four lights, three mullions.
+        const LIGHTS: usize = 4;
+        let bay = wide / LIGHTS as f32;
+        let glass_high = panel * 0.52;
+        let rail = (panel - glass_high) * 0.5;
+        for (y, h) in [
+            (centre - (glass_high + rail) * 0.5, rail),
+            (centre + (glass_high + rail) * 0.5, rail),
+        ] {
+            slab(
+                out,
+                Vec3::new(mid_x, y, z),
+                Vec3::new(wide, h - 3.0, 9.0),
+                Stuff::Metal,
+                DOOR_SKIN,
+            );
+        }
+        for k in 0..LIGHTS {
+            let cx = lo.x + bay * (k as f32 + 0.5);
+            slab(
+                out,
+                Vec3::new(cx, centre, z),
+                Vec3::new(bay - 10.0, glass_high, 3.0),
+                Stuff::Glass,
+                GLASS,
+            );
+            slab(
+                out,
+                Vec3::new(cx - bay * 0.5, centre, z),
+                Vec3::new(10.0, glass_high, 9.0),
+                Stuff::Metal,
+                DOOR_SKIN,
+            );
+        }
+        slab(
+            out,
+            Vec3::new(hi.x, centre, z),
+            Vec3::new(10.0, glass_high, 9.0),
+            Stuff::Metal,
+            DOOR_SKIN,
+        );
+        slab(
+            out,
+            Vec3::new(mid_x, top, z),
+            Vec3::new(wide, 3.0, 6.0),
+            Stuff::Metal,
+            BUMPER,
+        );
     }
 }
 
@@ -528,7 +879,6 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
 
 /// Furnish every room. Called once, after the shell.
 pub fn furnish(out: &mut Vec<Solid>) {
-    dress_the_windows(out);
     for r in house::rooms() {
         match r.use_for {
             Use::Living => living(out, &r),
@@ -540,6 +890,22 @@ pub fn furnish(out: &mut Vec<Solid>) {
             Use::Garage => garage(out, &r),
         }
     }
+    // Last, so a curtain can see what is already standing under its window.
+    dress_the_windows(out);
+}
+
+/// Does this box share space with anything already built?
+fn clashes(out: &[Solid], at: Vec3, size: Vec3) -> bool {
+    let (lo, hi) = (at - size * 0.5, at + size * 0.5);
+    out.iter().any(|s| {
+        let (slo, shi) = (s.center - s.half, s.center + s.half);
+        lo.x < shi.x - 1.0
+            && hi.x > slo.x + 1.0
+            && lo.y < shi.y - 1.0
+            && hi.y > slo.y + 1.0
+            && lo.z < shi.z - 1.0
+            && hi.z > slo.z + 1.0
+    })
 }
 
 fn living(out: &mut Vec<Solid>, r: &Room) {
@@ -1008,24 +1374,30 @@ fn garage(out: &mut Vec<Solid>, r: &Room) {
         4,
         false,
     );
-    // A car-sized box, because a garage without one reads as a hall.
-    slab(
-        out,
-        Vec3::new(m.x + 40.0, 72.0, m.y + 60.0),
-        Vec3::new(190.0, 144.0, 450.0),
-        Stuff::Metal,
-        Color::srgb(0.28, 0.32, 0.38),
-    );
+    car(out, Vec2::new(m.x + 40.0, m.y + 40.0));
+    garage_door(out);
     // And a stack of boxes in the corner, each sized off its own position.
+    // A stack of boxes in the corner. Each sits on the one below rather than on
+    // a guessed pitch: sizing them off their own position and then spacing them
+    // by a *different* size left the stack floating in steps.
+    let mut top = 0.0;
     for i in 0..4 {
-        let p = Vec2::new(r.min.x + 90.0 + i as f32 * 12.0, r.max.y - 90.0);
-        let s = 44.0 + wobble(p.x, p.y) * 8.0;
+        let p = Vec2::new(r.min.x + 96.0, r.max.y - 96.0);
+        let s = 46.0 - i as f32 * 4.0 + wobble(p.x + i as f32 * 37.0, p.y) * 7.0;
+        let lean = wobble(p.y, p.x + i as f32 * 61.0) * 9.0;
         slab(
             out,
-            Vec3::new(p.x, s * 0.5 + i as f32 * s, p.y),
-            Vec3::new(s, s, s),
+            Vec3::new(p.x + lean, top + s * 0.5, p.y - lean * 0.6),
+            Vec3::new(s, s, s * 0.86),
             Stuff::Wood,
-            WOOL_WARM,
+            // A shade apart each, or four cardboard boxes stack into one
+            // cardboard-coloured panel.
+            Color::srgb(
+                0.52 + i as f32 * 0.035,
+                0.38 + i as f32 * 0.028,
+                0.25 + i as f32 * 0.018,
+            ),
         );
+        top += s;
     }
 }

@@ -65,6 +65,9 @@ fn ft(feet: f32) -> f32 {
 const OUTER: f32 = 20.0;
 const INNER: f32 = 12.0;
 const SLAB: f32 = 12.0;
+/// How far a wall carries on below the floor, so no room can open a slot at
+/// its skirting by sitting a few centimetres lower than its neighbour.
+const FOOTING: f32 = 30.0;
 
 /// Skirting: how tall, and how far proud of the plaster it stands.
 ///
@@ -222,6 +225,30 @@ fn wall_run(
     let along_x = (b.x - a.x).abs() >= (b.y - a.y).abs();
     let length = if along_x { b.x - a.x } else { b.y - a.y };
     let half = thick * 0.5;
+
+    // A footing under the whole run, openings and all, from below the grass up
+    // to the house's floor level.
+    //
+    // Every wall used to start at zero, which is right for every room whose
+    // floor is also at zero — and wrong for the garage, whose slab is a step
+    // down. That six-centimetre difference was a six-centimetre slot running
+    // right around the garage with daylight and grass showing through it. A
+    // stem wall is what a real slab sits against, and above the garage floor it
+    // reads as exactly that.
+    {
+        let (min, max) = if along_x {
+            (
+                Vec3::new(a.x.min(b.x), -FOOTING, a.y - half),
+                Vec3::new(a.x.max(b.x), 0.0, a.y + half),
+            )
+        } else {
+            (
+                Vec3::new(a.x - half, -FOOTING, a.y.min(b.y)),
+                Vec3::new(a.x + half, 0.0, a.y.max(b.y)),
+            )
+        };
+        out.push(Solid::between(min, max, Stuff::Stone));
+    }
 
     let piece = |s: f32, e: f32, low: f32, high: f32, out: &mut Vec<Solid>| {
         if e - s < 0.01 || high - low < 0.01 {
@@ -651,6 +678,19 @@ fn glaze(s: &mut Vec<Solid>) {
 /// rather than remembered. Twice in one pass a kitchen fitting was placed over
 /// glass — first a run of wall cabinets, then a cooker hood — and both times it
 /// was invisible in the plan and unmissable from inside the room.
+/// The vehicle door's opening, in world centimetres.
+///
+/// It is the one hole in the house big enough to drive through, and the only
+/// one that needs a leaf built to fit it rather than a curtain hung beside it.
+pub fn vehicle_door() -> (Vec3, Vec3) {
+    let (_, _, _, _, garage_south, _) = envelope();
+    let half = ft(16.0) * 0.5;
+    (
+        Vec3::new(ft(57.0) - half, 0.0, garage_south - OUTER * 0.5),
+        Vec3::new(ft(57.0) + half, 230.0, garage_south + OUTER * 0.5),
+    )
+}
+
 /// The thickness of an exterior wall, which anything hung on the inside of one
 /// needs to know to stand clear of it.
 pub const WALL_OUTER: f32 = OUTER;

@@ -75,6 +75,35 @@ the session. Do not treat one room or prop as completion.
   times in one session. `capture.rs` now renders to an offscreen image, as Flat
   Earth Simulator does for the same reason. `FLY_CAPTURE_SIZE=WxH` sizes it.
 
+
+## Pass two: the garage, and three faults it exposed
+
+- **Cost, measured.** 1561 draws, 1559 meshes, 1549 materials — a mesh and a
+  material per box, for a building whose whole vocabulary is one shape and about
+  thirty colours. That defeats batching: the renderer groups draws by material.
+  One shared unit cube with a scale on it, and a palette keyed on quantised
+  colour, took it to 15 meshes and 111 materials with no visible change. Frame
+  rate is display-bound at 60 with `FLY_UNCAPPED=1` as much as without, so the
+  house is not the limiter and no further optimisation is justified yet.
+- **The curtains were inside the walls.** Hung on the wall's centreline, which is
+  where the *opening* is: an 8 cm panel inside a 20 cm wall. Every window had
+  them and not one showed. They hang proud of the inside face now.
+- **A real car.** The garage held a single slate box. It now has a car built the
+  way the house is: sill, shoulder, decks, glasshouse, seats and a dash behind
+  the glass, octagonal wheels made of four crossed boxes, lamps, bumpers, plate.
+  Plus a sectional door with a glazed top panel, because a garage with a hole in
+  the wall is a carport.
+- **The house had a slot running round the garage.** The garage slab is a step
+  down at -6 cm and every wall started at 0, so there was a six-centimetre gap
+  with daylight and grass showing through it. `wall_run` now lays a footing to
+  -30 under every run; above the garage floor it reads as the stem wall it is.
+- **Curtains ask what is standing there.** `dress_the_windows` runs after the
+  rooms are furnished and shortens a panel to sill length when a full drop would
+  pass through a worktop. The kitchen was drawing curtains through its counters.
+- **Corner viewpoints step clear.** Two garage captures came back as a close-up
+  of the back of a shelf unit; `FLY_ROOM=<room>:<corner>` now walks the camera
+  along its own sightline until it is 75 cm clear of everything solid.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -86,9 +115,9 @@ the session. Do not treat one room or prop as completion.
 
 ## Next
 
-- **Furniture, everywhere.** Every room is empty; this is the largest visible
-  gap by a wide margin. Build reusable mathematical constructors — board, leg,
-  panel, cushion, frame — and compose authored arrangements per room rather than
-  scattering.
-- Then: fly-scale routes, undersides and landing surfaces; materials and colour
-  variation; a roof; measured entity and light cost.
+- **A roof.** The house has never been looked at from outside, and there is
+  nothing on top of it. This is the largest remaining structural gap.
+- Ceilings read dead flat: nothing bounces, and the room spots point straight
+  down at the floor by design. Wants a visible fixture at least.
+- Service rooms are furnished but thin — the laundry has a blank long wall.
+- Then: fly-scale routes, undersides and landing surfaces; restrained clutter.

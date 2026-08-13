@@ -242,12 +242,29 @@ fn place_the_eye(
                 "se" => (Vec2::new(0.90, 0.10), Vec2::new(0.15, 0.85)),
                 _ => (Vec2::new(0.10, 0.10), Vec2::new(0.85, 0.85)),
             };
-            let from = Vec3::new(
+            let mut from = Vec3::new(
                 r.min.x + r.wide() * near.x,
                 165.0,
                 r.min.y + r.deep() * near.y,
             );
             let at = Vec3::new(r.min.x + r.wide() * far.x, 55.0, r.min.y + r.deep() * far.y);
+
+            // A corner is exactly where furniture goes, and two garage captures
+            // in a row came back as a close-up of the back of a shelf unit.
+            // Walk the viewpoint along its own sightline until it is clear of
+            // everything, which costs one short loop and makes the corner views
+            // trustworthy without hand-placing a camera per room.
+            let step = (at - from).normalize_or_zero();
+            for _ in 0..12 {
+                let tight = home
+                    .solids
+                    .iter()
+                    .any(|s| !s.sheer && s.nearest(from).distance < 75.0);
+                if !tight {
+                    break;
+                }
+                from += step * 16.0;
+            }
             transform.translation = from;
             transform.look_at(at, Vec3::Y);
             if let Projection::Perspective(perspective) = &mut *projection {
