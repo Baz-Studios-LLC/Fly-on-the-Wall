@@ -737,6 +737,27 @@ Brett tried it and found three things, two of which were my fault outright.
   while carrying, and a line that lists every key at all times is a line nobody
   reads.
 
+
+## Pass thirty-eight: the ghost moved and the furniture did not
+
+Brett: the ghost drags and places fine, and the object never moves. Two bugs,
+and the symptom named them exactly — the ghost is drawn from `Home.solids`, so
+if the ghost moves then the solids are moving and it is the *entities* that are
+not following.
+
+1. **`Part` was never attached.** The component existed and nothing in the house
+   had it, because the script that added the struct and the one that attached it
+   were the same script and it aborted between the two. So the query in `shift`
+   matched nothing, every frame, silently.
+2. **The load raced the renderer.** `dress_the_set` spawns through deferred
+   commands, so a `Startup` load either mutates solids the renderer has already
+   read or updates a query that is still empty, and which of the two you get is
+   scheduling order. It runs in `PostStartup` now, after the flush.
+
+The second was hidden by the first: before `Part` existed, loading happened to
+work anyway because the renderer read the already-mutated solids. Fixing one
+made the other visible.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

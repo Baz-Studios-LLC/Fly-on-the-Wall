@@ -930,6 +930,11 @@ fn dress_the_set(
             .clone();
 
         let mut entity = commands.spawn((
+            // Which box in `Home` this entity draws. Without it, arrange mode
+            // moves the solid and nothing on screen follows: the ghost tracks
+            // the solids and therefore moves, the furniture does not, which is
+            // exactly how this went missing unnoticed.
+            Part { solid: i },
             Mesh3d(cube.clone()),
             MeshMaterial3d(material),
             Transform::from_translation(solid.center)

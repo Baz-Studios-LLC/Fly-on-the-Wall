@@ -74,7 +74,14 @@ impl Plugin for ArrangePlugin {
             on: std::env::var("FLY_ARRANGE").is_ok(),
             ..default()
         })
-        .add_systems(Startup, (spawn_marker, load_arrangement))
+        .add_systems(Startup, spawn_marker)
+        // *After* the renderer has spawned its entities, not alongside it.
+        // `dress_the_set` spawns through deferred commands, so anything in
+        // `Startup` either mutates solids the renderer has already read or
+        // updates a query that is still empty — and which of the two happens is
+        // a scheduling race. `PostStartup` is after the flush, so the query is
+        // real and the furniture actually moves with its solids.
+        .add_systems(PostStartup, load_arrangement)
         .add_systems(Update, (toggle, aim, carry, save_or_reset, show).chain());
     }
 }
