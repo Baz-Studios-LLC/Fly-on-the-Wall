@@ -131,7 +131,8 @@ impl Iterator for Buzz {
         let turn = core::f32::consts::TAU * self.phase;
         // Fundamental plus two harmonics. The third is what makes it read as an
         // insect rather than as a hum.
-        let tone = ops::sin(turn) * 0.58 + ops::sin(turn * 2.0) * 0.30 + ops::sin(turn * 3.0) * 0.16;
+        let tone =
+            ops::sin(turn) * 0.58 + ops::sin(turn * 2.0) * 0.30 + ops::sin(turn * 3.0) * 0.16;
 
         // A shallow wobble and a little noise. A real fly is never quite steady,
         // and a perfectly steady tone is the one thing that gives synthesis away.

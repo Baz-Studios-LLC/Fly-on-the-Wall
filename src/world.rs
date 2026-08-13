@@ -263,6 +263,19 @@ impl Solid {
 // The house
 // ---------------------------------------------------------------------------
 
+/// Where the house on screen came from.
+///
+/// Three, not two, since the procedural house arrived: it is the goal and so it
+/// is the default, the greybox is the movement test kept for its known
+/// dimensions and its pass test, and a drawn house is reference behaviour that
+/// is no longer what anybody boots into.
+#[derive(Resource, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Origin {
+    Procedural,
+    Greybox,
+    Drawn,
+}
+
 /// Every solid in the world, plus the index of the one that swings.
 #[derive(Resource)]
 pub struct Home {
@@ -562,7 +575,12 @@ fn build_home() -> Home {
         Vec3::new(280.0, 42.0, 265.0),
         Wood,
     );
-    for (x, z) in [(126.0, 186.0), (268.0, 186.0), (126.0, 253.0), (268.0, 253.0)] {
+    for (x, z) in [
+        (126.0, 186.0),
+        (268.0, 186.0),
+        (126.0, 253.0),
+        (268.0, 253.0),
+    ] {
         add(
             Vec3::new(x, 0.0, z),
             Vec3::new(x + 6.0, 38.0, z + 6.0),
@@ -660,33 +678,36 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        // A drawn house wins over the greybox when one is asked for. The
-        // greybox stays because it is the movement test's own room: known
-        // dimensions, a known door, a known pass test.
-        let home = match crate::blueprint::requested() {
-            Some(path) => match crate::blueprint::load(&path) {
+        // The procedural house unless something else is asked for by name. It
+        // is the one being built, so it is the one that boots; `FLY_HOUSE=greybox`
+        // gets the two-room movement test back, and `FLY_HOUSE=<name>` loads a
+        // house drawn in Opificium, which is reference rather than the goal.
+        let (home, origin) = match crate::blueprint::requested() {
+            Some(name) if name == "greybox" => (build_home(), Origin::Greybox),
+            Some(name) => match crate::blueprint::load(&name) {
                 Ok(imported) => {
                     app.insert_resource(crate::blueprint::Marks(imported.marks));
-                    imported.home
+                    (imported.home, Origin::Drawn)
                 }
                 Err(why) => {
-                    error!("{why} — falling back to the greybox");
-                    build_home()
+                    error!("{why} — falling back to the procedural house");
+                    (crate::house::build(), Origin::Procedural)
                 }
             },
-            None => build_home(),
+            None => (crate::house::build(), Origin::Procedural),
         };
+        if origin == Origin::Procedural {
+            crate::house::audit(&home);
+        }
 
-        app.insert_resource(home)
+        app.insert_resource(origin)
+            .insert_resource(home)
             .init_resource::<Door>()
             .add_systems(Startup, dress_the_set)
             // The door is written in `FixedUpdate` before the fly moves, so a fly
             // perched on it reads a panel that has already taken this tick's
             // swing rather than last tick's.
-            .add_systems(
-                FixedUpdate,
-                swing_the_door.before(crate::fly::step_the_fly),
-            )
+            .add_systems(FixedUpdate, swing_the_door.before(crate::fly::step_the_fly))
             .add_systems(Update, (choose_door_state, follow_the_door));
     }
 }
@@ -706,7 +727,11 @@ fn dress_the_set(
         let material = materials.add(StandardMaterial {
             base_color: solid.paint.unwrap_or_else(|| solid.stuff.tint()),
             perceptual_roughness: solid.stuff.perceptual_roughness(),
-            metallic: if solid.stuff == Stuff::Metal { 0.6 } else { 0.0 },
+            metallic: if solid.stuff == Stuff::Metal {
+                0.6
+            } else {
+                0.0
+            },
             alpha_mode: if solid.sheer {
                 AlphaMode::Blend
             } else {
@@ -765,10 +790,7 @@ fn swing_the_door(time: Res<Time<Fixed>>, mut door: ResMut<Door>, mut home: ResM
     }
 }
 
-fn follow_the_door(
-    home: Res<Home>,
-    mut panels: Query<&mut Transform, With<DoorPanel>>,
-) {
+fn follow_the_door(home: Res<Home>, mut panels: Query<&mut Transform, With<DoorPanel>>) {
     let Some(index) = home.door else {
         return;
     };

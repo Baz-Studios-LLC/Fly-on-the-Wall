@@ -16,44 +16,64 @@ the session. Do not treat one room or prop as completion.
   lights provide useful reference behavior, but Opificium is not part of this
   active goal.
 - Existing capture switches can produce delayed screenshots and a plan view.
-- A fresh procedural-house visual baseline still needs to be captured and judged.
 
-## Continuous Backlog
+## Readings of the brief
 
-- Establish a deterministic procedural-house entry point and visual baseline.
-- Complete the architectural shell and make every room reachable and legible.
-- Keep every occupiable room at or above 15 feet by 15 feet (`457.2 cm x 457.2
-  cm`) measured between finished interior surfaces.
-- Use 9-foot (`274.32 cm`) ceilings measured from finished floor to finished
-  ceiling throughout occupiable rooms.
-- Give every room a clear domestic function and coherent circulation.
-- Build reusable procedural furniture and fixture constructors from mathematical
-  forms, then author complete room arrangements with them.
-- Add secondary props and restrained lived-in clutter after primary layouts work.
-- Develop coherent materials, color variation, windows, practical fixtures,
-  daylight, shadows, and exposure.
-- Inspect fly-level routes, landing surfaces, hiding places, gaps, and sightlines.
-- Revisit the weakest-looking room or object after every validated pass.
-- Measure and control entity, mesh, material, and shadow-light cost as detail grows.
-
-This backlog is cyclical, not a completion checklist. Once every area has a first
-pass, compare the whole house and begin a stronger refinement pass.
+- **Habitable means living space.** The fifteen-foot minimum applies to the great
+  room, the kitchen and the three bedrooms. Bathrooms, laundry, closets, the hall
+  and the garage are service space and are not held to it. Brett confirmed this
+  reading. It is also the only reading under which the posted plan survives, its
+  laundry being six foot eight deep.
+- **The posted floor plan is the plan.** Brett asked that the house match the
+  three-bedroom ranch he posted, within the goal's constraints. Its bedrooms are
+  11'-6", so the whole drawing is scaled by exactly `15 / 11.5` rather than having
+  individual rooms stretched. Every proportion survives; the tightest bedroom
+  lands on the minimum precisely.
 
 ## Completed
 
-- Repository architecture and current validation tools were surveyed for the
-  autonomous workflow.
-- The goal was explicitly constrained to in-game mathematical generation rather
-  than Opificium authoring.
+- **`house.rs`: the plan, generated.** Authored in feet straight off the posted
+  drawing so the two can be compared line by line, then scaled once. Three rooms
+  down the left (bed 3, bath, bed 2), a hall the depth of the house, an open
+  kitchen-and-great-room through the middle, laundry/main bath/main bedroom down
+  the right, two-car garage on the end. 2703 x 1372 cm overall.
+- **`wall_run`**, the only construction primitive: a straight run with holes in
+  it. A doorway is a *gap described once* rather than four boxes to be re-derived
+  whenever a room moves. Windows are the same call with a sill.
+- **`audit`** measures the built result on every run rather than trusting the
+  plan's numbers, and errors if a habitable room is under fifteen feet or if the
+  first thing over a room's middle is not the ceiling. It caught its own scale
+  factor: `11.5 * (15/11.5) * 30.48` is 457.19998 in `f32`, so the check needed a
+  half-millimetre tolerance.
+- **Authored lighting**, one fixture per room by use plus a low afternoon sun.
+- **Glazing**: real panes in every window, landable and bumpable.
 
 ## Validation
 
-- None yet for procedural house output; establish fresh plan and room captures
-  before recording the first implementation pass.
+- Plan capture (`FLY_PLAN=1`) confirms the built house matches the posted
+  drawing's arrangement: left column, hall, open middle, right column, garage.
+- `audit` passes: 10 rooms, 5 habitable, all at or over 457.2 cm, ceilings 274.32.
+- Three consecutive captures now return identical mean luminance (91.8), where
+  before they alternated between an image and solid black.
 
-## Research
+## Research / decisions
 
-- None yet.
+- **Bare point lights cannot be ceiling fixtures.** A point light 14 cm under the
+  ceiling puts on the order of ten million lux on it — every ceiling rendered
+  pure white. Winding it down would have unlit the floor, three metres further
+  away, by the square of the distance. Room lights are now **spots aimed
+  straight down**, which is what a recessed downlight physically is: it lights
+  the floor and lower walls and leaves the plaster it sits in alone.
+- **Ambient is standing in for bounce light** and has to be high for a "fill",
+  because nothing in this renderer bounces. Household-accurate lumens give
+  household-accurate dimness — a real 1500-lumen bulb at 2.6 m is about 18 lux —
+  so the fixtures are deliberately far brighter than real bulbs.
+- **Captures went through the window and had to stop.** Reading back a window's
+  swapchain needs the compositor to have drawn it, and macOS does not draw an
+  unfocused window: the result is a frame that is solid black *including its
+  background*, with no error logged. It was mistaken for a lighting bug three
+  times in one session. `capture.rs` now renders to an offscreen image, as Flat
+  Earth Simulator does for the same reason. `FLY_CAPTURE_SIZE=WxH` sizes it.
 
 ## Deferred
 
@@ -61,7 +81,14 @@ pass, compare the whole house and begin a stronger refinement pass.
   outside the active house-and-lighting goal.
 - Flight and camera redesign are deferred unless house validation reveals a
   specific regression that blocks traversal or inspection.
+- Hinged door leaves. Openings are honest holes for now; a swinging door is its
+  own piece of work and the greybox still has the only one.
 
-## Needs User Decision
+## Next
 
-- None. Make conservative, coherent visual decisions and continue working.
+- **Furniture, everywhere.** Every room is empty; this is the largest visible
+  gap by a wide margin. Build reusable mathematical constructors — board, leg,
+  panel, cushion, frame — and compose authored arrangements per room rather than
+  scattering.
+- Then: fly-scale routes, undersides and landing surfaces; materials and colour
+  variation; a roof; measured entity and light cost.

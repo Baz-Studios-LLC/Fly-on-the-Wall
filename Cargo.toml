@@ -18,6 +18,12 @@ bevy = { version = "0.19.0", features = ["file_watcher", "jpeg"] }
 # Houses are drawn in Opificium and arrive as JSON. Hand-rolling a parser for
 # somebody else's format is exactly the work serde exists to delete, and every
 # other game in this studio already takes it.
+# Only for the capture target's texture format: constructing an offscreen
+# `Image` needs `TextureFormat`, and `bevy_image` imports it from here without
+# re-exporting it. Already in the tree via Bevy, so it costs nothing to build —
+# it just makes the dependency honest. Ordo takes it for the same reason.
+wgpu-types = "29"
+
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

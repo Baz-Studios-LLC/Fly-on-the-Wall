@@ -2482,6 +2482,7 @@ dependencies = [
  "bevy",
  "serde",
  "serde_json",
+ "wgpu-types",
 ]
 
 [[package]]

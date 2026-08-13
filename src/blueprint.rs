@@ -30,21 +30,16 @@ use serde::Deserialize;
 
 use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
 
-/// Which house to fly in.
+/// What the command line asked for, if anything.
 ///
-/// A drawn house if one is installed, because a player launching from the
-/// launcher cannot set an environment variable and would otherwise never see
-/// anything but the movement test's two grey rooms.
-///
-/// `FLY_HOUSE=<name-or-path>` picks a particular one. `FLY_HOUSE=greybox` asks
-/// for the two-room test back, which is still the only place with a hinged door
-/// and a known pass test, and so is still where movement gets judged.
+/// Nothing is the ordinary case and means the procedural house — the one this
+/// game is actually building. `FLY_HOUSE=greybox` asks for the two-room movement
+/// test, and `FLY_HOUSE=<name-or-path>` for a house drawn in Opificium, which is
+/// kept as reference behaviour rather than as the goal.
 pub fn requested() -> Option<String> {
-    match std::env::var("FLY_HOUSE") {
-        Ok(said) if said == "greybox" => None,
-        Ok(said) if !said.is_empty() => Some(said),
-        _ => installed().into_iter().next(),
-    }
+    std::env::var("FLY_HOUSE")
+        .ok()
+        .filter(|said| !said.is_empty())
 }
 
 /// Where Opificium's `install` carries finished work, relative to the game.
@@ -182,7 +177,10 @@ pub fn load(named: &str) -> Result<Imported, String> {
         if known.is_empty() {
             format!("no house called '{named}', and nothing is installed in {INSTALLED}/")
         } else {
-            format!("no house called '{named}' — {INSTALLED}/ has: {}", known.join(", "))
+            format!(
+                "no house called '{named}' — {INSTALLED}/ has: {}",
+                known.join(", ")
+            )
         }
     })?;
     let path = path.display().to_string();

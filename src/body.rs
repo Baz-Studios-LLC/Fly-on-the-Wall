@@ -178,9 +178,8 @@ fn grow_the_body(
     });
     commands.insert_resource(WingSkin(wing_skin.clone()));
 
-    let box_mesh = |meshes: &mut Assets<Mesh>, x: f32, y: f32, z: f32| {
-        meshes.add(Cuboid::new(x, y, z))
-    };
+    let box_mesh =
+        |meshes: &mut Assets<Mesh>, x: f32, y: f32, z: f32| meshes.add(Cuboid::new(x, y, z));
 
     // Everything below hangs off one scaled root, so the fly's real size is a
     // single constant rather than a factor smeared through forty numbers.
@@ -305,7 +304,10 @@ fn grow_the_body(
     // Anchor and planted direction, given for the right side; the left mirrors
     // in x. Fore legs reach forward, hind legs trail back, as a fly's do.
     let plan: [(Vec3, Vec3); 3] = [
-        (Vec3::new(0.10, -0.045, -0.15), Vec3::new(0.62, -0.60, -0.58)),
+        (
+            Vec3::new(0.10, -0.045, -0.15),
+            Vec3::new(0.62, -0.60, -0.58),
+        ),
         (Vec3::new(0.115, -0.05, -0.02), Vec3::new(0.85, -0.58, 0.08)),
         (Vec3::new(0.10, -0.05, 0.10), Vec3::new(0.60, -0.55, 0.66)),
     ];

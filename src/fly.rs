@@ -357,7 +357,10 @@ impl Plugin for FlyPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::<Fixed>::from_hz(TICK_RATE))
             .add_systems(Startup, hatch)
-            .add_systems(Update, (grab_the_cursor, gather_intent, look_around).chain())
+            .add_systems(
+                Update,
+                (grab_the_cursor, gather_intent, look_around).chain(),
+            )
             .add_systems(FixedUpdate, step_the_fly);
     }
 }
@@ -459,8 +462,8 @@ fn look_around(
     }
     for mut fly in &mut flies {
         fly.yaw -= (delta.x * SENSITIVITY).to_radians();
-        fly.pitch = (fly.pitch - (delta.y * SENSITIVITY).to_radians())
-            .clamp(-PITCH_LIMIT, PITCH_LIMIT);
+        fly.pitch =
+            (fly.pitch - (delta.y * SENSITIVITY).to_radians()).clamp(-PITCH_LIMIT, PITCH_LIMIT);
     }
 }
 
@@ -574,9 +577,8 @@ fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
     // reverses on a surface, because a fly walking backwards is a thing that
     // happens and `walk_about` reads the intent for itself.
     let braking = intent.thrust.z < 0.0;
-    let wish = forward * intent.thrust.z.max(0.0)
-        + right * intent.thrust.x
-        + Vec3::Y * intent.thrust.y;
+    let wish =
+        forward * intent.thrust.z.max(0.0) + right * intent.thrust.x + Vec3::Y * intent.thrust.y;
     let wish_dir = wish.normalize_or_zero();
 
     fly.vel = apply_drag(fly.vel, dt, if braking { BRAKE } else { 1.0 });
@@ -633,9 +635,7 @@ fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
     let mut contact: Option<(usize, crate::world::Near)> = None;
     for (i, solid) in home.solids.iter().enumerate() {
         let near = solid.nearest(fly.pos);
-        if near.distance < BODY_RADIUS
-            && contact.is_none_or(|(_, c)| near.distance < c.distance)
-        {
+        if near.distance < BODY_RADIUS && contact.is_none_or(|(_, c)| near.distance < c.distance) {
             contact = Some((i, near));
         }
     }
@@ -649,9 +649,7 @@ fn fly_along(fly: &mut Fly, intent: &Intent, home: &Home, dt: f32) {
 
     // 3. Reaching. Nothing was touched, but the player asked to hold on and
     // something is close. This is what makes landing on a shelf edge possible.
-    if reaching
-        && let Some((solid, near)) = home.nearest(fly.pos, LAND_REACH)
-    {
+    if reaching && let Some((solid, near)) = home.nearest(fly.pos, LAND_REACH) {
         settle(fly, home, solid, near.point, near.normal);
     }
 }

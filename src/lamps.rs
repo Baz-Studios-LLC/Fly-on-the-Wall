@@ -112,4 +112,3 @@ pub fn light_a_drawn_house(commands: &mut Commands, home: &Home) {
         rooms.len().min(MOST_BULBS),
     );
 }
-

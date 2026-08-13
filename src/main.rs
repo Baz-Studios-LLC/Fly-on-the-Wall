@@ -50,6 +50,7 @@ mod camera;
 mod capture;
 mod debug;
 mod fly;
+mod house;
 mod lamps;
 mod rooms;
 mod wingbeat;
@@ -109,13 +110,23 @@ fn main() {
 /// which is why the numbers below look absurd and are in fact ordinary
 /// household bulbs. Directional light is unaffected: illuminance does not fall
 /// off with distance, so lux is lux.
-fn light_the_house(mut commands: Commands, home: Res<world::Home>) {
+fn light_the_house(mut commands: Commands, home: Res<world::Home>, origin: Res<world::Origin>) {
     // A drawn house has to find its own lamps: it arrives as a couple of
     // hundred boxes with no idea where its rooms are, and the constants below
     // are aimed at a greybox that is not there. See `lamps`.
-    if blueprint::requested().is_some() {
-        lamps::light_a_drawn_house(&mut commands, &home);
-        return;
+    match *origin {
+        // The procedural house says where its own lamps go; nothing has to be
+        // inferred, because nothing about it is a mystery.
+        world::Origin::Procedural => {
+            house::light_it(&mut commands);
+            return;
+        }
+        // A drawn house has to be read for its rooms first. See `lamps`.
+        world::Origin::Drawn => {
+            lamps::light_a_drawn_house(&mut commands, &home);
+            return;
+        }
+        world::Origin::Greybox => {}
     }
 
     /// Lumens are per square metre; the world is in centimetres. Ten thousand.
@@ -148,8 +159,7 @@ fn light_the_house(mut commands: Commands, home: Res<world::Home>) {
             shadow_maps_enabled: true,
             ..default()
         },
-        Transform::from_xyz(-900.0, 470.0, 40.0)
-            .looking_at(Vec3::new(260.0, 30.0, 250.0), Vec3::Y),
+        Transform::from_xyz(-900.0, 470.0, 40.0).looking_at(Vec3::new(260.0, 30.0, 250.0), Vec3::Y),
         // Cascades sized for a house rather than a landscape. The defaults assume
         // a world measured in kilometres and put the first cascade outside the
         // building, which at this scale means no usable shadow anywhere.

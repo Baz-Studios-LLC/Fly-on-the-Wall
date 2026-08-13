@@ -233,8 +233,8 @@ fn place_the_eye(
     // Inspection overrides everything: fixed offset, no smoothing, looking
     // straight at the fly.
     if let Some(azimuth) = inspect_azimuth() {
-        let offset = Quat::from_rotation_y(azimuth.to_radians())
-            * Vec3::new(0.0, 0.42, 1.0).normalize();
+        let offset =
+            Quat::from_rotation_y(azimuth.to_radians()) * Vec3::new(0.0, 0.42, 1.0).normalize();
         transform.translation = position + offset * INSPECT_DISTANCE;
         transform.look_at(position, Vec3::Y);
         if let Projection::Perspective(perspective) = &mut *projection {
