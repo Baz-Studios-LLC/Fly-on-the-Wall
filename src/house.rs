@@ -66,6 +66,14 @@ const OUTER: f32 = 20.0;
 const INNER: f32 = 12.0;
 const SLAB: f32 = 12.0;
 
+/// Skirting: how tall, and how far proud of the plaster it stands.
+///
+/// Two centimetres of relief is nothing to a person and a landable ledge running
+/// the entire perimeter of every room to a fly — which is the whole argument for
+/// modelling trim in a game seen from six millimetres up.
+const SKIRT_HIGH: f32 = 9.0;
+const SKIRT_PROUD: f32 = 2.0;
+
 const DOOR_WIDE: f32 = 92.0;
 const DOOR_HIGH: f32 = 205.0;
 const SILL: f32 = 100.0;
@@ -224,6 +232,33 @@ fn wall_run(
             )
         };
         out.push(Solid::between(min, max, stuff));
+
+        // Skirting, on any piece that reaches the floor.
+        //
+        // Emitted here rather than around the room afterwards, because a run
+        // already knows where its solid parts are: a doorway gets no skirting
+        // across it for free, and nothing has to be told where the openings
+        // were. Both faces, since a partition has a room on each side.
+        if low <= 0.01 && high > SKIRT_HIGH {
+            for face in [-1.0f32, 1.0] {
+                let (smin, smax) = if along_x {
+                    (
+                        Vec3::new(a.x + s, 0.0, a.y + face * half),
+                        Vec3::new(a.x + e, SKIRT_HIGH, a.y + face * (half + SKIRT_PROUD)),
+                    )
+                } else {
+                    (
+                        Vec3::new(a.x + face * half, 0.0, a.y + s),
+                        Vec3::new(a.x + face * (half + SKIRT_PROUD), SKIRT_HIGH, a.y + e),
+                    )
+                };
+                let lo = smin.min(smax);
+                let hi = smin.max(smax);
+                let mut skirt = Solid::between(lo, hi, Stuff::Wood);
+                skirt.paint = Some(Color::srgb(0.90, 0.89, 0.86));
+                out.push(skirt);
+            }
+        }
     };
 
     let mut cuts: Vec<Opening> = holes.to_vec();
@@ -268,6 +303,18 @@ pub fn build() -> Home {
     let mut s: Vec<Solid> = Vec::new();
     let top = CEILING;
     let (w, e, n, so, garage_south, house_east) = envelope();
+
+    // -- The ground the house stands on ------------------------------------
+    //
+    // Not scenery. Every window was a black rectangle hung on a wall until
+    // there was something on the other side of it, because a window shows you
+    // what is outside and outside was nothing at all. A lawn and a sky are the
+    // cheapest believable daylight in the build.
+    s.push(Solid::between(
+        Vec3::new(w - 4000.0, -60.0, n - 4000.0),
+        Vec3::new(e + 4000.0, -10.0, so + 4000.0),
+        Stuff::Grass,
+    ));
 
     // -- Floor -------------------------------------------------------------
     s.push(Solid::between(
@@ -445,6 +492,7 @@ pub fn build() -> Home {
     }
 
     glaze(&mut s);
+    crate::furniture::furnish(&mut s);
 
     let great = room("great room");
     Home {
@@ -517,22 +565,38 @@ pub fn audit(home: &Home) {
             faults += 1;
         }
 
-        // The clear height really is clear: probe up the middle of the room and
-        // check the first thing overhead is the ceiling and nothing lower.
-        let at = r.middle();
-        match home.raycast(Vec3::new(at.x, 2.0, at.y), Vec3::Y, CEILING * 2.0) {
-            Some(hit) if (hit.point.y - CEILING).abs() > 1.0 => {
-                error!(
-                    "{}: first thing overhead is {:.1} cm up, not the {:.1} cm ceiling",
-                    r.name, hit.point.y, CEILING
+        // The ceiling really is at nine feet, sampled across the room rather
+        // than at one point, so a missing patch is caught rather than averaged
+        // away.
+        //
+        // Probed from just *under* the ceiling, not up from the floor. The first
+        // version cast from ankle height and started failing the moment the
+        // house was furnished — it was measuring the top of a bed, an island and
+        // a coffee table and calling each of them a low ceiling. Clear height is
+        // a property of the room; what is standing on the floor is not the
+        // ceiling's business.
+        for gx in 1..=3 {
+            for gz in 1..=3 {
+                let at = Vec2::new(
+                    r.min.x + r.wide() * gx as f32 * 0.25,
+                    r.min.y + r.deep() * gz as f32 * 0.25,
                 );
-                faults += 1;
+                let from = Vec3::new(at.x, CEILING - 5.0, at.y);
+                match home.raycast(from, Vec3::Y, 40.0) {
+                    Some(hit) if (hit.point.y - CEILING).abs() > 1.0 => {
+                        error!(
+                            "{}: ceiling is {:.1} cm up at ({:.0},{:.0}), not {:.1}",
+                            r.name, hit.point.y, at.x, at.y, CEILING
+                        );
+                        faults += 1;
+                    }
+                    None => {
+                        error!("{}: no ceiling over ({:.0},{:.0})", r.name, at.x, at.y);
+                        faults += 1;
+                    }
+                    _ => {}
+                }
             }
-            None => {
-                error!("{}: nothing overhead at all", r.name);
-                faults += 1;
-            }
-            _ => {}
         }
     }
 
@@ -563,6 +627,8 @@ pub fn light_it(commands: &mut Commands) {
     let scale = UNITS_PER_METRE * UNITS_PER_METRE;
 
     commands.insert_resource(bevy::light::DirectionalLightShadowMap { size: 4096 });
+    // The sky, which is what a window has to have behind it.
+    commands.insert_resource(ClearColor(Color::srgb(0.55, 0.68, 0.84)));
 
     // Ambient is standing in for bounce light, and it has to stand in for a lot
     // of it. There is no global illumination here, so every photon that would

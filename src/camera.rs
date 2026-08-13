@@ -92,6 +92,16 @@ pub fn inspect_azimuth() -> Option<f32> {
 /// How far the inspection camera sits from the fly, in centimetres.
 const INSPECT_DISTANCE: f32 = 2.1;
 
+/// `FLY_ROOM=<name>` stands in a room and looks across it.
+///
+/// The plan view says whether a house has the right rooms; it says nothing
+/// about whether a room is worth being in. This is the other half: a fixed
+/// viewpoint per room, from a corner at standing height, so two passes over the
+/// same room can be compared frame to frame rather than from memory.
+pub fn room_view() -> Option<String> {
+    std::env::var("FLY_ROOM").ok().filter(|r| !r.is_empty())
+}
+
 /// `FLY_PLAN=1` looks straight down at the whole house from above it.
 ///
 /// Not a play mode — a way to *see a drawn house at all*. A fly's own camera is
@@ -207,6 +217,28 @@ fn place_the_eye(
     let alpha = fixed.overstep_fraction();
     let (position, body) = fly.presented(alpha);
     let dt = time.delta_secs();
+
+    // Standing in one room, looking across it.
+    if let Some(name) = room_view() {
+        let r = crate::house::rooms()
+            .into_iter()
+            .find(|r| r.name.eq_ignore_ascii_case(&name));
+        if let Some(r) = r {
+            let m = r.middle();
+            // From the room's south-west quarter, at the height of somebody
+            // standing in the doorway, looking at the middle of the far half.
+            let from = Vec3::new(r.min.x + r.wide() * 0.12, 155.0, r.min.y + r.deep() * 0.12);
+            let at = Vec3::new(m.x + r.wide() * 0.12, 70.0, m.y + r.deep() * 0.12);
+            transform.translation = from;
+            transform.look_at(at, Vec3::Y);
+            if let Projection::Perspective(perspective) = &mut *projection {
+                perspective.fov = 62.0_f32.to_radians();
+            }
+            eye.seated = true;
+            return;
+        }
+        warn!("no room called '{name}'");
+    }
 
     // Straight down at the whole house, framed by its own bounds.
     if plan_view() {

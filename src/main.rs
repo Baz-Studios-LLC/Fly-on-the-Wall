@@ -50,6 +50,7 @@ mod camera;
 mod capture;
 mod debug;
 mod fly;
+mod furniture;
 mod house;
 mod lamps;
 mod rooms;

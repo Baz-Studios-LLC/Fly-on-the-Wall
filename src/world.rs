@@ -54,6 +54,7 @@ pub const fn m(metres: f32) -> f32 {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stuff {
     Plaster,
+    Grass,
     Floorboard,
     Wood,
     Fabric,
@@ -72,6 +73,7 @@ impl Stuff {
             Stuff::Floorboard => Color::srgb(0.45, 0.33, 0.22),
             Stuff::Wood => Color::srgb(0.58, 0.42, 0.27),
             Stuff::Fabric => Color::srgb(0.37, 0.36, 0.42),
+            Stuff::Grass => Color::srgb(0.30, 0.40, 0.22),
             Stuff::Metal => Color::srgb(0.66, 0.68, 0.71),
             Stuff::Stone => Color::srgb(0.30, 0.30, 0.32),
             Stuff::Glass => Color::srgba(0.78, 0.87, 0.92, 0.13),
@@ -84,6 +86,7 @@ impl Stuff {
             Stuff::Glass => 0.05,
             Stuff::Stone => 0.55,
             Stuff::Fabric => 0.95,
+            Stuff::Grass => 0.95,
             _ => 0.8,
         }
     }
