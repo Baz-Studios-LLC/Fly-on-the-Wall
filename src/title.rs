@@ -53,7 +53,8 @@ impl Plugin for TitlePlugin {
         let posed = crate::camera::room_view().is_some()
             || crate::camera::plan_view()
             || crate::camera::outside_view().is_some()
-            || crate::camera::inspect_azimuth().is_some();
+            || crate::camera::inspect_azimuth().is_some()
+            || crate::camera::folk_view().is_some();
         // `FLY_DIVE=<seconds>` starts part-way through the dive, so the move
         // itself can be captured at a chosen moment instead of guessed at.
         let start = match std::env::var("FLY_DIVE").ok().and_then(|v| v.parse().ok()) {

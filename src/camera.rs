@@ -121,6 +121,14 @@ pub fn outside_view() -> Option<(f32, f32)> {
     Some((deg.trim().parse().ok()?, back))
 }
 
+/// `FLY_FOLK=<deg>` stands in front of a person and looks at them.
+///
+/// The room views frame rooms and the inspect view frames the fly; neither can
+/// show whether a knee bends the right way. Zero is face on.
+pub fn folk_view() -> Option<f32> {
+    std::env::var("FLY_FOLK").ok()?.trim().parse().ok()
+}
+
 /// `FLY_PLAN=1` looks straight down at the whole house from above it.
 ///
 /// Not a play mode — a way to *see a drawn house at all*. A fly's own camera is
@@ -313,6 +321,7 @@ fn choose_view(keys: Res<ButtonInput<KeyCode>>, mut view: ResMut<View>, mut roll
 }
 
 fn place_the_eye(
+    folk: Query<&GlobalTransform, With<crate::folk::Person>>,
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
     view: Res<View>,
@@ -412,6 +421,21 @@ fn place_the_eye(
         }
         eye.seated = true;
         return;
+    }
+
+    // Standing in front of somebody, looking at them.
+    if let Some(degrees) = folk_view() {
+        if let Some(person) = folk.iter().next() {
+            let heart = person.translation() + Vec3::Y * 22.0;
+            let a = degrees.to_radians();
+            transform.translation = heart + Vec3::new(a.sin() * 215.0, 24.0, a.cos() * 215.0);
+            transform.look_at(heart, Vec3::Y);
+            if let Projection::Perspective(perspective) = &mut *projection {
+                perspective.fov = 42.0_f32.to_radians();
+            }
+            eye.seated = true;
+            return;
+        }
     }
 
     // Straight down at the whole house, framed by its own bounds.

@@ -48,6 +48,7 @@
 //! | `FLY_UNCAPPED=1` | drop vsync, so the frame rate means something |
 //! | `FLY_WINDOWED=1` | play in a window; every capture switch implies it |
 //! | `FLY_ARRANGE=1` | open straight into arrange mode |
+//! | `FLY_FOLK=<deg>` | stand in front of a person and look at them |
 //! | `FLY_OUTSIDE=<deg>` | stand outdoors and look at the whole house — 0 south, 90 east |
 
 mod arrange;
@@ -57,6 +58,7 @@ mod camera;
 mod capture;
 mod debug;
 mod fly;
+mod folk;
 mod furniture;
 mod house;
 mod lamps;
@@ -120,6 +122,7 @@ fn main() {
             capture::CapturePlugin,
             title::TitlePlugin,
             arrange::ArrangePlugin,
+            folk::FolkPlugin,
         ))
         .add_systems(Startup, light_the_house)
         .add_systems(Update, toggle_fullscreen)
@@ -135,6 +138,7 @@ fn windowed() -> bool {
         || std::env::var("FLY_ROOM").is_ok()
         || std::env::var("FLY_OUTSIDE").is_ok()
         || std::env::var("FLY_INSPECT").is_ok()
+        || std::env::var("FLY_FOLK").is_ok()
 }
 
 /// `F11` between full screen and a window, which is the whole of the video

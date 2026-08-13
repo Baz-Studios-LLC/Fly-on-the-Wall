@@ -797,6 +797,38 @@ problems with it.
   It now says so on screen, with the count and the path, for five seconds.
   Backspace says so too.
 
+
+## Pass forty-one: the father
+
+Voxel language, as the design has said from the beginning, but jointed. A
+Minecraft body is six boxes and its arm swings from the shoulder in one piece,
+which is why it reads as a puppet: nothing between shoulder and hand ever
+changes shape. This one has shoulder, elbow, wrist, hip, knee and ankle, so a
+pose is a set of joint angles and an animation system has something to drive.
+
+Three things do most of the work of looking better than the reference, and none
+of them costs the blocky read:
+
+- **Taper.** Every limb segment is five boxes, each a shade narrower. A thigh
+  thick at the hip and thin at the knee is nearly all of what makes a leg read
+  as a leg. Three segments was the first try and it was worse than none: three
+  ledges down a forearm read as three separate blocks. Finer steps with an
+  overlap put the change where the eye takes it as shape.
+- **Joints that exist.** A block at each elbow and knee, so a bend has
+  something in the corner instead of two prisms passing through each other.
+- **Proportion.** Seven and a half heads, not four. The reference is a
+  caricature and standing one in a room built to centimetres would make the
+  room look wrong rather than the man.
+
+And **eyes**. A head with a brow and a nose and no eyes is a mannequin; two
+boxes two centimetres across do more for this model than anything else on it.
+
+He is scenery: entities and transforms, no collision and no behaviour. The
+family simulation is a long way off and this is the body it will be given.
+`FLY_FOLK=<deg>` stands in front of a person and looks at them, because the
+room views frame rooms and neither they nor the fly's inspect view can show
+whether a knee bends the right way.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
