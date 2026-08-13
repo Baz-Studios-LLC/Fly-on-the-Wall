@@ -359,9 +359,13 @@ impl Plugin for FlyPlugin {
             .add_systems(Startup, hatch)
             .add_systems(
                 Update,
-                (grab_the_cursor, gather_intent, look_around).chain(),
+                (grab_the_cursor, gather_intent, look_around)
+                    .chain()
+                    // Nothing the player does reaches the fly until the dive
+                    // has landed. Reading the menu should not fly the fly.
+                    .run_if(crate::title::playing),
             )
-            .add_systems(FixedUpdate, step_the_fly);
+            .add_systems(FixedUpdate, step_the_fly.run_if(crate::title::playing));
     }
 }
 

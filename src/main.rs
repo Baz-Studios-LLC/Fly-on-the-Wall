@@ -33,6 +33,7 @@
 //! | `F3` | the readout |
 //! | `F12` | save a screenshot |
 //! | `Esc` | release the mouse |
+//! | `F11` | full screen ↔ window |
 //!
 //! ## Switches
 //!
@@ -44,6 +45,7 @@
 //! | `FLY_CAPTURE=<path>` | render for a moment, save a frame there, exit |
 //! | `FLY_CAPTURE_DELAY=<s>` | move the shutter (default 4) |
 //! | `FLY_UNCAPPED=1` | drop vsync, so the frame rate means something |
+//! | `FLY_WINDOWED=1` | play in a window; every capture switch implies it |
 //! | `FLY_OUTSIDE=<deg>` | stand outdoors and look at the whole house — 0 south, 90 east |
 
 mod blueprint;
@@ -56,6 +58,7 @@ mod furniture;
 mod house;
 mod lamps;
 mod rooms;
+mod title;
 mod wingbeat;
 mod world;
 
@@ -69,7 +72,20 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Fly on the Wall — flight test".into(),
+                        title: "Fly on the Wall".into(),
+                        // Full screen to play, windowed to work on.
+                        //
+                        // Every capture and diagnostic viewpoint stays in a
+                        // window on purpose: those run dozens of times an hour
+                        // while somebody is using the machine, and a build that
+                        // seizes the display each time is a build nobody runs.
+                        mode: if windowed() {
+                            bevy::window::WindowMode::Windowed
+                        } else {
+                            bevy::window::WindowMode::BorderlessFullscreen(
+                                bevy::window::MonitorSelection::Current,
+                            )
+                        },
                         // Vsync is right for playing and useless for measuring:
                         // a frame rate pinned to the display tells you the
                         // display's refresh rate and nothing about the house.
@@ -99,9 +115,42 @@ fn main() {
             wingbeat::WingbeatPlugin,
             debug::DebugPlugin,
             capture::CapturePlugin,
+            title::TitlePlugin,
         ))
         .add_systems(Startup, light_the_house)
+        .add_systems(Update, toggle_fullscreen)
         .run();
+}
+
+/// Windowed when something is looking at the house rather than playing it, or
+/// when asked.
+fn windowed() -> bool {
+    std::env::var("FLY_WINDOWED").is_ok()
+        || std::env::var("FLY_CAPTURE").is_ok()
+        || std::env::var("FLY_PLAN").is_ok()
+        || std::env::var("FLY_ROOM").is_ok()
+        || std::env::var("FLY_OUTSIDE").is_ok()
+        || std::env::var("FLY_INSPECT").is_ok()
+}
+
+/// `F11` between full screen and a window, which is the whole of the video
+/// settings this build needs and the only one anybody reaches for.
+fn toggle_fullscreen(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut windows: Query<&mut Window, With<bevy::window::PrimaryWindow>>,
+) {
+    if !keys.just_pressed(KeyCode::F11) {
+        return;
+    }
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    window.mode = match window.mode {
+        bevy::window::WindowMode::Windowed => {
+            bevy::window::WindowMode::BorderlessFullscreen(bevy::window::MonitorSelection::Current)
+        }
+        _ => bevy::window::WindowMode::Windowed,
+    };
 }
 
 /// Lighting a house at one centimetre to the unit.

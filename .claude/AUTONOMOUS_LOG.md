@@ -639,6 +639,30 @@ thing is four centimetres off the surface behind it, and that is precisely the
 mistake procedural geometry makes over and over, because every position here is
 arithmetic and arithmetic is off by two.
 
+
+## Pass thirty-three: a title screen, and full screen
+
+- **The title screen is the game.** No separate scene and no still image: the
+  house is already loaded, already lit, and already the best thing in the build,
+  so the menu is the great room seen from a corner with the enamel sign hung
+  over it and a scrim behind the lettering.
+- **New Game does not cut.** It flies the camera down to the fly over three and
+  a half seconds — the same fly that has been sitting on the ceiling the whole
+  time you were reading the menu — fades the sign out over the first half, and
+  takes the mouse the moment control lands. A cut would say the menu and the
+  game are two different places. They are not.
+- Done as a system that runs *after* `place_the_eye` and interpolates toward
+  whatever it wrote, rather than branching inside it. The chase camera is a lot
+  of feel that took a long time to get right and the way not to disturb it is
+  to leave it running.
+- Input is gated on the dive having landed. Reading a menu should not fly a fly.
+- **Full screen to play, windowed to work on.** Every capture and diagnostic
+  switch implies windowed: those run dozens of times an hour on a machine
+  somebody is using, and a build that seizes the display each time is a build
+  nobody runs. `F11` toggles.
+- `FLY_DIVE=<seconds>` starts part-way through the move so it can be captured
+  at a chosen moment rather than guessed at.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

@@ -168,7 +168,7 @@ impl Plugin for CameraPlugin {
         app.init_resource::<View>()
             .init_resource::<Roll>()
             .add_systems(Startup, spawn_eye)
-            .add_systems(Update, (choose_view, place_the_eye).chain());
+            .add_systems(Update, (choose_view, place_the_eye, title_camera).chain());
     }
 }
 
@@ -533,4 +533,54 @@ fn place_the_eye(
         perspective.fov = fov.to_radians();
     }
     eye.seated = true;
+}
+
+/// Hold the camera at the title viewpoint, and fly it down to the fly when the
+/// game starts.
+///
+/// Runs *after* `place_the_eye` and overwrites what it wrote, rather than
+/// branching inside it. The chase camera is a hundred lines of feel that took a
+/// long time to get right, and the way not to disturb it is to let it run and
+/// then interpolate toward its answer.
+fn title_camera(
+    stage: Res<crate::title::Stage>,
+    home: Res<Home>,
+    mut eyes: Query<(&mut Transform, &mut Projection), With<Eye>>,
+) {
+    let Some(t) = crate::title::dive_progress(&stage) else {
+        return;
+    };
+    let Ok((mut transform, mut projection)) = eyes.single_mut() else {
+        return;
+    };
+
+    // Standing in the great room, looking across it. The same corner-to-corner
+    // line the room views use, because it is the one line that sees a whole
+    // room — and this is the shot the game opens on.
+    let r = crate::house::room("great room");
+    let from = Vec3::new(r.min.x + r.wide() * 0.88, 176.0, r.min.y + r.deep() * 0.12);
+    let at = Vec3::new(r.min.x + r.wide() * 0.18, 96.0, r.min.y + r.deep() * 0.86);
+    let mut title = Transform::from_translation(from);
+    title.look_at(at, Vec3::Y);
+    // Clear of anything it would otherwise be standing inside, the same walk
+    // the room views do.
+    let step = (at - from).normalize_or_zero();
+    for _ in 0..12 {
+        let tight = home
+            .solids
+            .iter()
+            .any(|s| !s.sheer && s.nearest(title.translation).distance < 75.0);
+        if !tight {
+            break;
+        }
+        title.translation += step * 16.0;
+    }
+
+    transform.translation = title.translation.lerp(transform.translation, t);
+    transform.rotation = title.rotation.slerp(transform.rotation, t);
+    if let Projection::Perspective(perspective) = &mut *projection {
+        // Opens a little tighter than play, so the room reads as a composed
+        // shot and widens out as the camera closes on the fly.
+        perspective.fov = (58.0_f32.to_radians()).lerp(CHASE_FOV.to_radians(), t);
+    }
 }
