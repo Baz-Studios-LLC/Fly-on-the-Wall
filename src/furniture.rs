@@ -1061,30 +1061,51 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
     // three-centimetre frame, so every picture in the house rendered as its own
     // dark surround and nothing else.
     slab(out, at, d(2.0), Stuff::Wood, DARK_OAK);
-    let out_of = if along_x {
-        Vec3::new(0.0, 0.0, 1.4)
-    } else {
-        Vec3::new(1.4, 0.0, 0.0)
-    };
-    // Which way is "into the room"? Whichever side of the wall the frame's own
-    // centre is not: the canvas goes toward the viewer.
-    let face = if along_x {
-        Vec3::new(0.0, 0.0, 1.0)
-    } else {
-        Vec3::new(1.0, 0.0, 0.0)
-    };
+    // Which way is "into the room"? The comment here used to claim it worked
+    // this out and the code just used +z, so every picture on a south or east
+    // wall had its mount and image buried inside the plaster and rendered as a
+    // dark block. Ask, the same way the paint and the cladding ask: probe
+    // twenty centimetres either side and see which one is in a room.
+    let axis = if along_x { Vec3::Z } else { Vec3::X };
+    // Face the middle of the room the picture is *in*. Probing a fixed distance
+    // either side does not work: a partition is twelve centimetres thick and a
+    // picture hangs eight off the face, so a twenty-centimetre probe crosses
+    // the wall and finds the room next door, and a short one is inside this
+    // room on both sides. The room's own middle is unambiguous.
+    let side = crate::house::room_at(Vec2::new(at.x, at.z))
+        .map(|room| {
+            let heart = room.middle();
+            let toward = if along_x {
+                heart.y - at.z
+            } else {
+                heart.x - at.x
+            };
+            if toward < 0.0 { -1.0 } else { 1.0 }
+        })
+        .unwrap_or(1.0);
+    let out_of = axis * side * 1.4;
+    let face = Vec3::ONE;
+    // Mount, then image. Frame and image alone, both dark, read as one dark
+    // block on a wall — it is the pale mount between them that makes the eye
+    // call the thing a picture. Every framed thing in the house goes through
+    // here, so this is the one place worth fixing it.
     let s = d(1.6);
+    let inset = |by: f32| {
+        Vec3::new(
+            (s.x - by).max(1.6),
+            (s.y - by).max(1.6),
+            (s.z - by).max(1.6),
+        )
+    };
+    let _ = face;
     slab(
         out,
-        at + out_of * face.length(),
-        Vec3::new(
-            (s.x - 9.0).max(1.6),
-            (s.y - 9.0).max(1.6),
-            (s.z - 9.0).max(1.6),
-        ),
+        at + out_of,
+        inset(7.0),
         Stuff::Fabric,
-        tone,
+        Color::srgb(0.92, 0.91, 0.88),
     );
+    slab(out, at + out_of * 1.6, inset(20.0), Stuff::Fabric, tone);
 }
 
 /// Curtains: a pair of panels either side of a window, and a pole across it.
@@ -2678,6 +2699,42 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
         );
     }
 
+    // A knife block, a tea towel on the cooker, and a notice board by the door
+    // — the things a kitchen accumulates that are not appliances.
+    turned(
+        out,
+        Vec3::new(cooker_x - 62.0, 100.0, north + 4.0),
+        Vec3::new(14.0, 22.0, 12.0),
+        Quat::from_rotation_x(-0.12),
+        Stuff::Wood,
+        DARK_OAK,
+    );
+    for k in 0..4 {
+        slab(
+            out,
+            Vec3::new(cooker_x - 66.0 + k as f32 * 3.0, 116.0, north + 2.0),
+            Vec3::new(2.0, 14.0, 2.0),
+            Stuff::Metal,
+            CHROME,
+        );
+    }
+    soft(
+        out,
+        Vec3::new(cooker_x + 20.0, 52.0, north + 34.0),
+        Vec3::new(26.0, 40.0, 4.0),
+        2.0,
+        Stuff::Fabric,
+        TOWEL_A,
+    );
+    picture(
+        out,
+        Vec3::new(r.min.x + 8.0, 150.0, m.y - 40.0),
+        60.0,
+        44.0,
+        false,
+        Color::srgb(0.52, 0.48, 0.36),
+    );
+
     // Table and four chairs at the open end, toward the great room.
     let table = Vec2::new(m.x, r.max.y - 130.0);
     legged(
@@ -2776,11 +2833,23 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
         Vec2::new(1.0, 0.0),
     );
 
-    // A lamp on the nightstand nearest the door side.
+    // A lamp on the nightstand nearest the door side, and the things that
+    // collect on the other one.
     lamp(
         out,
         Vec3::new(head_x + size.x * 0.5 + 32.0, 54.0, r.min.y + 60.0),
     );
+    let far = head_x - size.x * 0.5 - 32.0;
+    books(out, Vec3::new(far - 6.0, 54.0, r.min.y + 54.0), 2, head_x);
+    disc(
+        out,
+        Vec3::new(far + 12.0, 59.0, r.min.y + 66.0),
+        13.0,
+        10.0,
+        Color::srgb(0.30, 0.32, 0.34),
+        0.0,
+    );
+    pot_plant(out, Vec2::new(r.max.x - 40.0, m.y + 116.0), 46.0);
 
     // The side walls were bare in every bedroom capture. A desk under the far
     // window in the children's rooms, a chair pushed under it, and a pair of
@@ -2816,13 +2885,50 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
                 },
             );
         }
+        // Toys, because a child's room with nothing on the floor is not one.
+        for k in 0..5 {
+            let n = wobble(desk.x + k as f32 * 23.0, desk.y);
+            let at = Vec2::new(
+                m.x - 90.0 + n * 110.0 + k as f32 * 26.0,
+                m.y + 46.0 + n * 80.0,
+            );
+            let size = 9.0 + n.abs() * 7.0;
+            turned(
+                out,
+                Vec3::new(at.x, size * 0.5, at.y),
+                Vec3::splat(size),
+                Quat::from_rotation_y(n * 1.1),
+                Stuff::Wood,
+                [
+                    Color::srgb(0.72, 0.26, 0.20),
+                    Color::srgb(0.26, 0.44, 0.62),
+                    Color::srgb(0.82, 0.66, 0.22),
+                    Color::srgb(0.34, 0.56, 0.34),
+                    Color::srgb(0.62, 0.34, 0.56),
+                ][k],
+            );
+        }
+        books(out, Vec3::new(desk.x - 40.0, 74.0, desk.y - 4.0), 3, desk.y);
     } else {
         // The main bedroom gets a chair in the corner instead, which is where
-        // clothes actually live.
-        chair(
+        // clothes actually live — with clothes on it.
+        let seat = Vec2::new(r.max.x - 70.0, r.max.y - 70.0);
+        chair(out, seat, Vec2::new(-1.0, 0.0));
+        soft(
             out,
-            Vec2::new(r.max.x - 70.0, r.max.y - 70.0),
-            Vec2::new(-1.0, 0.0),
+            Vec3::new(seat.x, 52.0, seat.y),
+            Vec3::new(44.0, 16.0, 44.0),
+            5.0,
+            Stuff::Fabric,
+            Color::srgb(0.34, 0.38, 0.44),
+        );
+        soft(
+            out,
+            Vec3::new(seat.x - 14.0, 40.0, seat.y + 18.0),
+            Vec3::new(20.0, 34.0, 14.0),
+            4.0,
+            Stuff::Fabric,
+            Color::srgb(0.52, 0.44, 0.40),
         );
     }
 }
@@ -2969,6 +3075,40 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
         Vec3::new(r.min.x + 4.0, 128.0, b.y),
         Vec3::new(4.0, 140.0, bd + 12.0),
         false,
+    );
+
+    // The small things. A bathroom without a roll on a holder and a bin beside
+    // the lavatory is a showroom.
+    slab(
+        out,
+        Vec3::new(r.max.x - 18.0, 74.0, r.min.y + 96.0),
+        Vec3::new(4.0, 4.0, 16.0),
+        Stuff::Metal,
+        CHROME,
+    );
+    disc(
+        out,
+        Vec3::new(r.max.x - 22.0, 74.0, r.min.y + 96.0),
+        11.0,
+        11.0,
+        Color::srgb(0.94, 0.93, 0.90),
+        0.0,
+    );
+    disc(
+        out,
+        Vec3::new(r.max.x - 34.0, 15.0, r.min.y + 132.0),
+        26.0,
+        30.0,
+        Color::srgb(0.72, 0.73, 0.72),
+        0.0,
+    );
+    disc(
+        out,
+        Vec3::new(r.min.x + 132.0, 97.0, r.min.y + 22.0),
+        9.0,
+        14.0,
+        Color::srgb(0.66, 0.74, 0.76),
+        0.0,
     );
 
     towel_rail(
@@ -3272,6 +3412,24 @@ fn hall(out: &mut Vec<Solid>, r: &Room) {
         5.0,
         DARK_OAK,
         DARK_OAK,
+    );
+
+    // A bowl for keys on the console, and an umbrella leaning in the corner.
+    disc(
+        out,
+        Vec3::new(r.min.x + 34.0, 79.0, m.y - 260.0),
+        20.0,
+        7.0,
+        Color::srgb(0.44, 0.40, 0.34),
+        0.0,
+    );
+    turned(
+        out,
+        Vec3::new(r.min.x + 22.0, 44.0, r.min.y + 42.0),
+        Vec3::new(6.0, 88.0, 6.0),
+        Quat::from_rotation_z(0.13),
+        Stuff::Fabric,
+        Color::srgb(0.26, 0.30, 0.38),
     );
 
     // Photographs down the long wall, hung in the stretches between the bedroom

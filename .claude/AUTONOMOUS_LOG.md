@@ -490,6 +490,26 @@ one picture centred on each wall and nothing on any surface is a show home.
   and a photograph and a plant on the media unit, a dish and a candle on the
   coffee table, and a couple of things on the floor nobody has put away.
 
+
+## Pass twenty-seven: clutter everywhere, and a picture bug it exposed
+
+- Books, a clock and a plant on the bedroom nightstands; toy blocks across a
+  child's floor; clothes over the chair in the main bedroom; a knife block, a
+  tea towel and a notice board in the kitchen; a roll, a bin and a toothbrush
+  mug in the bathrooms; a bowl for keys and an umbrella in the hall.
+- **Every framed thing in the house was rendering as a dark block**, and the
+  reason was a lie in a comment. `picture` claimed to work out which way was
+  into the room and then always used +z, so anything hung on a south or east
+  wall had its mount and image buried in the plaster. It faces the middle of
+  the room it is in now — probing a fixed distance does not work, because a
+  partition is twelve centimetres thick and a picture hangs eight off the face,
+  so a long probe finds the room next door and a short one is inside this room
+  on both sides.
+- The north windows were filled sill-to-head with fence. It is nine and a half
+  metres out now, with two houses backing onto the garden behind it — their
+  roofs over the fence are most of what a north-facing window in a street like
+  this ever shows.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

@@ -826,6 +826,10 @@ fn neighbourhood(out: &mut Vec<Solid>) {
         out.push(s);
     }
 
+    // Far enough out that a kitchen window shows a garden rather than a fence.
+    // At six metres the boards filled the glass from sill to head.
+    let fence_z = n - 980.0;
+
     // -- The street, out in front ------------------------------------------
     let walk_near = so + 900.0;
     let kerb = walk_near + 170.0;
@@ -1037,6 +1041,18 @@ fn neighbourhood(out: &mut Vec<Solid>) {
         false,
         0.12,
     );
+    // Backing onto the garden. Their roofs over the fence are most of what a
+    // north-facing window in a street like this ever shows.
+    for (x0, wide, back) in [(w - 300.0, 1700.0, 900.0), (w + 1900.0, 1520.0, 1120.0)] {
+        let z1 = fence_z - back;
+        neighbour(
+            out,
+            Vec2::new(x0, z1 - 1020.0),
+            Vec2::new(x0 + wide, z1),
+            true,
+            grain(x0) * 0.4,
+        );
+    }
     neighbour(
         out,
         Vec2::new(e + 940.0, n + 300.0),
@@ -1046,6 +1062,10 @@ fn neighbourhood(out: &mut Vec<Solid>) {
     );
 
     for (x, z, tall) in [
+        // One in the back garden, so the north windows have something in them
+        // that is not fence.
+        (ft(38.0), n - 620.0, 540.0),
+        (w + 260.0, n - 780.0, 470.0),
         (w - 420.0, walk_near + 80.0, 520.0),
         (ft(40.0), walk_near + 80.0, 460.0),
         (e + 520.0, walk_near + 80.0, 560.0),
@@ -1058,7 +1078,6 @@ fn neighbourhood(out: &mut Vec<Solid>) {
     }
 
     // -- The back yard ------------------------------------------------------
-    let fence_z = n - 640.0;
     let (fw, fe) = (w - 340.0, e + 340.0);
     fn fence(out: &mut Vec<Solid>, a: Vec2, b: Vec2) {
         let along = (b - a).normalize_or_zero();
