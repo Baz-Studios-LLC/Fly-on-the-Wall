@@ -435,6 +435,21 @@ relief into the bargain.
 - Wood grain amplitude halved. Most of the wood in this house is painted trim,
   and painted joinery does not have a floorboard's grain on it.
 
+
+## Pass twenty-three: curtains in folds
+
+- One slab of fabric per curtain, and a pair at every window in the house. Five
+  narrow strips with every other one pushed forward is a gather: the front
+  faces catch the light and the ones behind fall into shadow, which is all a
+  fold is from across a room.
+- The first version also tapered the outer strips, which gave the curtain a
+  staircase down its edge — worse than the plank it replaced. Every strip runs
+  the full drop; the depth alternation does the work on its own.
+- The window law caught the tilted siding on the way past: a lapped board is
+  taller than its pitch, so centring it on the course line hung its bottom edge
+  three centimetres low, and above a window that is three centimetres of
+  cladding inside the opening. Boards sit *on* their line now.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

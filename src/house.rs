@@ -319,18 +319,16 @@ fn wall_run(
                         Vec3::new(3.4, BOARD * 1.35, e - s)
                     };
                     let mut board = Solid::between(-size * 0.5, size * 0.5, Stuff::Wood);
+                    // Sitting *on* the course line, not centred on it. A
+                    // board is taller than the pitch, so centring it hangs its
+                    // bottom edge three centimetres below where the run starts
+                    // — which above a window means three centimetres of
+                    // cladding inside the opening. The window law said so.
+                    let mid_y = y + BOARD * 0.675;
                     board.center = if along_x {
-                        Vec3::new(
-                            a.x + (s + e) * 0.5,
-                            y + BOARD * 0.5,
-                            a.y + face * (half + 1.9),
-                        )
+                        Vec3::new(a.x + (s + e) * 0.5, mid_y, a.y + face * (half + 1.9))
                     } else {
-                        Vec3::new(
-                            a.x + face * (half + 1.9),
-                            y + BOARD * 0.5,
-                            a.y + (s + e) * 0.5,
-                        )
+                        Vec3::new(a.x + face * (half + 1.9), mid_y, a.y + (s + e) * 0.5)
                     };
                     board.rot = if along_x {
                         Quat::from_rotation_x(face * TILT)

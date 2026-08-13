@@ -994,6 +994,44 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
 /// Hung on every window in the house from one pass, because the windows already
 /// know where they are and asking them is the only way this stays right when one
 /// moves.
+/// A curtain, in folds.
+///
+/// One slab of fabric is a plank, and there is a pair of them at every window
+/// in the house. Five narrow strips with every other one pushed forward is a
+/// gather: the front faces catch the light and the ones behind fall into
+/// shadow, which is the whole of what a fold looks like from across a room.
+fn pleat(out: &mut Vec<Solid>, at: Vec3, size: Vec3, along_x: bool) {
+    const FOLDS: usize = 5;
+    let wide = if along_x { size.x } else { size.z };
+    let strip = wide / FOLDS as f32;
+    for k in 0..FOLDS {
+        let off = (k as f32 + 0.5) / FOLDS as f32 - 0.5;
+        // Alternate strips stand proud. Every strip runs the full drop: the
+        // first version tapered the outer two and the curtain came out with a
+        // staircase down its edge, which is worse than the plank it replaced.
+        let forward = if k % 2 == 0 { 2.6 } else { -1.4 };
+        let centre = if along_x {
+            Vec3::new(at.x + off * wide, at.y, at.z + forward)
+        } else {
+            Vec3::new(at.x + forward, at.y, at.z + off * wide)
+        };
+        let s = if along_x {
+            Vec3::new(strip * 1.06, size.y, size.z * 0.74)
+        } else {
+            Vec3::new(size.x * 0.74, size.y, strip * 1.06)
+        };
+        // A shade between the folds, not a stripe: the light does most of it.
+        let shade = if k % 2 == 0 { 0.0 } else { -0.03 };
+        slab(
+            out,
+            centre,
+            s,
+            Stuff::Fabric,
+            Color::srgb(0.42 + shade, 0.32 + shade, 0.25 + shade),
+        );
+    }
+}
+
 /// Curtains, on the room side of the glass.
 ///
 /// The first version of this hung every panel and pole on the wall's own
@@ -1060,7 +1098,7 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
             // wall cabinets already ask about windows, asked the other way
             // round.
             if !clashes(out, at + inward, full) {
-                slab(out, at + inward, full, Stuff::Fabric, WOOL_WARM);
+                pleat(out, at + inward, full, along_x);
                 continue;
             }
             let short = head + 10.0 - (SILL_CLEAR - 6.0);
@@ -1071,7 +1109,7 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
             };
             let raised = Vec3::new(at.x, SILL_CLEAR - 6.0 + short * 0.5, at.z) + inward;
             if !clashes(out, raised, size) {
-                slab(out, raised, size, Stuff::Fabric, WOOL_WARM);
+                pleat(out, raised, size, along_x);
             }
         }
     }
