@@ -1204,10 +1204,15 @@ fn garage_door(out: &mut Vec<Solid>) {
         let low = i as f32 * panel;
         let centre = low + panel * 0.5;
         // The reveal between sections, set back so the joint reads as a shadow.
+        //
+        // Eight centimetres tall, not three: the panels stop three short of the
+        // joint on each side, so a three-centimetre reveal left a pair of
+        // one-and-a-half-centimetre slots per section — daylight and grass in a
+        // line right across a shut garage door.
         slab(
             out,
             Vec3::new(mid_x, low, z),
-            Vec3::new(wide, 3.0, 6.0),
+            Vec3::new(wide, 8.0, 6.0),
             Stuff::Metal,
             BUMPER,
         );
@@ -1233,7 +1238,7 @@ fn garage_door(out: &mut Vec<Solid>) {
             slab(
                 out,
                 Vec3::new(mid_x, y, z),
-                Vec3::new(wide, h - 3.0, 9.0),
+                Vec3::new(wide, h + 2.0, 9.0),
                 Stuff::Metal,
                 DOOR_SKIN,
             );
@@ -1265,7 +1270,7 @@ fn garage_door(out: &mut Vec<Solid>) {
         slab(
             out,
             Vec3::new(mid_x, top, z),
-            Vec3::new(wide, 3.0, 6.0),
+            Vec3::new(wide, 8.0, 6.0),
             Stuff::Metal,
             BUMPER,
         );
@@ -2516,12 +2521,62 @@ fn laundry(out: &mut Vec<Solid>, r: &Room) {
     // house, which will matter a great deal to a fly the moment warmth is a
     // thing the game models.
     for (i, paint) in [STEEL, PORCELAIN].into_iter().enumerate() {
-        appliance(
+        let at = Vec2::new(r.min.x + 70.0 + i as f32 * 74.0, r.min.y + 46.0);
+        appliance(out, at, Vec3::new(66.0, 88.0, 64.0), paint);
+        // A carcass and nothing else is a white cupboard: side by side and both
+        // pale, the pair read as one box. A door, a fascia and a dial is what
+        // tells you which one is which.
+        let front = at.y + 33.0;
+        slab(
             out,
-            Vec2::new(r.min.x + 70.0 + i as f32 * 74.0, r.min.y + 46.0),
-            Vec3::new(66.0, 88.0, 64.0),
-            paint,
+            Vec3::new(at.x, 78.0, front),
+            Vec3::new(62.0, 16.0, 3.0),
+            Stuff::Metal,
+            Color::srgb(0.24, 0.25, 0.27),
         );
+        disc(
+            out,
+            Vec3::new(at.x + 20.0, 78.0, front + 2.0),
+            9.0,
+            4.0,
+            CHROME,
+            0.0,
+        );
+        if i == 0 {
+            // The washer's drum door, with a glass port in it.
+            disc(
+                out,
+                Vec3::new(at.x, 42.0, front + 1.0),
+                44.0,
+                4.0,
+                Color::srgb(0.86, 0.87, 0.88),
+                0.0,
+            );
+            disc(
+                out,
+                Vec3::new(at.x, 42.0, front + 3.0),
+                26.0,
+                3.0,
+                Color::srgba(0.40, 0.44, 0.46, 0.65),
+                0.0,
+            );
+        } else {
+            // The dryer's is a plain hinged door with a handle down one side.
+            slab(
+                out,
+                Vec3::new(at.x, 42.0, front + 1.5),
+                Vec3::new(56.0, 52.0, 3.0),
+                Stuff::Metal,
+                Color::srgb(0.88, 0.88, 0.86),
+            );
+            slab(
+                out,
+                Vec3::new(at.x - 26.0, 42.0, front + 4.0),
+                Vec3::new(4.0, 34.0, 4.0),
+                Stuff::Metal,
+                CHROME,
+            );
+        }
     }
     // A folding counter over them, and a shelf above that.
     slab(
@@ -2538,6 +2593,90 @@ fn laundry(out: &mut Vec<Solid>, r: &Room) {
         180.0,
         3,
         true,
+    );
+
+    // The south wall was blank the full width of the room. A laundry is where a
+    // house keeps the things it has nowhere else for.
+    //
+    // A hanging rail with a few things on it, an ironing board leaning where
+    // one always leans, a broom and a mop in the corner, and a basket.
+    let south = r.max.y - 16.0;
+    for side in [-1.0f32, 1.0] {
+        slab(
+            out,
+            Vec3::new(r.middle().x + side * 78.0, 172.0, south + 6.0),
+            Vec3::new(5.0, 26.0, 16.0),
+            Stuff::Metal,
+            CHROME,
+        );
+    }
+    slab(
+        out,
+        Vec3::new(r.middle().x, 160.0, south),
+        Vec3::new(170.0, 3.0, 3.0),
+        Stuff::Metal,
+        CHROME,
+    );
+    for k in 0..4 {
+        let n = wobble(r.middle().x + k as f32 * 23.0, south);
+        let x = r.middle().x - 60.0 + k as f32 * 40.0 + n * 6.0;
+        slab(
+            out,
+            Vec3::new(x, 158.0, south + 2.0),
+            Vec3::new(26.0, 5.0, 10.0),
+            Stuff::Wood,
+            OAK,
+        );
+        slab(
+            out,
+            Vec3::new(x, 132.0, south + 2.0),
+            Vec3::new(34.0, 48.0, 6.0),
+            Stuff::Fabric,
+            [TOWEL_A, TOWEL_B, DUVET, WOOL_WARM][k],
+        );
+    }
+    // The ironing board, leaning.
+    turned(
+        out,
+        Vec3::new(r.min.x + 62.0, 74.0, south - 14.0),
+        Vec3::new(38.0, 130.0, 8.0),
+        Quat::from_rotation_x(-0.16),
+        Stuff::Fabric,
+        Color::srgb(0.70, 0.72, 0.68),
+    );
+    // Broom and mop in the corner.
+    for (i, (paint, head)) in [
+        (Color::srgb(0.46, 0.34, 0.20), Color::srgb(0.62, 0.50, 0.24)),
+        (Color::srgb(0.36, 0.40, 0.44), Color::srgb(0.74, 0.74, 0.70)),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let at = Vec3::new(r.min.x + 24.0 + i as f32 * 22.0, 0.0, south - 6.0);
+        let lean = Quat::from_rotation_z(0.10 + i as f32 * 0.05);
+        turned(
+            out,
+            at + Vec3::new(0.0, 74.0, 0.0),
+            Vec3::new(4.0, 148.0, 4.0),
+            lean,
+            Stuff::Wood,
+            paint,
+        );
+        turned(
+            out,
+            at + Vec3::new(-6.0, 8.0, 0.0),
+            Vec3::new(26.0, 16.0, 10.0),
+            lean,
+            Stuff::Fabric,
+            head,
+        );
+    }
+    slab(
+        out,
+        Vec3::new(r.max.x - 60.0, 24.0, south - 26.0),
+        Vec3::new(48.0, 48.0, 40.0),
+        Stuff::Fabric,
+        Color::srgb(0.68, 0.64, 0.56),
     );
 }
 

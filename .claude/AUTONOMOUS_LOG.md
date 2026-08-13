@@ -262,6 +262,22 @@ the session. Do not treat one room or prop as completion.
 - New constructors: `books` (each volume a shade and a size off the one under
   it, top one out of square), `mug`, `pot_plant`.
 
+
+## Pass eleven: a sweep, and what it found
+
+- **Daylight through the shut garage door.** The sectional's panels stop three
+  centimetres short of each joint and the reveal covering the joint was three
+  tall, so every section had a pair of one-and-a-half-centimetre slots in it —
+  a line of grass and sky right across a closed door. Eight-centimetre reveals.
+- **The laundry's south wall was blank the full width of the room.** It has a
+  hanging rail with clothes on it, an ironing board leaning where one always
+  leans, a broom, a mop and a basket.
+- **The washer and dryer read as one white cupboard.** Two pale carcasses side
+  by side with nothing on their faces is a cupboard; a control fascia, a dial,
+  a drum door with a glass port and a hinged door with a handle is a washer and
+  a dryer. Same lesson as the toilet and the wardrobe: the carcass is never the
+  part that identifies the thing.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
