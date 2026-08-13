@@ -129,6 +129,13 @@ pub struct Solid {
     /// forty. `u32::MAX` means the box is part of the building rather than
     /// something standing in it.
     pub piece: u32,
+    /// Collision without a drawing. A box that holds a made model up: the
+    /// model is what you see, and this is what the fly lands on.
+    pub unseen: bool,
+    /// Draw this asset instead of a box. The path is relative to `assets`, and
+    /// the model is taken to be in metres — Opificium's `opificium-fit` node
+    /// normalises to real-world size, and this world is in centimetres.
+    pub model: Option<&'static str>,
     /// Drawn see-through and excluded from shadow casting: glass.
     pub sheer: bool,
     /// Overhead: the roof, or a ceiling under it. Hidden in the plan view,
@@ -172,6 +179,8 @@ impl Solid {
             glow: 0.0,
             outdoors: false,
             piece: u32::MAX,
+            unseen: false,
+            model: None,
             stuff,
         }
     }
@@ -448,6 +457,8 @@ impl Door {
                 DOOR_WIDTH * 0.5,
             ),
             rot,
+            unseen: false,
+            model: None,
             piece: u32::MAX,
             outdoors: false,
             glow: 0.0,
@@ -850,6 +861,7 @@ fn dress_the_set(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    asset_server: Res<AssetServer>,
 ) {
     let cube = meshes.add(Cuboid::from_length(1.0));
     let grain: Vec<Handle<Image>> = [
@@ -869,6 +881,21 @@ fn dress_the_set(
         std::collections::HashMap::new();
 
     for (i, solid) in home.solids.iter().enumerate() {
+        // A made model stands in for its box, and its collision boxes are not
+        // drawn at all.
+        if let Some(path) = solid.model {
+            commands.spawn((
+                Part { solid: i },
+                WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path))),
+                Transform::from_translation(solid.center)
+                    .with_rotation(solid.rot)
+                    .with_scale(Vec3::splat(UNITS_PER_METRE)),
+            ));
+            continue;
+        }
+        if solid.unseen {
+            continue;
+        }
         let colour = solid.paint.unwrap_or_else(|| solid.stuff.tint());
         let rgba = colour.to_linear();
         let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;

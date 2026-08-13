@@ -843,6 +843,33 @@ cut off below the knee, which is a poor showing for a camera whose only job is
 looking at a body — and it is why I did not catch this myself. It frames the
 whole person now.
 
+
+## Pass forty-three: a made model in a generated house
+
+Brett can author models now, and pointed out that the law says *I* do not build
+assets in Opificium — not that he cannot hand me one. Fair reading. The couch is
+his.
+
+**The seam is deliberately small.** A `Solid` can carry `model: Some(path)` and
+`unseen: true`. The generated piece is still built: it is what the fly lands on,
+what arrange mode picks up, and what the house falls back to if an asset goes
+missing. The model is only what gets *drawn*. Nothing downstream — collision,
+pieces, the arrangement file, the floating law — has to know which kind of
+furniture it is looking at.
+
+- Opificium exports with an `opificium-fit` node normalising to real-world
+  metres, so the only conversion needed was centimetres: scale 100.
+- The couch came in at 216 x 98 x 100 cm, sat on the floor, right way round,
+  first try.
+- The procedural cushions and blanket had to go: they were positioned against
+  geometry that is no longer drawn, and floated beside the model.
+- Cost: 96 meshes (from 15) and 10,695 triangles for the one model. Frame rate
+  unchanged.
+
+The style holds together better than expected — shared lighting and a muted
+palette do most of it — but the model is plainly the best thing in the room now,
+which raises the question of what else gets replaced and in what order.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

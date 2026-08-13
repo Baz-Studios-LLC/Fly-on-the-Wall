@@ -385,6 +385,28 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
     piece_up(out, mark);
 }
 
+/// Swap a procedurally built piece for a made model, keeping the boxes it
+/// already built as collision.
+///
+/// This is the seam between the two ways of making a thing, and it is a small
+/// one on purpose. The generated version is still built — it is what the fly
+/// lands on, what arrange mode picks up, and what the house falls back to if
+/// the asset is missing — and the model is simply what gets drawn instead. So
+/// nothing downstream has to know which kind of furniture it is dealing with.
+fn use_model(out: &mut Vec<Solid>, mark: usize, path: &'static str, at: Vec3, turn: f32) {
+    for solid in &mut out[mark..] {
+        solid.unseen = true;
+    }
+    let mut model = Solid::between(at - Vec3::splat(2.0), at + Vec3::splat(2.0), Stuff::Fabric);
+    model.model = Some(path);
+    model.rot = Quat::from_rotation_y(turn);
+    model.unseen = true;
+    out.push(model);
+    // The model belongs to the same piece as the boxes it replaces, so
+    // arrange mode moves it with them.
+    piece_up(out, mark);
+}
+
 /// A chair: a legged seat with a back on the side `away` points to.
 ///
 /// The kitchen had four of these written out inline, which is exactly the kind
@@ -2342,37 +2364,22 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     );
 
     // Sofa facing east across the rug at the television.
+    //
+    // Drawn as one of Brett's models. Its boxes are still built and still do
+    // the collision, so the fly can land on the arm of a couch nobody
+    // generated.
+    let sofa_mark = out.len();
     sofa(out, seat, Vec2::new(96.0, 220.0), Vec2::new(-1.0, 0.0));
-    // Cushions along the back of it, and a blanket over one arm.
-    for k in 0..3 {
-        let z = m.y + (k as f32 - 1.0) * 62.0;
-        turned(
-            out,
-            Vec3::new(seat.x - 8.0, 62.0, z),
-            Vec3::new(14.0, 40.0, 44.0),
-            Quat::from_rotation_z(0.22 + wobble(z, 3.0) * 0.08),
-            Stuff::Fabric,
-            if k == 1 { WOOL_WARM } else { THROW },
-        );
-    }
-    // A throw over the near arm. Flat on top of it, it read as a plank; what
-    // makes a blanket a blanket is the part hanging down the outside.
-    soft(
+    use_model(
         out,
-        Vec3::new(seat.x - 4.0, 70.0, m.y + 102.0),
-        Vec3::new(62.0, 9.0, 48.0),
-        3.0,
-        Stuff::Fabric,
-        DUVET,
+        sofa_mark,
+        "models/couch.glb",
+        Vec3::new(seat.x, 0.0, seat.y),
+        0.0,
     );
-    soft(
-        out,
-        Vec3::new(seat.x - 4.0, 48.0, m.y + 124.0),
-        Vec3::new(58.0, 46.0, 8.0),
-        3.0,
-        Stuff::Fabric,
-        DUVET,
-    );
+    // No procedural cushions or blanket: the model has its own, and the ones
+    // built for the generated sofa were positioned against geometry that is no
+    // longer drawn — they ended up floating beside the couch.
 
     // Coffee table on the rug, with the things that live on one.
     legged(
