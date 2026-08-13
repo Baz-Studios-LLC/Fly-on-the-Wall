@@ -198,6 +198,24 @@ the session. Do not treat one room or prop as completion.
 - Cost after this pass: 2245 draws, 15 meshes, 182 materials, 20 lights. Frame
   rate is still display-bound, capped or not.
 
+
+## Pass seven: the grounds, and an exposure mistake
+
+- **Drive, path, step and planting.** The house had been standing on an infinite
+  lawn with no way up to either of its doors, which reads as a model of a house
+  rather than a house. There is a bayed concrete drive out from under the garage
+  door, a paved walk along the front, a spur to the step, and foundation
+  planting between the windows. None of it is taller than a step, so the
+  envelope law allows it outside; the shrubs get past by being `Stuff::Grass`,
+  which is both what they are and the exemption they need.
+- **The exterior had been rendering two and a half stops over.** The camera is
+  set to `Exposure::INDOOR` (EV100 7) because a room lit by an 800-lumen bulb
+  sits in the tens of lux and renders black at the daylight stop. Standing
+  *outside* at that stop does the opposite: the lawn washed out to pale mint and
+  so did everything planted in it. Three separate exterior passes — roof colour,
+  wall colour, shrub colour — were judged on colours that were not the colours.
+  `FLY_OUTSIDE` now meters for daylight. A camera meters for where it stands.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -209,6 +227,5 @@ the session. Do not treat one room or prop as completion.
 
 ## Next
 
-- No drive to the garage door and no path to the front step.
 - Exterior walls are flat untextured plaster; the house wants cladding courses.
 - Then: fly-scale routes, undersides and landing surfaces; restrained clutter.

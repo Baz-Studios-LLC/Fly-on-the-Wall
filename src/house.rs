@@ -434,6 +434,114 @@ fn envelope() -> (f32, f32, f32, f32, f32, f32) {
 }
 
 // ---------------------------------------------------------------------------
+// The grounds
+// ---------------------------------------------------------------------------
+
+/// Drive, path and planting.
+///
+/// The house had been standing on an infinite lawn with no way up to either of
+/// its doors, which reads as a model of a house rather than a house. None of
+/// this is tall enough to count as building, so the envelope law lets it lie
+/// outside; the shrubs get away with it by being vegetation, which is what
+/// `Stuff::Grass` already means.
+fn grounds(out: &mut Vec<Solid>) {
+    let (_w, _e, _n, so, garage_south, _he) = envelope();
+    let paving = Color::srgb(0.63, 0.62, 0.59);
+    let joint = Color::srgb(0.46, 0.46, 0.44);
+
+    let mut pave = |min: Vec3, max: Vec3, tint: Color| {
+        let mut s = Solid::between(min, max, Stuff::Stone);
+        s.paint = Some(tint);
+        out.push(s);
+    };
+
+    // The drive, in bays, running out from under the garage door to the path.
+    let (dx, drive_half) = (ft(57.0), ft(16.0) * 0.5 + 40.0);
+    let drive_end = so + 190.0;
+    const BAYS: usize = 5;
+    pave(
+        Vec3::new(dx - drive_half, -11.0, garage_south),
+        Vec3::new(dx + drive_half, -3.0, drive_end),
+        joint,
+    );
+    for k in 0..BAYS {
+        let run = (drive_end - garage_south) / BAYS as f32;
+        let z0 = garage_south + run * k as f32;
+        pave(
+            Vec3::new(dx - drive_half + 3.0, -11.0, z0 + 3.0),
+            Vec3::new(dx + drive_half - 3.0, -2.0, z0 + run - 3.0),
+            Color::srgb(
+                0.63 + grain(dx + z0 * 1.7) * 0.02,
+                0.62 + grain(z0 + dx * 1.7) * 0.02,
+                0.59,
+            ),
+        );
+    }
+
+    // The path along the front, and the spur up to the step.
+    let door_x = ft(25.0);
+    let walk = so + 152.0;
+    pave(
+        Vec3::new(door_x - 70.0, -11.0, walk - 62.0),
+        Vec3::new(dx - drive_half, -3.0, walk + 62.0),
+        joint,
+    );
+    for k in 0..9 {
+        let run = (dx - drive_half - door_x + 70.0) / 9.0;
+        let x0 = door_x - 70.0 + run * k as f32;
+        pave(
+            Vec3::new(x0 + 3.0, -11.0, walk - 59.0),
+            Vec3::new(x0 + run - 3.0, -2.0, walk + 59.0),
+            Color::srgb(0.63 + grain(x0 + walk * 1.7) * 0.02, 0.62, 0.59),
+        );
+    }
+    pave(
+        Vec3::new(door_x - 62.0, -11.0, so + 30.0),
+        Vec3::new(door_x + 62.0, -2.0, walk),
+        paving,
+    );
+
+    // Foundation planting, between the front windows and clear of the door.
+    //
+    // Five boxes a shrub rather than three, turned to different angles and
+    // overlapping hard, because a plant wants to read as one mass with a ragged
+    // edge — three stacked cubes read as three stacked cubes. They are
+    // `Stuff::Grass`, which is both what they are and how they get past the
+    // envelope law: vegetation is allowed to stand outside the walls.
+    for (x, tall) in [(ft(11.0), 98.0f32), (ft(35.0), 84.0), (ft(44.0), 110.0)] {
+        for (k, (spread, lift)) in [
+            (1.00f32, 0.26f32),
+            (0.92, 0.44),
+            (0.80, 0.60),
+            (0.62, 0.76),
+            (0.40, 0.90),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let n = grain(x + tall * 3.1 + k as f32 * 7.7);
+            let wide = 86.0 * spread * (1.0 + n * 0.10);
+            let y = tall * lift;
+            let at = Vec3::new(x + n * 9.0, y, so + 40.0 + n * 7.0);
+            let mut bush = Solid::between(
+                at - Vec3::new(wide * 0.5, tall * 0.20, wide * 0.5),
+                at + Vec3::new(wide * 0.5, tall * 0.20, wide * 0.5),
+                Stuff::Grass,
+            );
+            bush.rot = Quat::from_rotation_y(k as f32 * 0.55 + n * 0.4);
+            // Darker and greyer than lawn, and each layer a shade off the one
+            // below so the mass has some depth in flat sun.
+            bush.paint = Some(Color::srgb(
+                0.13 + k as f32 * 0.014,
+                0.23 + k as f32 * 0.022,
+                0.13 + k as f32 * 0.010,
+            ));
+            out.push(bush);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The roof
 // ---------------------------------------------------------------------------
 
@@ -808,6 +916,7 @@ pub fn build() -> Home {
     }
 
     roof(&mut s);
+    grounds(&mut s);
     glaze(&mut s);
     fixtures(&mut s);
     crate::furniture::furnish(&mut s);

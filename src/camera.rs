@@ -183,7 +183,16 @@ fn spawn_eye(mut commands: Commands) {
         // the first pass looked like. EV100 7 is the indoor stop and is worth
         // more than any amount of tuning the lights themselves: the physics was
         // already right, the camera was stopped down for a beach.
-        Exposure::INDOOR,
+        // And the other way round for the exterior viewpoint. Standing outside
+        // at the indoor stop, everything in sun is two and a half stops over:
+        // the lawn washes out to pale mint and so does anything planted in it.
+        // Three separate exterior passes were judged on colours that were not
+        // the colours. A camera meters for where it is standing.
+        if outside_view().is_some() {
+            Exposure::BLENDER
+        } else {
+            Exposure::INDOOR
+        },
         Transform::default(),
         bevy::ui::IsDefaultUiCamera,
         Eye {
