@@ -47,6 +47,12 @@ const BUMPER: Color = Color::srgb(0.20, 0.21, 0.23);
 const LAMP: Color = Color::srgb(0.96, 0.94, 0.84);
 const TAIL: Color = Color::srgb(0.54, 0.10, 0.09);
 const PLATE: Color = Color::srgb(0.88, 0.88, 0.85);
+const DOOR_FACE: Color = Color::srgb(0.30, 0.22, 0.16);
+const DOOR_PANEL: Color = Color::srgb(0.26, 0.19, 0.14);
+const TRIMWORK: Color = Color::srgb(0.92, 0.91, 0.88);
+const THRESHOLD: Color = Color::srgb(0.42, 0.32, 0.22);
+const BRASS: Color = Color::srgb(0.72, 0.60, 0.30);
+const PAVING: Color = Color::srgb(0.62, 0.61, 0.58);
 const CABIN: Color = Color::srgb(0.20, 0.20, 0.21);
 const SEAT: Color = Color::srgb(0.32, 0.30, 0.28);
 const DOOR_SKIN: Color = Color::srgb(0.80, 0.80, 0.78);
@@ -873,6 +879,145 @@ fn garage_door(out: &mut Vec<Solid>) {
     }
 }
 
+/// A panelled door, hung on its hinge edge and left standing at `ajar`.
+///
+/// Built in the door's own frame — x across the leaf from the hinge, y up from
+/// the threshold, z through its thickness — and then swung, so the geometry
+/// does not have to be re-derived for every angle. Stiles, three rails and two
+/// recessed panels: the same stile-and-rail construction a real door has, which
+/// is why the shadow lines fall where a person expects them to.
+fn door_leaf(out: &mut Vec<Solid>, hinge: Vec3, wide: f32, high: f32, swing: Quat) {
+    let leaf = 4.6;
+    let mut put = |x0: f32, x1: f32, y0: f32, y1: f32, thick: f32, paint: Color| {
+        let local = Vec3::new((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0);
+        turned(
+            out,
+            hinge + swing * local,
+            Vec3::new(x1 - x0, y1 - y0, thick),
+            swing,
+            Stuff::Wood,
+            paint,
+        );
+    };
+    let stile = 13.0;
+    let rail = 16.0;
+    put(0.0, stile, 0.0, high, leaf, DOOR_FACE);
+    put(wide - stile, wide, 0.0, high, leaf, DOOR_FACE);
+    put(stile, wide - stile, 0.0, rail + 6.0, leaf, DOOR_FACE);
+    put(
+        stile,
+        wide - stile,
+        high * 0.47,
+        high * 0.47 + rail,
+        leaf,
+        DOOR_FACE,
+    );
+    put(stile, wide - stile, high - rail, high, leaf, DOOR_FACE);
+    // The two panels, set back inside the frame they sit in.
+    put(
+        stile,
+        wide - stile,
+        rail + 6.0,
+        high * 0.47,
+        leaf * 0.55,
+        DOOR_PANEL,
+    );
+    put(
+        stile,
+        wide - stile,
+        high * 0.47 + rail,
+        high - rail,
+        leaf * 0.55,
+        DOOR_PANEL,
+    );
+    // A knob each side of the leaf, on the swinging edge.
+    for face in [-1.0f32, 1.0] {
+        let local = Vec3::new(wide - 20.0, high * 0.44, face * (leaf * 0.5 + 2.5));
+        turned(
+            out,
+            hinge + swing * local,
+            Vec3::new(7.0, 7.0, 5.0),
+            swing,
+            Stuff::Metal,
+            BRASS,
+        );
+    }
+}
+
+/// The front door: cased both sides, hung ajar, with a stoop to stand on.
+///
+/// Ajar because it is the only opening in the house that is not glazed shut,
+/// and sealing it would wall the fly in. It is also, conveniently, what a
+/// house looks like when somebody is home.
+fn front_door(out: &mut Vec<Solid>) {
+    let (lo, hi) = crate::house::front_door();
+    let wide = hi.x - lo.x;
+    let high = hi.y;
+    let z = (lo.z + hi.z) * 0.5;
+    let thick = hi.z - lo.z;
+
+    // Threshold, and the casing on both faces.
+    slab(
+        out,
+        Vec3::new((lo.x + hi.x) * 0.5, 1.5, z),
+        Vec3::new(wide, 3.0, thick),
+        Stuff::Wood,
+        THRESHOLD,
+    );
+    for face in [-1.0f32, 1.0] {
+        let fz = z + face * (thick * 0.5 + 1.5);
+        for side in [-1.0f32, 1.0] {
+            slab(
+                out,
+                Vec3::new(
+                    (lo.x + hi.x) * 0.5 + side * (wide * 0.5 + 5.0),
+                    high * 0.5,
+                    fz,
+                ),
+                Vec3::new(10.0, high + 10.0, 3.0),
+                Stuff::Wood,
+                TRIMWORK,
+            );
+        }
+        slab(
+            out,
+            Vec3::new((lo.x + hi.x) * 0.5, high + 5.0, fz),
+            Vec3::new(wide + 20.0, 10.0, 3.0),
+            Stuff::Wood,
+            TRIMWORK,
+        );
+    }
+
+    // Hung on the left jamb, opening inward — north, into the great room. The
+    // envelope law caught the first version of this swinging out into the
+    // garden, which is not how a front door on this continent is hung.
+    let swing = Quat::from_rotation_y(0.42);
+    door_leaf(
+        out,
+        Vec3::new(lo.x + 2.0, 3.0, z),
+        wide - 4.0,
+        high - 4.0,
+        swing,
+    );
+
+    // A stoop outside it, and a step down to the grass.
+    let mid = (lo.x + hi.x) * 0.5;
+    slab(
+        out,
+        Vec3::new(mid, -4.0, z + thick * 0.5 + 58.0),
+        Vec3::new(wide + 90.0, 14.0, 116.0),
+        Stuff::Stone,
+        PAVING,
+    );
+    slab(
+        out,
+        Vec3::new(mid, -9.0, z + thick * 0.5 + 138.0),
+        Vec3::new(wide + 130.0, 10.0, 46.0),
+        Stuff::Stone,
+        PAVING,
+    );
+}
+
 // ---------------------------------------------------------------------------
 // The rooms
 // ---------------------------------------------------------------------------
@@ -890,6 +1035,7 @@ pub fn furnish(out: &mut Vec<Solid>) {
             Use::Garage => garage(out, &r),
         }
     }
+    front_door(out);
     // Last, so a curtain can see what is already standing under its window.
     dress_the_windows(out);
 }

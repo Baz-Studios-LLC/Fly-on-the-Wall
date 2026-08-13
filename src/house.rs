@@ -68,6 +68,8 @@ const SLAB: f32 = 12.0;
 /// How far a wall carries on below the floor, so no room can open a slot at
 /// its skirting by sitting a few centimetres lower than its neighbour.
 const FOOTING: f32 = 30.0;
+/// The tallest a piece of groundwork gets before it counts as building.
+pub const STEP_HIGH: f32 = 26.0;
 
 /// Skirting: how tall, and how far proud of the plaster it stands.
 ///
@@ -865,6 +867,18 @@ fn glaze(s: &mut Vec<Solid>) {
 /// rather than remembered. Twice in one pass a kitchen fitting was placed over
 /// glass — first a run of wall cabinets, then a cooker hood — and both times it
 /// was invisible in the plan and unmissable from inside the room.
+/// The front door's opening, in world centimetres. The only way in or out of
+/// this house that is not glazed shut.
+pub fn front_door() -> (Vec3, Vec3) {
+    let (w, _, _, so, _, _) = envelope();
+    let _ = w;
+    let half = DOOR_WIDE * 0.5;
+    (
+        Vec3::new(ft(25.0) - half, 0.0, so - OUTER * 0.5),
+        Vec3::new(ft(25.0) + half, DOOR_HIGH, so + OUTER * 0.5),
+    )
+}
+
 /// The vehicle door's opening, in world centimetres.
 ///
 /// It is the one hole in the house big enough to drive through, and the only
@@ -1045,7 +1059,9 @@ pub fn audit(home: &Home) {
         // that skips anything already outside excuses exactly the pieces that
         // got furthest out, and the shelf unit used to prove it walked straight
         // through this check.
-        if solid.roof || solid.stuff == Stuff::Grass {
+        // Groundwork is allowed out there — a stoop, a step, a path, a drive.
+        // Anything no taller than a step is not the building escaping.
+        if solid.roof || solid.stuff == Stuff::Grass || solid.center.y + solid.half.y <= STEP_HIGH {
             continue;
         }
         let (lo, hi) = (solid.center - solid.half, solid.center + solid.half);
