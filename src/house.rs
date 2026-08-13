@@ -68,8 +68,6 @@ const SLAB: f32 = 12.0;
 /// How far a wall carries on below the floor, so no room can open a slot at
 /// its skirting by sitting a few centimetres lower than its neighbour.
 const FOOTING: f32 = 30.0;
-/// The tallest a piece of groundwork gets before it counts as building.
-pub const STEP_HIGH: f32 = 26.0;
 
 /// Skirting: how tall, and how far proud of the plaster it stands.
 ///
@@ -288,17 +286,6 @@ fn wall_run(
         if e - s < 0.01 || high - low < 0.01 {
             return;
         }
-        let (min, max) = if along_x {
-            (
-                Vec3::new(a.x + s, low, a.y - half),
-                Vec3::new(a.x + e, high, a.y + half),
-            )
-        } else {
-            (
-                Vec3::new(a.x - half, low, a.y + s),
-                Vec3::new(a.x + half, high, a.y + e),
-            )
-        };
         // The wall, in two halves, each painted for the room its face looks
         // into.
         //

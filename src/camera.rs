@@ -234,7 +234,12 @@ fn sky_cubemap(images: &mut Assets<Image>) -> Handle<Image> {
         TextureFormat::Rgba8UnormSrgb,
         bevy::asset::RenderAssetUsages::RENDER_WORLD,
     );
-    image.reinterpret_stacked_2d_as_array(6);
+    // Six stacked square faces reinterpreted as a cube. It returns a Result
+    // and it is worth reading: silently ignoring it means a malformed cubemap
+    // and no reflection at all, with nothing said about why.
+    image
+        .reinterpret_stacked_2d_as_array(6)
+        .expect("six square faces make a cubemap");
     image.texture_view_descriptor = Some(TextureViewDescriptor {
         dimension: Some(TextureViewDimension::Cube),
         ..default()
