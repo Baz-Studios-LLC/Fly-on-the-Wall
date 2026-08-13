@@ -724,6 +724,19 @@ Brett tried it and found three things, two of which were my fault outright.
 - `FLY_GAIT=<0..1>` poses the cycle from outside, because a screenshot cannot
   walk. Captured at three phases to confirm the tripods actually alternate.
 
+
+## Pass thirty-seven: a ghost you can read
+
+- The highlight was one translucent bounding box, which says where a thing is
+  and nothing about which way it faces — useless precisely when you are turning
+  it. Every solid in this house is a unit cube with a transform, so a faithful
+  ghost is those transforms again a shade larger: a pool of cubes, and a piece
+  borrows as many as it has boxes. A bookshelf now ghosts as uprights, boards
+  and books.
+- The keys line only shows the keys that do something *now*. Turning works only
+  while carrying, and a line that lists every key at all times is a line nobody
+  reads.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

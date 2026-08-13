@@ -50,8 +50,13 @@ pub struct Arranging {
     moved: std::collections::HashMap<u32, (Vec3, f32)>,
 }
 
+/// One box of the ghost. There is a pool of them, and a piece borrows as many
+/// as it has boxes.
 #[derive(Component)]
 struct Marker;
+
+/// How many boxes the biggest piece in the house has. The car is about sixty.
+const GHOST_POOL: usize = 96;
 
 #[derive(Component)]
 struct Crosshair;
@@ -79,22 +84,30 @@ fn spawn_marker(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // One translucent box, moved onto whatever is being looked at. Cheaper and
-    // clearer than tinting the piece's own materials, which are shared with
-    // every other object that happens to look the same.
-    commands.spawn((
-        Marker,
-        Mesh3d(meshes.add(Cuboid::from_length(1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgba(0.42, 0.86, 0.78, 0.22),
-            alpha_mode: AlphaMode::Blend,
-            unlit: true,
-            ..default()
-        })),
-        Transform::from_scale(Vec3::ZERO),
-        Visibility::Hidden,
-        bevy::light::NotShadowCaster,
-    ));
+    // The ghost is the piece's own shape, not a box round it.
+    //
+    // A single translucent bounding box says where a thing is and nothing about
+    // which way it is facing, which is useless precisely when you are turning
+    // something. Every solid in this house is a unit cube with a transform, so
+    // a faithful ghost is just those transforms again, a shade larger — a pool
+    // of cubes, and a piece borrows as many as it has boxes.
+    let cube = meshes.add(Cuboid::from_length(1.0));
+    let glow = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.34, 0.94, 0.80, 0.30),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        ..default()
+    });
+    for _ in 0..GHOST_POOL {
+        commands.spawn((
+            Marker,
+            Mesh3d(cube.clone()),
+            MeshMaterial3d(glow.clone()),
+            Transform::from_scale(Vec3::ZERO),
+            Visibility::Hidden,
+            bevy::light::NotShadowCaster,
+        ));
+    }
 
     // A crosshair. Without one there is no way to know what the ray is on, and
     // "point at the thing" is the whole interface.
@@ -162,11 +175,10 @@ fn aim(
     mut markers: Query<(&mut Transform, &mut Visibility), With<Marker>>,
 ) {
     let mut arranging = arranging;
-    let Ok((mut marker, mut seen)) = markers.single_mut() else {
-        return;
-    };
     if !arranging.on {
-        *seen = Visibility::Hidden;
+        for (_, mut seen) in &mut markers {
+            *seen = Visibility::Hidden;
+        }
         return;
     }
     let Ok(eye) = eyes.single() else { return };
@@ -182,15 +194,24 @@ fn aim(
             .filter(|p| *p != u32::MAX);
     }
 
+    // Lay the pool over the piece's own boxes, one for one.
     let showing = arranging.held.map(|(p, _)| p).or(arranging.looking_at);
-    match showing.and_then(|p| bounds(&home, p)) {
-        Some((lo, hi)) => {
-            marker.translation = (lo + hi) * 0.5;
-            marker.scale = (hi - lo) + Vec3::splat(1.5);
-            marker.rotation = Quat::IDENTITY;
+    let mut ghosts = markers.iter_mut();
+    if let Some(piece) = showing {
+        for solid in home.solids.iter().filter(|s| s.piece == piece) {
+            let Some((mut transform, mut seen)) = ghosts.next() else {
+                break;
+            };
+            transform.translation = solid.center;
+            transform.rotation = solid.rot;
+            // A shade larger, so it reads as a skin over the piece rather than
+            // z-fighting with every face of it.
+            transform.scale = solid.half * 2.0 + Vec3::splat(1.2);
             *seen = Visibility::Inherited;
         }
-        None => *seen = Visibility::Hidden,
+    }
+    for (_, mut seen) in ghosts {
+        *seen = Visibility::Hidden;
     }
 }
 
@@ -415,12 +436,20 @@ fn show(
         })
         .unwrap_or_else(|| "nothing in front of you".into());
     text.0 = format!(
-        "ARRANGING   -   {}{}\nclick or G take / drop    left right arrows turn    Ctrl+S save    Backspace put it all back    Tab done",
+        "ARRANGING   -   {}{}\n{}",
         size,
         if arranging.held.is_some() {
             "   -   carrying"
         } else {
             ""
+        },
+        // The keys that do something right now. Turning only works while you
+        // are holding something, and a line that says so at all times is a line
+        // that gets ignored.
+        if arranging.held.is_some() {
+            "left / right arrows turn it    click or G to put it down    Ctrl+S save"
+        } else {
+            "click or G to pick it up    Backspace put it all back    Tab done"
         }
     );
 }
