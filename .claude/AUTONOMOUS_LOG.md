@@ -355,6 +355,32 @@ the session. Do not treat one room or prop as completion.
   material and the leg gets a floorboard's worth of grain on it. Materials
   359 -> 616 as a result, which is the price of the thing working.
 
+
+## Pass nineteen: outside the window
+
+- Brett asked for a street, other houses, and yards. Every room in this house
+  had looked out onto an unbroken green plane to the horizon, which is the one
+  thing that gave away that the building was a model of a house rather than a
+  house in a place.
+- Two-lane road with a dashed centre line, kerbs and pavements both sides;
+  five neighbouring houses built with the *same* roof constructor so the ridges
+  and eaves match and the street reads as one street; drives and paths to each;
+  street trees; a mailbox at the kerb; and out the back a fence, a shed, a
+  patio and a washing line.
+- **The fly does not go outside.** Brett's call, and it settles two things: the
+  outside only needs a silhouette and a roof line, because it is only ever seen
+  through glass; and the front door and the raised kitchen sash both had to be
+  shut. That is the better game — the street is right there and can never be
+  reached, which is exactly what a window means to a fly.
+- `Solid.outdoors` replaces two inferences that had stopped being safe: planting
+  was recognised by its material and paving by being no taller than a step.
+  Neither survives a house across the road.
+- Two things the first capture killed: trees built as a stack of wide flat boxes
+  read as a pile of crates painted green — eighteen small lumps on a rough
+  sphere read as a canopy. And the ground's grain was tiling sixty times over a
+  hundred and eighty metres, which put visible blocks the size of a car on the
+  lawn.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

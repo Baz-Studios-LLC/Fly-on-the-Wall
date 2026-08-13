@@ -605,6 +605,7 @@ fn grounds(out: &mut Vec<Solid>) {
     let mut pave = |min: Vec3, max: Vec3, tint: Color| {
         let mut s = Solid::between(min, max, Stuff::Stone);
         s.paint = Some(tint);
+        s.outdoors = true;
         out.push(s);
     };
 
@@ -681,6 +682,7 @@ fn grounds(out: &mut Vec<Solid>) {
                 at + Vec3::new(wide * 0.5, tall * 0.20, wide * 0.5),
                 Stuff::Grass,
             );
+            bush.outdoors = true;
             bush.rot = Quat::from_rotation_y(k as f32 * 0.55 + n * 0.4);
             // Darker and greyer than lawn, and each layer a shade off the one
             // below so the mass has some depth in flat sun.
@@ -692,6 +694,376 @@ fn grounds(out: &mut Vec<Solid>) {
             out.push(bush);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The neighbourhood
+// ---------------------------------------------------------------------------
+
+/// Everything past the property line: the street, the houses across it, the
+/// trees, and what is in the two yards.
+///
+/// It exists to be *seen through a window*. Every room in this house has looked
+/// out onto an unbroken green plane to the horizon, which is the one thing that
+/// gives away that the building is a model of a house rather than a house in a
+/// place. None of it needs to be good close up; it needs to have a silhouette,
+/// a roof line and a colour that is not the lawn's.
+fn neighbourhood(out: &mut Vec<Solid>) {
+    let (w, e, n, so, _gs, _he) = envelope();
+
+    fn place(out: &mut Vec<Solid>, min: Vec3, max: Vec3, stuff: Stuff, tint: Color) {
+        let mut s = Solid::between(min, max, stuff);
+        s.paint = Some(tint);
+        s.outdoors = true;
+        out.push(s);
+    }
+
+    // -- The street, out in front ------------------------------------------
+    let walk_near = so + 900.0;
+    let kerb = walk_near + 170.0;
+    let road_far = kerb + 760.0;
+    let walk_far = road_far + 20.0;
+    let spread = 6000.0;
+
+    place(
+        out,
+        Vec3::new(w - spread, -10.0, walk_near),
+        Vec3::new(e + spread, -2.0, kerb),
+        Stuff::Stone,
+        Color::srgb(0.64, 0.63, 0.60),
+    );
+    place(
+        out,
+        Vec3::new(w - spread, -10.0, kerb),
+        Vec3::new(e + spread, 4.0, kerb + 18.0),
+        Stuff::Stone,
+        Color::srgb(0.70, 0.69, 0.66),
+    );
+    place(
+        out,
+        Vec3::new(w - spread, -11.0, kerb + 18.0),
+        Vec3::new(e + spread, -4.0, road_far),
+        Stuff::Stone,
+        Color::srgb(0.24, 0.24, 0.25),
+    );
+    place(
+        out,
+        Vec3::new(w - spread, -11.0, road_far),
+        Vec3::new(e + spread, 4.0, road_far + 18.0),
+        Stuff::Stone,
+        Color::srgb(0.70, 0.69, 0.66),
+    );
+    place(
+        out,
+        Vec3::new(w - spread, -10.0, road_far + 18.0),
+        Vec3::new(e + spread, -2.0, walk_far + 170.0),
+        Stuff::Stone,
+        Color::srgb(0.64, 0.63, 0.60),
+    );
+    // Centre line, dashed.
+    let middle = (kerb + road_far) * 0.5;
+    let mut dash = w - spread;
+    while dash < e + spread {
+        place(
+            out,
+            Vec3::new(dash, -11.0, middle - 7.0),
+            Vec3::new(dash + 200.0, -3.5, middle + 7.0),
+            Stuff::Stone,
+            Color::srgb(0.72, 0.68, 0.36),
+        );
+        dash += 380.0;
+    }
+    // The drive crosses the verge to meet the road.
+    place(
+        out,
+        Vec3::new(ft(57.0) - 330.0, -10.0, so + 190.0),
+        Vec3::new(ft(57.0) + 330.0, -3.0, kerb + 20.0),
+        Stuff::Stone,
+        Color::srgb(0.63, 0.62, 0.59),
+    );
+
+    // -- A tree, since half of what makes a street a street is the trees ----
+    fn tree(out: &mut Vec<Solid>, at: Vec2, tall: f32) {
+        let seed = grain(at.x + at.y * 1.7);
+        // A trunk that is two crossed boxes rather than one, so it has eight
+        // faces at the corner instead of four and stops reading as a post.
+        for k in 0..2 {
+            let mut trunk = Solid::between(
+                Vec3::new(-13.0, -10.0, -7.0),
+                Vec3::new(13.0, tall * 0.44, 7.0),
+                Stuff::Wood,
+            );
+            trunk.center = Vec3::new(at.x, (tall * 0.44 - 10.0) * 0.5 - 5.0, at.y);
+            trunk.rot = Quat::from_rotation_y(k as f32 * std::f32::consts::FRAC_PI_2 + seed * 0.3);
+            trunk.paint = Some(Color::srgb(0.29, 0.23, 0.18));
+            trunk.outdoors = true;
+            out.push(trunk);
+        }
+        // The canopy is a ball of lumps, not a stack of slabs. Twelve boxes on
+        // a rough sphere, each turned, each about half the canopy across — the
+        // first version stacked six wide flat boxes and read as a pile of
+        // crates painted green.
+        let heart = Vec3::new(at.x, tall * 0.74, at.y);
+        let ball = tall * 0.36;
+        const LUMPS: usize = 18;
+        for k in 0..LUMPS {
+            let a = k as f32 * 2.399_963;
+            let up = 1.0 - 2.0 * (k as f32 + 0.5) / LUMPS as f32;
+            let ring = (1.0 - up * up).max(0.0).sqrt();
+            let dir = Vec3::new(a.cos() * ring, up * 0.82, a.sin() * ring);
+            let m = grain(at.x + k as f32 * 13.0 + at.y * 0.7);
+            // Smaller and more of them. Twelve at three-quarters of the ball
+            // across is a heap of crates; eighteen at half is a canopy.
+            let lump = ball * (0.50 + m * 0.16);
+            let mut leaf = Solid::between(
+                Vec3::splat(-lump * 0.5),
+                Vec3::splat(lump * 0.5),
+                Stuff::Grass,
+            );
+            leaf.center = heart + dir * ball * 0.74;
+            leaf.rot = Quat::from_rotation_y(a) * Quat::from_rotation_x(0.4 + m * 0.5);
+            leaf.paint = Some(Color::srgb(
+                0.13 + m * 0.03 + up * 0.03,
+                0.26 + m * 0.04 + up * 0.05,
+                0.13 + m * 0.02,
+            ));
+            leaf.outdoors = true;
+            out.push(leaf);
+        }
+    }
+
+    // -- A house across the road, or beside this one -----------------------
+    //
+    // Built out of the same roof constructor the real one uses, so the ridges,
+    // eaves and gables match and the street reads as one street.
+    fn neighbour(out: &mut Vec<Solid>, min: Vec2, max: Vec2, along_x: bool, tone: f32) {
+        let top = CEILING - 8.0;
+        let clad = Color::srgb(0.62 + tone * 0.22, 0.60 + tone * 0.20, 0.55 + tone * 0.16);
+        let mut body = Solid::between(
+            Vec3::new(min.x, -12.0, min.y),
+            Vec3::new(max.x, top, max.y),
+            Stuff::Wood,
+        );
+        body.paint = Some(clad);
+        body.outdoors = true;
+        out.push(body);
+
+        // Openings, punched as dark insets on the two long faces.
+        let (from, to, face_lo, face_hi) = if along_x {
+            (min.x, max.x, min.y, max.y)
+        } else {
+            (min.y, max.y, min.x, max.x)
+        };
+        let run = to - from;
+        let holes = ((run / 260.0).round() as usize).max(2);
+        for k in 0..holes {
+            let along = from + run * (k as f32 + 0.5) / holes as f32;
+            let door = k == holes / 2;
+            let (lo_y, hi_y) = if door { (0.0, 200.0) } else { (95.0, 200.0) };
+            for face in [face_lo, face_hi] {
+                let side = if face == face_lo { -1.0 } else { 1.0 };
+                let (a, b) = if along_x {
+                    (
+                        Vec3::new(along - 60.0, lo_y, face + side * 3.0),
+                        Vec3::new(along + 60.0, hi_y, face - side * 3.0),
+                    )
+                } else {
+                    (
+                        Vec3::new(face + side * 3.0, lo_y, along - 60.0),
+                        Vec3::new(face - side * 3.0, hi_y, along + 60.0),
+                    )
+                };
+                let mut hole = Solid::between(a.min(b), a.max(b), Stuff::Glass);
+                hole.paint = Some(if door {
+                    Color::srgb(0.24, 0.18, 0.14)
+                } else {
+                    Color::srgb(0.16, 0.19, 0.22)
+                });
+                hole.sheer = false;
+                hole.outdoors = true;
+                out.push(hole);
+            }
+        }
+        gable_roof(out, min, max, along_x, top + SLAB + 8.0);
+    }
+
+    // Two across the road, set back behind their own lawns, and one either
+    // side of this house.
+    // Across the road, set well back behind their own lawns. The first pass had
+    // them close enough to the kerb to loom, which is not what a street of
+    // these looks like and is not what a window onto one shows.
+    for (x0, wide, deep, back, tone) in [
+        (w - 900.0, 1560.0, 1020.0, 1500.0, 0.35f32),
+        (w + 1300.0, 1420.0, 980.0, 1720.0, -0.42),
+        (w + 3300.0, 1620.0, 1040.0, 1560.0, 0.18),
+    ] {
+        let z0 = walk_far + back;
+        neighbour(
+            out,
+            Vec2::new(x0, z0),
+            Vec2::new(x0 + wide, z0 + deep),
+            true,
+            tone,
+        );
+        // A drive out to the kerb and a path to the door, which is most of
+        // what tells you a house is lived in from three gardens away.
+        place(
+            out,
+            Vec3::new(x0 + wide - 500.0, -10.0, road_far + 18.0),
+            Vec3::new(x0 + wide - 140.0, -3.0, z0),
+            Stuff::Stone,
+            Color::srgb(0.62, 0.61, 0.58),
+        );
+        place(
+            out,
+            Vec3::new(x0 + wide * 0.5 - 55.0, -10.0, road_far + 120.0),
+            Vec3::new(x0 + wide * 0.5 + 55.0, -3.0, z0),
+            Stuff::Stone,
+            Color::srgb(0.65, 0.64, 0.61),
+        );
+    }
+    neighbour(
+        out,
+        Vec2::new(w - 2560.0, n + 220.0),
+        Vec2::new(w - 940.0, n + 1780.0),
+        false,
+        0.12,
+    );
+    neighbour(
+        out,
+        Vec2::new(e + 940.0, n + 300.0),
+        Vec2::new(e + 2500.0, n + 1860.0),
+        false,
+        -0.20,
+    );
+
+    for (x, z, tall) in [
+        (w - 420.0, walk_near + 80.0, 520.0),
+        (ft(40.0), walk_near + 80.0, 460.0),
+        (e + 520.0, walk_near + 80.0, 560.0),
+        (w + 1300.0, walk_far + 300.0, 500.0),
+        (w + 3400.0, walk_far + 320.0, 470.0),
+        (w - 1400.0, n - 500.0, 620.0),
+        (e + 900.0, so + 300.0, 540.0),
+    ] {
+        tree(out, Vec2::new(x, z), tall);
+    }
+
+    // -- The back yard ------------------------------------------------------
+    let fence_z = n - 1000.0;
+    let (fw, fe) = (w - 500.0, e + 500.0);
+    fn fence(out: &mut Vec<Solid>, a: Vec2, b: Vec2) {
+        let along = (b - a).normalize_or_zero();
+        let run = (b - a).length();
+        let bays = (run / 200.0).round().max(1.0) as usize;
+        for k in 0..=bays {
+            let p = a + along * (run * k as f32 / bays as f32);
+            place(
+                out,
+                Vec3::new(p.x - 7.0, -12.0, p.y - 7.0),
+                Vec3::new(p.x + 7.0, 160.0, p.y + 7.0),
+                Stuff::Wood,
+                Color::srgb(0.40, 0.32, 0.24),
+            );
+        }
+        let across = Vec2::new(along.y.abs(), along.x.abs());
+        for (y, high) in [(24.0f32, 60.0f32), (94.0, 56.0)] {
+            let lo = a - across * 5.0;
+            let hi = b + across * 5.0;
+            place(
+                out,
+                Vec3::new(lo.x.min(hi.x) - 4.0, y, lo.y.min(hi.y) - 4.0),
+                Vec3::new(lo.x.max(hi.x) + 4.0, y + high, lo.y.max(hi.y) + 4.0),
+                Stuff::Wood,
+                Color::srgb(0.46, 0.37, 0.27),
+            );
+        }
+    }
+    fence(out, Vec2::new(fw, fence_z), Vec2::new(fe, fence_z));
+    fence(out, Vec2::new(fw, fence_z), Vec2::new(fw, n - 60.0));
+    fence(out, Vec2::new(fe, fence_z), Vec2::new(fe, n - 60.0));
+
+    // A patio off the back of the house, a shed in the corner, and a line.
+    place(
+        out,
+        Vec3::new(ft(18.0), -10.0, n - 460.0),
+        Vec3::new(ft(31.0), -2.0, n - 20.0),
+        Stuff::Stone,
+        Color::srgb(0.60, 0.58, 0.55),
+    );
+    let shed = Vec2::new(fw + 420.0, fence_z + 300.0);
+    place(
+        out,
+        Vec3::new(shed.x - 170.0, -12.0, shed.y - 130.0),
+        Vec3::new(shed.x + 170.0, 190.0, shed.y + 130.0),
+        Stuff::Wood,
+        Color::srgb(0.38, 0.34, 0.28),
+    );
+    place(
+        out,
+        Vec3::new(shed.x - 186.0, 186.0, shed.y - 146.0),
+        Vec3::new(shed.x + 186.0, 204.0, shed.y + 30.0),
+        Stuff::Wood,
+        Color::srgb(0.28, 0.26, 0.24),
+    );
+    place(
+        out,
+        Vec3::new(shed.x - 186.0, 168.0, shed.y + 20.0),
+        Vec3::new(shed.x + 186.0, 190.0, shed.y + 150.0),
+        Stuff::Wood,
+        Color::srgb(0.30, 0.28, 0.26),
+    );
+    place(
+        out,
+        Vec3::new(shed.x - 48.0, -10.0, shed.y + 126.0),
+        Vec3::new(shed.x + 48.0, 178.0, shed.y + 134.0),
+        Stuff::Wood,
+        Color::srgb(0.30, 0.26, 0.21),
+    );
+    for side in [-1.0f32, 1.0] {
+        let x = ft(24.0) + side * 420.0;
+        place(
+            out,
+            Vec3::new(x - 8.0, -12.0, n - 700.0),
+            Vec3::new(x + 8.0, 200.0, n - 684.0),
+            Stuff::Metal,
+            Color::srgb(0.62, 0.62, 0.60),
+        );
+    }
+    for k in 0..3 {
+        let y = 168.0 + k as f32 * 14.0;
+        place(
+            out,
+            Vec3::new(ft(24.0) - 420.0, y, n - 695.0),
+            Vec3::new(ft(24.0) + 420.0, y + 2.0, n - 693.0),
+            Stuff::Metal,
+            Color::srgb(0.78, 0.78, 0.74),
+        );
+    }
+    // A mailbox at the kerb, which is the one thing every one of these streets
+    // has and the only reason to walk to the end of the drive.
+    let post = Vec2::new(ft(57.0) - 380.0, walk_near + 100.0);
+    place(
+        out,
+        Vec3::new(post.x - 6.0, -10.0, post.y - 6.0),
+        Vec3::new(post.x + 6.0, 108.0, post.y + 6.0),
+        Stuff::Wood,
+        Color::srgb(0.38, 0.30, 0.22),
+    );
+    place(
+        out,
+        Vec3::new(post.x - 17.0, 106.0, post.y - 26.0),
+        Vec3::new(post.x + 17.0, 148.0, post.y + 26.0),
+        Stuff::Metal,
+        Color::srgb(0.30, 0.34, 0.38),
+    );
+    place(
+        out,
+        Vec3::new(post.x + 17.0, 128.0, post.y - 4.0),
+        Vec3::new(post.x + 25.0, 150.0, post.y + 4.0),
+        Stuff::Metal,
+        Color::srgb(0.66, 0.20, 0.16),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -952,11 +1324,13 @@ pub fn build() -> Home {
     // there was something on the other side of it, because a window shows you
     // what is outside and outside was nothing at all. A lawn and a sky are the
     // cheapest believable daylight in the build.
-    s.push(Solid::between(
-        Vec3::new(w - 4000.0, -60.0, n - 4000.0),
-        Vec3::new(e + 4000.0, -10.0, so + 4000.0),
+    let mut ground = Solid::between(
+        Vec3::new(w - 9000.0, -60.0, n - 9000.0),
+        Vec3::new(e + 9000.0, -10.0, so + 9000.0),
         Stuff::Grass,
-    ));
+    );
+    ground.outdoors = true;
+    s.push(ground);
 
     // -- Floors, one per room ---------------------------------------------
     //
@@ -1131,6 +1505,7 @@ pub fn build() -> Home {
 
     roof(&mut s);
     grounds(&mut s);
+    neighbourhood(&mut s);
     window_trim(&mut s);
     glaze(&mut s);
     fixtures(&mut s);
@@ -1149,19 +1524,20 @@ pub fn build() -> Home {
 /// Real glass: a fly can land on it, walk it, and be fooled by it, which is the
 /// most recognisable thing a housefly does indoors. `world` keeps it out of the
 /// shadow pass, or every window would be a hole that let no light through.
-/// Double-hung sashes, and one of them left up.
+/// Double-hung sashes, all of them shut.
 ///
-/// Every window was a single sheet of glass filling its hole. A real one is two
-/// sashes with a meeting rail between them, and the difference matters more
-/// here than the frame lines: a sash can be *raised*, and a raised sash is how
-/// a fly gets into a house. The kitchen window over the sink is up eight
-/// centimetres, which is nothing to a person and a doorway to the player.
+/// Every window was a single sheet of glass filling its hole; a real one is two
+/// sashes with a meeting rail between them.
+///
+/// One was briefly left up, on the theory that a raised sash is how a fly gets
+/// into a house. Brett's call is that the fly does not go outside — the house
+/// is the whole world — so every sash is down. That is the better game anyway:
+/// the street is right there through the glass and can never be reached, which
+/// is exactly what a window means to a fly.
 fn glaze(s: &mut Vec<Solid>) {
     let (w, _e, n, so, _gs, house_east) = envelope();
     let half = WINDOW_WIDE * 0.5;
     let frame = Color::srgb(0.93, 0.92, 0.89);
-    /// The window over the kitchen sink.
-    const LEFT_OPEN: f32 = 21.0;
 
     // `at` is the centre of the opening in the plane of the wall.
     let sash = |out: &mut Vec<Solid>, at: Vec3, along_x: bool, lift: f32| {
@@ -1227,12 +1603,7 @@ fn glaze(s: &mut Vec<Solid>) {
     };
 
     for &x in &NORTH_WINDOWS {
-        let lift = if (x - LEFT_OPEN).abs() < 0.01 {
-            8.0
-        } else {
-            0.0
-        };
-        sash(s, Vec3::new(ft(x), 0.0, n), true, lift);
+        sash(s, Vec3::new(ft(x), 0.0, n), true, 0.0);
     }
     for &x in &SOUTH_WINDOWS {
         sash(s, Vec3::new(ft(x), 0.0, so), true, 0.0);
@@ -1502,9 +1873,11 @@ pub fn audit(home: &Home) {
         // that skips anything already outside excuses exactly the pieces that
         // got furthest out, and the shelf unit used to prove it walked straight
         // through this check.
-        // Groundwork is allowed out there — a stoop, a step, a path, a drive.
-        // Anything no taller than a step is not the building escaping.
-        if solid.roof || solid.stuff == Stuff::Grass || solid.center.y + solid.half.y <= STEP_HIGH {
+        // Things that belong outside are allowed to be outside. That used to
+        // be inferred — from the material for planting, and from being no
+        // taller than a step for paving — which held right up until there was
+        // a house across the road that was neither.
+        if solid.roof || solid.outdoors {
             continue;
         }
         let (lo, hi) = (solid.center - solid.half, solid.center + solid.half);

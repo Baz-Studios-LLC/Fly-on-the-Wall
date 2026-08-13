@@ -1583,11 +1583,11 @@ fn switches_and_sockets(out: &mut Vec<Solid>) {
     }
 }
 
-/// The front door: cased both sides, hung ajar, with a stoop to stand on.
+/// The front door: cased both sides, shut, with a stoop to stand on.
 ///
-/// Ajar because it is the only opening in the house that is not glazed shut,
-/// and sealing it would wall the fly in. It is also, conveniently, what a
-/// house looks like when somebody is home.
+/// It hung ajar for a while, because it was the only opening in the house that
+/// was not glazed shut and leaving it open kept a way out. The fly does not go
+/// outside — that is the game — so it is shut, and the house is sealed.
 fn front_door(out: &mut Vec<Solid>) {
     let (lo, hi) = crate::house::front_door();
     let wide = hi.x - lo.x;
@@ -1630,7 +1630,7 @@ fn front_door(out: &mut Vec<Solid>) {
     // Hung on the left jamb, opening inward — north, into the great room. The
     // envelope law caught the first version of this swinging out into the
     // garden, which is not how a front door on this continent is hung.
-    let swing = Quat::from_rotation_y(0.42);
+    let swing = Quat::from_rotation_y(0.0);
     door_leaf(
         out,
         Vec3::new(lo.x + 2.0, 3.0, z),
@@ -1639,22 +1639,24 @@ fn front_door(out: &mut Vec<Solid>) {
         swing,
     );
 
-    // A stoop outside it, and a step down to the grass.
+    // A stoop outside it, and a step down to the grass. Both are outdoors, and
+    // say so: the envelope law used to infer that from being no taller than a
+    // step, which stopped being a safe guess once there were neighbours.
     let mid = (lo.x + hi.x) * 0.5;
-    slab(
-        out,
-        Vec3::new(mid, -4.0, z + thick * 0.5 + 58.0),
-        Vec3::new(wide + 90.0, 14.0, 116.0),
-        Stuff::Stone,
-        PAVING,
-    );
-    slab(
-        out,
-        Vec3::new(mid, -9.0, z + thick * 0.5 + 138.0),
-        Vec3::new(wide + 130.0, 10.0, 46.0),
-        Stuff::Stone,
-        PAVING,
-    );
+    for (y, size) in [
+        (-4.0f32, Vec3::new(wide + 90.0, 14.0, 116.0)),
+        (-9.0, Vec3::new(wide + 130.0, 10.0, 46.0)),
+    ] {
+        let at = Vec3::new(
+            mid,
+            y,
+            z + thick * 0.5 + if size.z > 100.0 { 58.0 } else { 138.0 },
+        );
+        let mut s = Solid::between(at - size * 0.5, at + size * 0.5, Stuff::Stone);
+        s.paint = Some(PAVING);
+        s.outdoors = true;
+        out.push(s);
+    }
 }
 
 // ---------------------------------------------------------------------------

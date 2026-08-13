@@ -112,8 +112,13 @@ pub fn room_view() -> Option<String> {
 /// which between them can show every room and still never answer what the place
 /// looks like — whether it has a roof, whether the windows line up, whether the
 /// eaves throw a shadow. Zero is due south, ninety is due east.
-pub fn outside_view() -> Option<f32> {
-    std::env::var("FLY_OUTSIDE").ok()?.trim().parse().ok()
+pub fn outside_view() -> Option<(f32, f32)> {
+    let spec = std::env::var("FLY_OUTSIDE").ok()?;
+    let (deg, back) = match spec.split_once(':') {
+        Some((d, b)) => (d, b.trim().parse().unwrap_or(1.0)),
+        None => (spec.as_str(), 1.0),
+    };
+    Some((deg.trim().parse().ok()?, back))
 }
 
 /// `FLY_PLAN=1` looks straight down at the whole house from above it.
@@ -296,15 +301,18 @@ fn place_the_eye(
     }
 
     // Outdoors, standing back far enough to see the whole building.
-    if let Some(degrees) = outside_view() {
+    if let Some((degrees, back)) = outside_view() {
         let (lo, hi) = crate::house::bounds();
         let middle = (lo + hi) * 0.5;
         let reach = (hi - lo).length();
         let a = degrees.to_radians();
+        // `FLY_OUTSIDE=15:2.6` stands two and a half times further back. At one
+        // the camera is on the far verge, which frames the house and puts the
+        // street it stands on directly behind the lens.
         transform.translation = Vec3::new(
-            middle.x + a.sin() * reach * 0.86,
-            reach * 0.34,
-            middle.y + a.cos() * reach * 0.86,
+            middle.x + a.sin() * reach * 0.86 * back,
+            reach * (0.34 + back * 0.10),
+            middle.y + a.cos() * reach * 0.86 * back,
         );
         transform.look_at(
             Vec3::new(middle.x, crate::house::CEILING * 0.45, middle.y),
@@ -322,10 +330,10 @@ fn place_the_eye(
         let mut low = Vec3::splat(f32::INFINITY);
         let mut high = Vec3::splat(f32::NEG_INFINITY);
         for solid in &home.solids {
-            // Not the ground. It runs forty metres past the house on every
-            // side, so framing by it puts the whole building in a thumbnail in
-            // the middle of a field.
-            if solid.stuff == crate::world::Stuff::Grass {
+            // Nothing outdoors. The ground runs forty metres past the house on
+            // every side and the neighbours are further than that, so framing
+            // by them puts the whole building in a thumbnail.
+            if solid.outdoors || solid.stuff == crate::world::Stuff::Grass {
                 continue;
             }
             let reach = (solid.rot * solid.half).abs().max(solid.half);

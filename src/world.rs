@@ -116,6 +116,11 @@ pub struct Solid {
     /// inside it is a grey lump: the lamp points down and away from the thing
     /// it is supposed to be shining out of.
     pub glow: f32,
+    /// This belongs out of doors: ground, planting, the street, the
+    /// neighbours. Inferring it from the material and from how tall a thing is
+    /// worked while the only things outside were a path and a shrub; it stops
+    /// working the moment there is a house across the road.
+    pub outdoors: bool,
     /// Drawn see-through and excluded from shadow casting: glass.
     pub sheer: bool,
     /// Overhead: the roof, or a ceiling under it. Hidden in the plan view,
@@ -157,6 +162,7 @@ impl Solid {
             paint: None,
             roof: false,
             glow: 0.0,
+            outdoors: false,
             stuff,
         }
     }
@@ -433,6 +439,7 @@ impl Door {
                 DOOR_WIDTH * 0.5,
             ),
             rot,
+            outdoors: false,
             glow: 0.0,
             stuff: Stuff::Wood,
             paint: None,
@@ -783,7 +790,7 @@ fn surface_texture(stuff: Stuff) -> Image {
                 }
                 // Brushed, so the lines run one way only.
                 Stuff::Metal => 1.0 - 0.045 * hash2(0, y) - 0.02 * hash2(x, y),
-                Stuff::Grass => 1.0 - 0.20 * hash2(x / 2, y / 2) - 0.08 * hash2(x, y),
+                Stuff::Grass => 1.0 - 0.07 * hash2(x / 2, y / 2) - 0.03 * hash2(x, y),
                 Stuff::Glass => 1.0,
             };
             let b = (v.clamp(0.0, 1.0) * 255.0) as u8;
@@ -844,7 +851,9 @@ fn dress_the_set(
         // serves every box that looks alike, so the tiling rate has to be part
         // of what "alike" means — otherwise a floorboard and a table leg share
         // a material and the leg gets a floorboard's worth of grain on it.
-        let tile = (solid.half.max_element() / 26.0).round().clamp(1.0, 14.0);
+        // The ground plane is a hundred and eighty metres across; clamping the
+        // repeat low turns its grain into visible blocks the size of a car.
+        let tile = (solid.half.max_element() / 26.0).round().clamp(1.0, 60.0);
         let key = [
             byte(rgba.red),
             byte(rgba.green),
