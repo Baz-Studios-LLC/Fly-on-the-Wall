@@ -3028,6 +3028,108 @@ fn garage(out: &mut Vec<Solid>, r: &Room) {
         Vec2::new(0.0, 1.0),
         &[],
     );
+    // A pegboard over the bench with the tools on it. The wall above a
+    // workbench is the one wall in a house that is never blank.
+    let board_x = r.min.x + 180.0;
+    let board_y = 150.0;
+    let wall = r.min.y + 6.0;
+    slab(
+        out,
+        Vec3::new(board_x, board_y, wall),
+        Vec3::new(272.0, 96.0, 4.0),
+        Stuff::Wood,
+        Color::srgb(0.52, 0.40, 0.26),
+    );
+    for k in 0..9 {
+        let n = wobble(board_x + k as f32 * 17.0, board_y);
+        let x = board_x - 118.0 + k as f32 * 29.0;
+        let hang = wall - 5.0;
+        match k % 4 {
+            // A hammer: handle and head.
+            0 => {
+                slab(
+                    out,
+                    Vec3::new(x, board_y - 8.0, hang),
+                    Vec3::new(4.0, 40.0, 4.0),
+                    Stuff::Wood,
+                    Color::srgb(0.54, 0.36, 0.20),
+                );
+                slab(
+                    out,
+                    Vec3::new(x, board_y + 16.0, hang),
+                    Vec3::new(18.0, 8.0, 7.0),
+                    Stuff::Metal,
+                    Color::srgb(0.30, 0.30, 0.32),
+                );
+            }
+            // A saw: blade and grip.
+            1 => {
+                turned(
+                    out,
+                    Vec3::new(x + 6.0, board_y - 6.0, hang),
+                    Vec3::new(46.0, 14.0, 2.0),
+                    Quat::from_rotation_z(-0.34),
+                    Stuff::Metal,
+                    Color::srgb(0.70, 0.71, 0.73),
+                );
+                slab(
+                    out,
+                    Vec3::new(x - 12.0, board_y + 8.0, hang),
+                    Vec3::new(10.0, 16.0, 5.0),
+                    Stuff::Wood,
+                    Color::srgb(0.44, 0.28, 0.18),
+                );
+            }
+            // A spanner or two.
+            2 => {
+                for j in 0..2 {
+                    slab(
+                        out,
+                        Vec3::new(
+                            x + j as f32 * 9.0 - 4.0,
+                            board_y + 2.0 - j as f32 * 5.0,
+                            hang,
+                        ),
+                        Vec3::new(4.0, 30.0 - j as f32 * 7.0, 3.0),
+                        Stuff::Metal,
+                        Color::srgb(0.62, 0.63, 0.66),
+                    );
+                }
+            }
+            // A level, hung crooked.
+            _ => {
+                turned(
+                    out,
+                    Vec3::new(x, board_y + n * 6.0, hang),
+                    Vec3::new(58.0, 8.0, 4.0),
+                    Quat::from_rotation_z(0.06 + n * 0.05),
+                    Stuff::Metal,
+                    Color::srgb(0.72, 0.56, 0.16),
+                );
+            }
+        }
+    }
+    // Paint tins under the bench.
+    for k in 0..3 {
+        let n = wobble(r.min.x + k as f32 * 41.0, r.min.y);
+        disc(
+            out,
+            Vec3::new(
+                r.min.x + 70.0 + k as f32 * 34.0 + n * 6.0,
+                13.0,
+                r.min.y + 44.0 + n * 8.0,
+            ),
+            26.0 - k as f32 * 3.0,
+            26.0,
+            [
+                Color::srgb(0.78, 0.78, 0.76),
+                Color::srgb(0.36, 0.42, 0.50),
+                Color::srgb(0.62, 0.60, 0.52),
+            ][k],
+            0.0,
+        );
+    }
+
     // Steel shelving along the east wall, stacked with boxes.
     shelves(
         out,

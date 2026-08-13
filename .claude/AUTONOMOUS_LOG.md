@@ -332,6 +332,13 @@ the session. Do not treat one room or prop as completion.
   out. The row now walks along the board placing whichever of those the position
   calls for, so it is different on every shelf and the same on every run.
 
+
+## Pass seventeen: the workbench wall
+
+- A pegboard over the garage bench with hammers, a saw, spanners and a level
+  hung crooked on it, and paint tins underneath. The wall above a workbench is
+  the one wall in a house that is never blank — and it was the last blank one.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
