@@ -34,7 +34,7 @@ const CARCASS: Color = Color::srgb(0.80, 0.78, 0.74);
 const WORKTOP: Color = Color::srgb(0.26, 0.26, 0.28);
 const STEEL: Color = Color::srgb(0.72, 0.74, 0.76);
 const WOOL: Color = Color::srgb(0.42, 0.44, 0.50);
-const WOOL_WARM: Color = Color::srgb(0.55, 0.45, 0.38);
+const WOOL_WARM: Color = Color::srgb(0.64, 0.55, 0.47);
 const LINEN: Color = Color::srgb(0.86, 0.85, 0.80);
 const SLATE: Color = Color::srgb(0.20, 0.21, 0.24);
 

@@ -463,6 +463,17 @@ relief into the bargain.
   A wall between two rooms gets painted twice, once on each side, which is what
   happens in a house.
 
+
+## Pass twenty-five: the two biggest surfaces
+
+- **Ceilings painted white.** Not decoration: the ceiling is the surface the
+  bounce fill is aimed at, so it is the one place in a room where a lighter
+  colour buys light everywhere else.
+- **Floorboards to mid oak** from something close to walnut. A dark floor under
+  a dark rug made the bottom half of every interior one brown mass, and the
+  floor is the largest surface in any room — it sets the key for everything
+  standing on it.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

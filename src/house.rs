@@ -524,9 +524,13 @@ fn lay_floor(out: &mut Vec<Solid>, r: &Room) {
             0.03,
             false,
         ),
+        // Mid oak, not the near-walnut this was. A dark floor and a dark rug
+        // between them made the bottom half of every interior one brown mass,
+        // and the floor is the largest surface in any room — it sets the key
+        // for everything standing on it.
         _ => (
             Stuff::Floorboard,
-            Color::srgb(0.45, 0.33, 0.22),
+            Color::srgb(0.58, 0.44, 0.30),
             19.0,
             0.06,
             false,
@@ -1601,6 +1605,11 @@ pub fn build() -> Home {
             Vec3::new(r.max.x + INNER, top + SLAB, r.max.y + INNER),
             Stuff::Plaster,
         );
+        // Ceilings are painted white, and brighter than any wall under them.
+        // That is not decoration: it is the surface the bounce fill is aimed
+        // at, so it is the one place in a room where a lighter colour buys
+        // light everywhere else.
+        slab.paint = Some(Color::srgb(0.94, 0.93, 0.91));
         // Overhead, so `FLY_PLAN` drops it — otherwise the one view that can
         // show a floor plan shows a sheet of plaster instead.
         slab.roof = true;
