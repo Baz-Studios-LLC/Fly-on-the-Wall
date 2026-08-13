@@ -24,6 +24,8 @@ the session. Do not treat one room or prop as completion.
 - Complete the architectural shell and make every room reachable and legible.
 - Keep every occupiable room at or above 15 feet by 15 feet (`457.2 cm x 457.2
   cm`) measured between finished interior surfaces.
+- Use 9-foot (`274.32 cm`) ceilings measured from finished floor to finished
+  ceiling throughout occupiable rooms.
 - Give every room a clear domestic function and coherent circulation.
 - Build reusable procedural furniture and fixture constructors from mathematical
   forms, then author complete room arrangements with them.

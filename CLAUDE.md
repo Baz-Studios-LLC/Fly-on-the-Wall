@@ -11,6 +11,8 @@ behavior and documented decisions as the source of truth.
   15 feet by 15 feet (`457.2 cm x 457.2 cm`). Measure between finished interior
   surfaces; wall thickness, trim, and built-ins must not reduce either dimension
   below this minimum.
+- Use 9-foot ceilings (`274.32 cm`) measured from the finished floor surface to
+  the finished ceiling surface. Hanging fixtures may extend below this height.
 - The current flight model is approved. Preserve its feel and controls unless a
   house change exposes a concrete collision or traversal bug.
 - Rendering geometry and collision geometry must agree. A visible solid should
@@ -65,6 +67,7 @@ Evaluate all of the following:
   windows, frames, trim, stairs, thresholds, and believable room connections.
 - No occupiable room smaller than 15 feet by 15 feet of clear interior floor
   space; verify generated room bounds rather than relying on nominal dimensions.
+- Consistent 9-foot (`274.32 cm`) finished floor-to-ceiling room height.
 - Room identity and function: every room should read clearly from its contents
   and layout without labels.
 - Essential furnishings and fixtures appropriate to each room.
