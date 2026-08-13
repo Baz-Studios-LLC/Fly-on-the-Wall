@@ -107,11 +107,20 @@ const POSE_RATE: f32 = 14.0;
 #[derive(Component)]
 struct Wing;
 
-/// A leg's pivot, carrying the two poses it interpolates between.
+/// A leg's pivot, carrying the two poses it interpolates between and which
+/// half of the gait it belongs to.
+///
+/// Flies walk an **alternating tripod**: front and hind on one side move with
+/// the middle leg of the other, so three feet are always down and the insect
+/// never has to balance. It is the reason a fly can walk up a wall without
+/// falling off, and it is what makes six legs read as walking rather than as
+/// six legs twitching.
 #[derive(Component)]
 struct Leg {
     planted: Quat,
     tucked: Quat,
+    /// True for one tripod, false for the other.
+    tripod: bool,
 }
 
 #[derive(Resource)]
@@ -316,7 +325,7 @@ fn grow_the_body(
 
     for side in [-1.0f32, 1.0] {
         let mirror = |v: Vec3| Vec3::new(v.x * side, v.y, v.z);
-        for (anchor, planted_dir) in plan {
+        for (row, (anchor, planted_dir)) in plan.into_iter().enumerate() {
             let pose = |d: Vec3| {
                 Transform::default()
                     .looking_to(mirror(d).normalize(), Vec3::Y)
@@ -324,11 +333,17 @@ fn grow_the_body(
             };
             let planted = pose(planted_dir);
             let tucked = pose(tucked_dir);
+            // Fore and hind on one side, middle on the other.
+            let tripod = (row % 2 == 0) == (side > 0.0);
 
             let pivot = commands
                 .spawn((
                     ChildOf(trunk),
-                    Leg { planted, tucked },
+                    Leg {
+                        planted,
+                        tucked,
+                        tripod,
+                    },
                     Transform::from_translation(mirror(anchor)).with_rotation(planted),
                     Visibility::default(),
                 ))
@@ -385,17 +400,53 @@ fn pose_the_legs(
     time: Res<Time>,
     flies: Query<(&Fly, &Intent)>,
     mut legs: Query<(&Leg, &mut Transform)>,
+    mut gait: Local<f32>,
+    mut forced: Local<Option<Option<f32>>>,
 ) {
+    /// How far the fly walks per full step cycle, in centimetres. Driving the
+    /// cycle off *distance* rather than time is what stops the feet skating:
+    /// walk slowly and the legs move slowly, by construction.
+    const STRIDE: f32 = 1.6;
+    /// How far a leg swings fore and aft, and how far the foot lifts.
+    const SWING: f32 = 0.34;
+    const LIFT: f32 = 0.22;
+
     let Ok((fly, intent)) = flies.single() else {
         return;
     };
     // Reaching counts as planted: asking to land puts the legs out early, which
     // is the tell that the fly is about to grab something.
-    let planted = matches!(fly.stance, Stance::Perched(_)) || intent.land;
+    let perched = matches!(fly.stance, Stance::Perched(_));
+    let planted = perched || intent.land;
     let blend = 1.0 - (-POSE_RATE * time.delta_secs()).exp();
 
+    let speed = fly.vel.length();
+    let walking = perched && speed > 0.35;
+    if walking {
+        *gait += speed * time.delta_secs() / STRIDE * std::f32::consts::TAU;
+    }
+    // A capture cannot press a key, so the cycle can be posed from outside.
+    // Read once and kept: this runs every frame.
+    let forced =
+        *forced.get_or_insert_with(|| std::env::var("FLY_GAIT").ok().and_then(|v| v.parse().ok()));
+    let phase = forced.map(|p| p * std::f32::consts::TAU).unwrap_or(*gait);
+
     for (leg, mut transform) in &mut legs {
-        let want = if planted { leg.planted } else { leg.tucked };
+        let mut want = if planted { leg.planted } else { leg.tucked };
+        if walking || forced.is_some() {
+            let a = phase
+                + if leg.tripod {
+                    0.0
+                } else {
+                    std::f32::consts::PI
+                };
+            // Swing about the body's up axis is the step; the lift is only on
+            // the half of the cycle where the foot is off the ground, so the
+            // three legs that are down stay down.
+            let swing = Quat::from_rotation_y(a.sin() * SWING);
+            let lift = Quat::from_rotation_x(a.cos().max(0.0) * LIFT);
+            want = lift * swing * want;
+        }
         transform.rotation = transform.rotation.slerp(want, blend);
     }
 }

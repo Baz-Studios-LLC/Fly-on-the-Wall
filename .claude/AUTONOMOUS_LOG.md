@@ -709,6 +709,21 @@ Brett tried it and found three things, two of which were my fault outright.
   direct control, full stop when you let go, reverse included. The flight model
   itself is untouched.
 
+
+## Pass thirty-six: the legs walk
+
+- Six legs that hold one pose while the fly slides along the floor read as a
+  model being dragged. They walk now, on an **alternating tripod** — front and
+  hind on one side with the middle leg of the other, so three feet are always
+  down. That is the actual gait, and it is the reason a fly can walk up a wall
+  without falling off it.
+- The cycle is driven by **distance covered, not time**. Walk slowly and the
+  legs move slowly, by construction, so the feet never skate. A leg lifts only
+  on the half of its cycle where it should be off the ground, so the three that
+  are down stay down.
+- `FLY_GAIT=<0..1>` poses the cycle from outside, because a screenshot cannot
+  walk. Captured at three phases to confirm the tripods actually alternate.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
