@@ -2699,6 +2699,53 @@ fn hall(out: &mut Vec<Solid>, r: &Room) {
         DARK_OAK,
         DARK_OAK,
     );
+
+    // Photographs down the long wall, hung in the stretches between the bedroom
+    // doors rather than at guessed offsets — the doorways are where they are,
+    // and a frame over an architrave is the same mistake as one over a window.
+    let doors: Vec<f32> = crate::house::interior_doors()
+        .into_iter()
+        .filter(|(lo, hi)| ((lo.x + hi.x) * 0.5 - r.min.x).abs() < 40.0)
+        .map(|(lo, hi)| (lo.z + hi.z) * 0.5)
+        .collect();
+    let mut edges = vec![r.min.y + 40.0];
+    for z in &doors {
+        edges.push(z - 70.0);
+        edges.push(z + 70.0);
+    }
+    edges.push(r.max.y - 40.0);
+    edges.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    let mut hung = 0usize;
+    for pair in edges.chunks(2) {
+        let (lo, hi) = (pair[0], pair[1]);
+        if hi - lo < 120.0 {
+            continue;
+        }
+        // Two or three to a stretch, stepped in height the way a family hangs
+        // them: not level, and not random either.
+        let how_many = if hi - lo > 300.0 { 3 } else { 2 };
+        for k in 0..how_many {
+            let t = (k as f32 + 1.0) / (how_many as f32 + 1.0);
+            let z = lo + (hi - lo) * t;
+            let n = wobble(z, hung as f32 * 5.0);
+            let wide = 40.0 + n.abs() * 22.0;
+            picture(
+                out,
+                Vec3::new(r.min.x + 7.0, 156.0 + n * 16.0, z),
+                wide,
+                wide * (0.72 + n * 0.16),
+                false,
+                [
+                    Color::srgb(0.44, 0.40, 0.34),
+                    Color::srgb(0.30, 0.36, 0.38),
+                    Color::srgb(0.50, 0.44, 0.30),
+                    Color::srgb(0.36, 0.32, 0.36),
+                ][hung % 4],
+            );
+            hung += 1;
+        }
+    }
 }
 
 fn garage(out: &mut Vec<Solid>, r: &Room) {
