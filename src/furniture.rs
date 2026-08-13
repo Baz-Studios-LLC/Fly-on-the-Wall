@@ -47,6 +47,9 @@ const BUMPER: Color = Color::srgb(0.20, 0.21, 0.23);
 const LAMP: Color = Color::srgb(0.96, 0.94, 0.84);
 const TAIL: Color = Color::srgb(0.54, 0.10, 0.09);
 const PLATE: Color = Color::srgb(0.88, 0.88, 0.85);
+const DUVET: Color = Color::srgb(0.72, 0.74, 0.78);
+const THROW: Color = Color::srgb(0.46, 0.40, 0.36);
+const SHADE: Color = Color::srgb(0.90, 0.86, 0.76);
 const SEAT_RING: Color = Color::srgb(0.93, 0.93, 0.91);
 const CHROME: Color = Color::srgb(0.78, 0.80, 0.82);
 const TOWEL_A: Color = Color::srgb(0.66, 0.72, 0.74);
@@ -278,6 +281,49 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
         Stuff::Wood,
         DARK_OAK,
     );
+    // Bedding. A bare mattress with two pillows on it is a showroom bed; what
+    // makes one look slept in is the duvet stopping short of the pillows and
+    // the sheet turned back over its edge.
+    let top = CLEAR + FRAME + MATTRESS;
+    let long = size.y.max(size.x);
+    let duvet = long * 0.66;
+    let foot = at + facing * (long * 0.5 - duvet * 0.5);
+    let along = Vec2::new(facing.x.abs(), facing.y.abs());
+    let bed_size = |a: f32, c: f32| {
+        if along.y > 0.5 {
+            Vec3::new(c, 0.0, a)
+        } else {
+            Vec3::new(a, 0.0, c)
+        }
+    };
+    let d = bed_size(duvet, size.x.min(size.y) + 12.0);
+    slab(
+        out,
+        Vec3::new(foot.x, top + 1.0, foot.y),
+        Vec3::new(d.x, 11.0, d.z),
+        Stuff::Fabric,
+        DUVET,
+    );
+    let fold = at + facing * (long * 0.5 - duvet - 8.0);
+    let f = bed_size(20.0, size.x.min(size.y) + 12.0);
+    slab(
+        out,
+        Vec3::new(fold.x, top + 2.0, fold.y),
+        Vec3::new(f.x, 8.0, f.z),
+        Stuff::Fabric,
+        LINEN,
+    );
+    // A throw folded across the foot.
+    let throw_at = at + facing * (long * 0.5 - 26.0);
+    let t = bed_size(44.0, size.x.min(size.y) + 13.0);
+    slab(
+        out,
+        Vec3::new(throw_at.x, top + 9.0, throw_at.y),
+        Vec3::new(t.x, 6.0, t.z),
+        Stuff::Fabric,
+        THROW,
+    );
+
     // Pillows.
     for s in [-1.0f32, 1.0] {
         let p = at - facing * (size.y.max(size.x) * 0.34)
@@ -288,6 +334,192 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
             Vec3::new(48.0, 14.0, 32.0),
             Stuff::Fabric,
             PORCELAIN,
+        );
+    }
+}
+
+/// A chair: a legged seat with a back on the side `away` points to.
+///
+/// The kitchen had four of these written out inline, which is exactly the kind
+/// of repeated recognisable form that wants a constructor — the bedrooms needed
+/// one the moment they got a desk.
+fn chair(out: &mut Vec<Solid>, at: Vec2, away: Vec2) {
+    legged(
+        out,
+        at,
+        Vec2::new(42.0, 42.0),
+        45.0,
+        4.0,
+        5.0,
+        OAK,
+        DARK_OAK,
+    );
+    let b = at + away * 18.0;
+    let across = Vec2::new(away.y.abs(), away.x.abs());
+    slab(
+        out,
+        Vec3::new(b.x, 68.0, b.y),
+        Vec3::new(
+            if across.x > 0.5 { 42.0 } else { 5.0 },
+            46.0,
+            if across.x > 0.5 { 5.0 } else { 42.0 },
+        ),
+        Stuff::Wood,
+        DARK_OAK,
+    );
+}
+
+/// A wardrobe: plinth, carcass, two doors with a shadow gap between them, two
+/// handles and a cornice. It was a single painted box, which is the one piece
+/// of furniture in a bedroom nobody can mistake for anything else and so the
+/// one least worth leaving as a box.
+fn wardrobe(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2) {
+    let across = Vec2::new(face.y.abs(), face.x.abs());
+    let wide = if across.x > 0.5 { size.x } else { size.z };
+    slab(
+        out,
+        Vec3::new(at.x, 5.0, at.y),
+        Vec3::new(size.x - 6.0, 10.0, size.z - 6.0),
+        Stuff::Wood,
+        DARK_OAK,
+    );
+    slab(
+        out,
+        Vec3::new(at.x, size.y * 0.5 + 8.0, at.y),
+        Vec3::new(size.x, size.y, size.z),
+        Stuff::Wood,
+        PAINTED,
+    );
+    slab(
+        out,
+        Vec3::new(at.x, size.y + 12.0, at.y),
+        Vec3::new(size.x + 8.0, 8.0, size.z + 8.0),
+        Stuff::Wood,
+        PAINTED,
+    );
+    for side in [-1.0f32, 1.0] {
+        let off = across * side * wide * 0.25;
+        let front = face * 2.0;
+        let leaf = if across.x > 0.5 {
+            Vec3::new(wide * 0.47, size.y - 18.0, 4.0)
+        } else {
+            Vec3::new(4.0, size.y - 18.0, wide * 0.47)
+        };
+        slab(
+            out,
+            Vec3::new(
+                at.x + off.x + front.x * (size.x * 0.5),
+                size.y * 0.5 + 8.0,
+                at.y + off.y + front.y * (size.z * 0.5),
+            ),
+            leaf,
+            Stuff::Wood,
+            Color::srgb(0.86, 0.85, 0.82),
+        );
+        let knob_at = across * side * 7.0;
+        slab(
+            out,
+            Vec3::new(
+                at.x + knob_at.x + face.x * (size.x * 0.5 + 3.0),
+                size.y * 0.55,
+                at.y + knob_at.y + face.y * (size.z * 0.5 + 3.0),
+            ),
+            Vec3::new(5.0, 22.0, 5.0),
+            Stuff::Metal,
+            BRASS,
+        );
+    }
+}
+
+/// A chest of drawers: carcass, plinth, drawer fronts with a shadow gap between
+/// them, and a handle on each. A chest without fronts is a cube, and a bedroom
+/// with a cube in it is a bedroom nobody has finished.
+fn drawers(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2, rows: usize) {
+    slab(
+        out,
+        Vec3::new(at.x, 5.0, at.y),
+        Vec3::new(size.x - 8.0, 10.0, size.z - 8.0),
+        Stuff::Wood,
+        DARK_OAK,
+    );
+    slab(
+        out,
+        Vec3::new(at.x, size.y * 0.5 + 8.0, at.y),
+        Vec3::new(size.x, size.y, size.z),
+        Stuff::Wood,
+        OAK,
+    );
+    slab(
+        out,
+        Vec3::new(at.x, size.y + 10.0, at.y),
+        Vec3::new(size.x + 6.0, 5.0, size.z + 6.0),
+        Stuff::Wood,
+        DARK_OAK,
+    );
+    let across = Vec2::new(face.y.abs(), face.x.abs());
+    let wide = if across.x > 0.5 { size.x } else { size.z };
+    let front = Vec3::new(
+        face.x * (size.x * 0.5 + 1.5),
+        0.0,
+        face.y * (size.z * 0.5 + 1.5),
+    );
+    let leaf = if across.x > 0.5 {
+        Vec3::new(wide - 12.0, 0.0, 4.0)
+    } else {
+        Vec3::new(4.0, 0.0, wide - 12.0)
+    };
+    for k in 0..rows {
+        let high = (size.y - 12.0) / rows as f32;
+        let y = 14.0 + high * (k as f32 + 0.5);
+        slab(
+            out,
+            Vec3::new(at.x, y, at.y) + front,
+            Vec3::new(leaf.x, high - 5.0, leaf.z),
+            Stuff::Wood,
+            Color::srgb(0.50, 0.38, 0.26),
+        );
+        let pull = if across.x > 0.5 {
+            Vec3::new(wide * 0.32, 4.0, 4.0)
+        } else {
+            Vec3::new(4.0, 4.0, wide * 0.32)
+        };
+        slab(
+            out,
+            Vec3::new(at.x, y, at.y) + front * 2.0,
+            pull,
+            Stuff::Metal,
+            BRASS,
+        );
+    }
+}
+
+/// A table lamp: foot, stem, and an eight-sided shade.
+fn lamp(out: &mut Vec<Solid>, at: Vec3) {
+    slab(
+        out,
+        at + Vec3::new(0.0, 2.0, 0.0),
+        Vec3::new(18.0, 4.0, 18.0),
+        Stuff::Metal,
+        BRASS,
+    );
+    slab(
+        out,
+        at + Vec3::new(0.0, 17.0, 0.0),
+        Vec3::new(5.0, 30.0, 5.0),
+        Stuff::Metal,
+        BRASS,
+    );
+    const SIDES: usize = 4;
+    let across = 32.0;
+    let bar = across * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
+    for k in 0..SIDES {
+        turned(
+            out,
+            at + Vec3::new(0.0, 44.0, 0.0),
+            Vec3::new(across, 26.0, bar),
+            Quat::from_rotation_y(k as f32 * std::f32::consts::PI / SIDES as f32),
+            Stuff::Fabric,
+            SHADE,
         );
     }
 }
@@ -1337,27 +1569,53 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     );
 }
 
-/// Where along a room's north wall there is no window, and the widest such run.
+/// Which wall of a room, for the purpose of asking what is in it.
+#[derive(Clone, Copy, PartialEq)]
+enum Wall {
+    North,
+    South,
+    West,
+}
+
+/// The widest windowless run along one wall of a room.
 ///
-/// Anything tall goes here. A cooker hood and a run of wall cabinets both ended
-/// up over glass by being placed at a hand-picked offset, and the fix that does
-/// not need repeating is to ask where the windows are rather than to remember.
-fn clear_of_windows(r: &Room) -> (f32, f32) {
+/// Anything tall goes here. A cooker hood, a run of wall cabinets, a picture
+/// over a bed and — the last time this was north-only — a wardrobe and two more
+/// pictures all ended up over glass by being placed at a hand-picked offset.
+/// The fix that does not need repeating is to ask where the windows are rather
+/// than to remember, on whichever wall is being used.
+fn clear_of_windows_on(r: &Room, wall: Wall) -> (f32, f32) {
+    let along_x = matches!(wall, Wall::North | Wall::South);
+    let line = match wall {
+        Wall::North => r.min.y,
+        Wall::South => r.max.y,
+        Wall::West => r.min.x,
+    };
+    let (from, to) = if along_x {
+        (r.min.x, r.max.x)
+    } else {
+        (r.min.y, r.max.y)
+    };
+
     let mut spans: Vec<(f32, f32)> = crate::house::window_openings()
         .into_iter()
-        // Only the ones in this room's north wall.
         .filter(|(lo, hi)| {
             let mid = (*lo + *hi) * 0.5;
-            mid.x > r.min.x && mid.x < r.max.x && (mid.z - r.min.y).abs() < 60.0
+            let (on, across) = if along_x {
+                (mid.x, mid.z)
+            } else {
+                (mid.z, mid.x)
+            };
+            on > from && on < to && (across - line).abs() < 60.0
         })
-        .map(|(lo, hi)| (lo.x, hi.x))
+        .map(|(lo, hi)| if along_x { (lo.x, hi.x) } else { (lo.z, hi.z) })
         .collect();
     spans.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
-    let mut best = (r.min.x + 30.0, r.min.x + 130.0);
+    let mut best = (from + 30.0, from + 130.0);
     let mut widest = 0.0;
-    let mut walk = r.min.x + 30.0;
-    for (lo, hi) in spans.iter().chain(std::iter::once(&(r.max.x - 30.0, 0.0))) {
+    let mut walk = from + 30.0;
+    for (lo, hi) in spans.iter().chain(std::iter::once(&(to - 30.0, 0.0))) {
         let gap = lo - walk;
         if gap > widest {
             widest = gap;
@@ -1366,6 +1624,10 @@ fn clear_of_windows(r: &Room) -> (f32, f32) {
         walk = walk.max(*hi);
     }
     best
+}
+
+fn clear_of_windows(r: &Room) -> (f32, f32) {
+    clear_of_windows_on(r, Wall::North)
 }
 
 fn kitchen(out: &mut Vec<Solid>, r: &Room) {
@@ -1490,21 +1752,7 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
     );
     for (dx, dz) in [(-95.0, 0.0), (95.0, 0.0), (0.0, -72.0), (0.0, 72.0)] {
         let c = table + Vec2::new(dx, dz);
-        legged(out, c, Vec2::new(42.0, 42.0), 45.0, 4.0, 5.0, OAK, DARK_OAK);
-        let away = (c - table).normalize_or_zero();
-        let b = c + away * 18.0;
-        let across = Vec2::new(away.y.abs(), away.x.abs());
-        slab(
-            out,
-            Vec3::new(b.x, 68.0, b.y),
-            Vec3::new(
-                if across.x > 0.5 { 42.0 } else { 5.0 },
-                46.0,
-                if across.x > 0.5 { 5.0 } else { 42.0 },
-            ),
-            Stuff::Wood,
-            DARK_OAK,
-        );
+        chair(out, c, (c - table).normalize_or_zero());
     }
 
     // The bin. The single strongest fly attractor a house has, and the reason a
@@ -1569,22 +1817,74 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
     );
 
     // A chest of drawers against the far wall.
-    slab(
+    drawers(
         out,
-        Vec3::new(r.max.x - 40.0, 44.0, m.y + 60.0),
-        Vec3::new(52.0, 88.0, 130.0),
-        Stuff::Wood,
-        OAK,
+        Vec2::new(r.max.x - 40.0, m.y + 60.0),
+        Vec3::new(52.0, 82.0, 130.0),
+        Vec2::new(-1.0, 0.0),
+        4,
     );
     // And a wardrobe in the corner, which is the tallest thing in the room and
     // the only place with a top surface nobody ever dusts.
-    slab(
+    // Against the west wall, in whatever stretch of it has no window — the
+    // first version stood it half over the glass in two bedrooms out of three.
+    let (west_lo, west_hi) = clear_of_windows_on(r, Wall::West);
+    wardrobe(
         out,
-        Vec3::new(r.min.x + 38.0, 100.0, r.max.y - 70.0),
-        Vec3::new(64.0, 200.0, 130.0),
-        Stuff::Wood,
-        PAINTED,
+        Vec2::new(r.min.x + 38.0, (west_lo + west_hi) * 0.5),
+        Vec3::new(64.0, 196.0, (west_hi - west_lo - 24.0).clamp(72.0, 150.0)),
+        Vec2::new(1.0, 0.0),
     );
+
+    // A lamp on the nightstand nearest the door side.
+    lamp(
+        out,
+        Vec3::new(head_x + size.x * 0.5 + 32.0, 54.0, r.min.y + 60.0),
+    );
+
+    // The side walls were bare in every bedroom capture. A desk under the far
+    // window in the children's rooms, a chair pushed under it, and a pair of
+    // small pictures on the wall the bed does not use.
+    if !double {
+        let (dl, dh) = clear_of_windows_on(r, Wall::South);
+        let desk = Vec2::new((dl + dh) * 0.5, r.max.y - 44.0);
+        legged(
+            out,
+            desk,
+            Vec2::new(132.0, 62.0),
+            74.0,
+            5.0,
+            6.0,
+            OAK,
+            DARK_OAK,
+        );
+        chair(out, desk + Vec2::new(0.0, -56.0), Vec2::new(0.0, -1.0));
+        // Two small pictures on the south wall, in the run of it with no
+        // window — which is also the wall the bed and the wardrobe leave alone.
+        let art_at = (dl + dh) * 0.5;
+        for (i, off) in [-38.0f32, 38.0].into_iter().enumerate() {
+            picture(
+                out,
+                Vec3::new(art_at + off, 168.0 + i as f32 * 10.0, r.max.y - 8.0),
+                50.0,
+                38.0,
+                true,
+                if i == 0 {
+                    Color::srgb(0.52, 0.44, 0.34)
+                } else {
+                    Color::srgb(0.34, 0.42, 0.46)
+                },
+            );
+        }
+    } else {
+        // The main bedroom gets a chair in the corner instead, which is where
+        // clothes actually live.
+        chair(
+            out,
+            Vec2::new(r.max.x - 70.0, r.max.y - 70.0),
+            Vec2::new(-1.0, 0.0),
+        );
+    }
 }
 
 fn bathroom(out: &mut Vec<Solid>, r: &Room) {

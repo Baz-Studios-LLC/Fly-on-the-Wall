@@ -162,6 +162,25 @@ the session. Do not treat one room or prop as completion.
   has had its washer and dryer all along. The whole-house plan is the honest
   view for judging arrangement; corners are for judging how a room reads.
 
+
+## Pass five: the bedrooms
+
+- Bare mattresses with two pillows on them, plain-box wardrobes, plain-box
+  chests, and two entirely blank walls per room. Now: a duvet stopping short of
+  the pillows with the sheet turned back over its edge and a throw across the
+  foot; a wardrobe with a plinth, doors, a shadow gap and handles; a chest with
+  real drawer fronts and pulls; a bedside lamp with an eight-sided shade; a desk
+  and chair under the far wall in the children's rooms; pictures on the wall the
+  bed does not use.
+- **`chair` is a constructor now.** The kitchen had four written out inline,
+  which is exactly the repeated recognisable form that should not be inline.
+- **The window law fired again, on new work.** The wardrobe and both new
+  pictures went straight over west-wall glass in two bedrooms out of three,
+  because `clear_of_windows` only ever looked at the *north* wall. It takes a
+  `Wall` now and every placement that needs a blank stretch asks for one.
+  This is the third separate time this rule has caught something; it is by far
+  the highest-value law in the file.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -177,5 +196,4 @@ the session. Do not treat one room or prop as completion.
 - Exterior walls are flat untextured plaster; the house wants cladding courses.
 - Interior openings are still honest holes — no leaves on any internal door.
   Shutting them would break the traversal law, so they need to hang ajar.
-- Bedrooms have had one pass and no second look since the whole house was lit.
 - Then: fly-scale routes, undersides and landing surfaces; restrained clutter.
