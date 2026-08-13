@@ -474,6 +474,22 @@ relief into the bargain.
   floor is the largest surface in any room — it sets the key for everything
   standing on it.
 
+
+## Pass twenty-six: clutter, properly
+
+Brett: *"This reads like an empty hotel room. Houses have clutter."* He is right —
+one picture centred on each wall and nothing on any surface is a show home.
+
+- **A gallery wall**, five frames at four sizes not quite aligned, over the
+  media unit — which is the wall the room is looked at across. The first
+  version put it on the wall *behind* the camera, which is a gallery nobody
+  sees, and painted the frame and the image the same darkness, which reads as
+  five brown blocks. Frame, pale mount, image: it is the mount that says
+  "picture".
+- A standard lamp in the corner, a basket of magazines by the sofa, a soundbar
+  and a photograph and a plant on the media unit, a dish and a candle on the
+  coffee table, and a couple of things on the floor nobody has put away.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

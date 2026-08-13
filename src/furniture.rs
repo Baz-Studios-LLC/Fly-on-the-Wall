@@ -552,6 +552,104 @@ fn disc(out: &mut Vec<Solid>, at: Vec3, across: f32, thick: f32, paint: Color, g
     }
 }
 
+/// A cluster of frames on a wall — a gallery, not a single picture centred on
+/// nothing. Real walls have five of them at four sizes, not quite aligned.
+fn frames(out: &mut Vec<Solid>, at: Vec3, along_x: bool, spread: f32, seed: f32) {
+    // Frame, mount, image. The first version painted the frame and the picture
+    // in it the same darkness, and five of those on a wall read as five brown
+    // blocks — it is the pale mount between the two that says "picture".
+    let art = [
+        Color::srgb(0.62, 0.52, 0.40),
+        Color::srgb(0.34, 0.44, 0.52),
+        Color::srgb(0.70, 0.62, 0.44),
+        Color::srgb(0.40, 0.46, 0.38),
+        Color::srgb(0.58, 0.44, 0.46),
+    ];
+    for k in 0..5 {
+        let n = wobble(seed + k as f32 * 17.0, at.y);
+        let m = wobble(at.y + k as f32 * 29.0, seed);
+        let along = (k as f32 - 2.0) * spread * 0.21 + n * spread * 0.035;
+        let up = m * 16.0 + if k % 2 == 0 { 10.0 } else { -10.0 };
+        let wide = 30.0 + n.abs() * 24.0;
+        let high = wide * (0.72 + m * 0.26);
+        let put = |o: &mut Vec<Solid>, w: f32, h: f32, out_by: f32, paint: Color| {
+            let centre = if along_x {
+                Vec3::new(at.x + along, at.y + up, at.z + out_by)
+            } else {
+                Vec3::new(at.x + out_by, at.y + up, at.z + along)
+            };
+            let size = if along_x {
+                Vec3::new(w, h, 2.0)
+            } else {
+                Vec3::new(2.0, h, w)
+            };
+            slab(o, centre, size, Stuff::Wood, paint);
+        };
+        let face = if along_x { 1.0 } else { -1.0 };
+        put(out, wide, high, 0.0, DARK_OAK);
+        put(
+            out,
+            wide - 7.0,
+            high - 7.0,
+            face * 1.4,
+            Color::srgb(0.92, 0.91, 0.88),
+        );
+        put(out, wide - 19.0, high - 19.0, face * 2.2, art[k]);
+    }
+}
+
+/// A standard lamp: foot, stem, and a shade you can see the underside of.
+fn floor_lamp(out: &mut Vec<Solid>, at: Vec2) {
+    disc(
+        out,
+        Vec3::new(at.x, 2.0, at.y),
+        34.0,
+        4.0,
+        Color::srgb(0.26, 0.26, 0.27),
+        0.0,
+    );
+    slab(
+        out,
+        Vec3::new(at.x, 66.0, at.y),
+        Vec3::new(4.0, 130.0, 4.0),
+        Stuff::Metal,
+        BRASS,
+    );
+    const SIDES: usize = 4;
+    let across = 40.0;
+    let bar = across * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
+    for k in 0..SIDES {
+        turned(
+            out,
+            Vec3::new(at.x, 146.0, at.y),
+            Vec3::new(across, 30.0, bar),
+            Quat::from_rotation_y(k as f32 * std::f32::consts::PI / SIDES as f32),
+            Stuff::Fabric,
+            SHADE,
+        );
+    }
+}
+
+/// A basket, with whatever has been dropped in it.
+fn basket(out: &mut Vec<Solid>, at: Vec2, wide: f32, tall: f32, paint: Color) {
+    disc(
+        out,
+        Vec3::new(at.x, tall * 0.5, at.y),
+        wide,
+        tall,
+        paint,
+        0.0,
+    );
+    disc(
+        out,
+        Vec3::new(at.x, tall, at.y),
+        wide * 1.06,
+        tall * 0.16,
+        Color::srgb(0.52, 0.44, 0.34),
+        0.0,
+    );
+}
+
 /// A stack of books, each one a shade and a size off the one under it, with
 /// the top one nudged out of square.
 fn books(out: &mut Vec<Solid>, at: Vec3, how_many: usize, seed: f32) {
@@ -2146,6 +2244,86 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
             Color::srgb(0.20, 0.18, 0.17),
         );
     }
+
+    // Clutter. A room with one picture centred on each wall and nothing on any
+    // surface is a show home; what makes it somebody's is the number of small
+    // things that are where they were left.
+    //
+    // A gallery over the media unit, in whatever stretch of that wall has no
+    // window; a lamp in the corner; a basket of magazines by the sofa; things
+    // on the media unit and on the side table.
+    // Above the media unit, on the long blank wall the room is usually looked
+    // at across — a gallery on the wall behind the camera is a gallery nobody
+    // sees, which is where the first version put it.
+    frames(
+        out,
+        Vec3::new(r.max.x - 7.0, 182.0, m.y - 20.0),
+        false,
+        340.0,
+        3.0,
+    );
+    let (gal_lo, gal_hi) = clear_of_windows_on(r, Wall::North);
+    frames(
+        out,
+        Vec3::new((gal_lo + gal_hi) * 0.5, 176.0, r.min.y + 7.0),
+        true,
+        (gal_hi - gal_lo).min(320.0),
+        19.0,
+    );
+    floor_lamp(out, Vec2::new(r.min.x + 62.0, m.y - 168.0));
+    basket(
+        out,
+        Vec2::new(r.min.x + 148.0, m.y - 136.0),
+        34.0,
+        30.0,
+        Color::srgb(0.58, 0.48, 0.34),
+    );
+    books(out, Vec3::new(r.min.x + 148.0, 26.0, m.y - 136.0), 3, 11.0);
+    // On the media unit: a soundbar, a photograph, and something living.
+    let media = Vec2::new(r.max.x - 34.0, m.y);
+    slab(
+        out,
+        Vec3::new(media.x - 6.0, 60.0, media.y),
+        Vec3::new(14.0, 8.0, 96.0),
+        Stuff::Metal,
+        Color::srgb(0.20, 0.20, 0.22),
+    );
+    picture(
+        out,
+        Vec3::new(media.x - 10.0, 74.0, media.y - 66.0),
+        26.0,
+        20.0,
+        false,
+        Color::srgb(0.46, 0.40, 0.34),
+    );
+    pot_plant(out, Vec2::new(media.x - 12.0, media.y + 72.0), 52.0);
+    // On the coffee table: a dish and a candle beside the books.
+    disc(
+        out,
+        Vec3::new(table.x - 4.0, 45.0, table.y - 18.0),
+        22.0,
+        5.0,
+        Color::srgb(0.66, 0.62, 0.56),
+        0.0,
+    );
+    disc(
+        out,
+        Vec3::new(table.x + 44.0, 50.0, table.y - 4.0),
+        11.0,
+        14.0,
+        Color::srgb(0.86, 0.84, 0.78),
+        0.0,
+    );
+    // And a couple of things on the floor that nobody has put away.
+    disc(
+        out,
+        Vec3::new(m.x - 130.0, 9.0, m.y + 122.0),
+        18.0,
+        18.0,
+        Color::srgb(0.60, 0.26, 0.22),
+        0.0,
+    );
+    books(out, Vec3::new(m.x + 96.0, 0.6, m.y - 150.0), 2, 27.0);
 
     // A plant in the corner, and a stack of books beside the sofa.
     pot_plant(out, Vec2::new(r.min.x + 82.0, r.max.y - 96.0), 138.0);
