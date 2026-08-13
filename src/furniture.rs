@@ -246,6 +246,40 @@ fn wall_cabinets(out: &mut Vec<Solid>, from: Vec2, to: Vec2, depth: f32) {
         Stuff::Wood,
         PAINTED,
     );
+    // Doors on the front, with a shadow gap between them and a handle under
+    // each. A run of wall units with no fronts is a shelf with a lid on it.
+    let face = Vec2::new(along.y, -along.x);
+    let doors = ((run / 46.0).round() as usize).max(1);
+    for k in 0..doors {
+        let t = (k as f32 + 0.5) / doors as f32 - 0.5;
+        let at = mid + along * (run * t) + face * (depth * 0.5 + 1.5);
+        let leaf = run / doors as f32 - 3.0;
+        let (dx, dz) = if along.x.abs() > 0.5 {
+            (leaf, 3.0)
+        } else {
+            (3.0, leaf)
+        };
+        slab(
+            out,
+            Vec3::new(at.x, UNDER + TALL * 0.5, at.y),
+            Vec3::new(dx, TALL - 5.0, dz),
+            Stuff::Wood,
+            Color::srgb(0.88, 0.88, 0.86),
+        );
+        let pull = at + face * 2.0;
+        let (hx, hz) = if along.x.abs() > 0.5 {
+            (leaf * 0.5, 3.0)
+        } else {
+            (3.0, leaf * 0.5)
+        };
+        slab(
+            out,
+            Vec3::new(pull.x, UNDER + 8.0, pull.y),
+            Vec3::new(hx, 3.0, hz),
+            Stuff::Metal,
+            CHROME,
+        );
+    }
 }
 
 /// A bed: frame, mattress, and two pillows. The frame is inset from the
@@ -2121,19 +2155,88 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
 
     // The fridge, standing off the north wall with a gap behind it. The gap is
     // the point: unreachable in flight, trivial on foot, warm and dark.
-    appliance(
-        out,
-        Vec2::new(r.max.x - 100.0, r.min.y + 56.0),
-        Vec3::new(78.0, 178.0, 68.0),
-        STEEL,
-    );
+    let fridge = Vec2::new(r.max.x - 100.0, r.min.y + 56.0);
+    appliance(out, fridge, Vec3::new(78.0, 178.0, 68.0), STEEL);
+    // Fridge over freezer, a shadow gap between them, and a handle down the
+    // same side of each. Without them it is a wardrobe in a kitchen.
+    for (y, high) in [(64.0f32, 116.0f32), (2.0, 56.0)] {
+        slab(
+            out,
+            Vec3::new(fridge.x, y + high * 0.5, fridge.y + 35.0),
+            Vec3::new(72.0, high - 4.0, 3.0),
+            Stuff::Metal,
+            Color::srgb(0.80, 0.81, 0.83),
+        );
+        slab(
+            out,
+            Vec3::new(fridge.x - 28.0, y + high * 0.5, fridge.y + 39.0),
+            Vec3::new(4.0, high * 0.62, 5.0),
+            Stuff::Metal,
+            CHROME,
+        );
+    }
     // The cooker goes in the widest stretch of wall with no window in it, so
     // its extractor has somewhere to be that is not over glass.
-    appliance(
+    let cooker = Vec2::new(cooker_x, north);
+    appliance(out, cooker, Vec3::new(76.0, 90.0, 62.0), SLATE);
+    // A hob with four rings, a control fascia, and an oven door with a window
+    // and a bar handle.
+    slab(
         out,
-        Vec2::new(cooker_x, north),
-        Vec3::new(76.0, 90.0, 62.0),
-        SLATE,
+        Vec3::new(cooker_x, 91.0, north),
+        Vec3::new(74.0, 3.0, 60.0),
+        Stuff::Metal,
+        Color::srgb(0.14, 0.14, 0.15),
+    );
+    for k in 0..4 {
+        let (dx, dz) = ((k % 2) as f32 - 0.5, (k / 2) as f32 - 0.5);
+        disc(
+            out,
+            Vec3::new(cooker_x + dx * 36.0, 93.0, north + dz * 28.0),
+            22.0,
+            2.0,
+            Color::srgb(0.26, 0.26, 0.28),
+            0.0,
+        );
+    }
+    let front = north + 31.0;
+    slab(
+        out,
+        Vec3::new(cooker_x, 82.0, front),
+        Vec3::new(74.0, 14.0, 3.0),
+        Stuff::Metal,
+        Color::srgb(0.20, 0.20, 0.22),
+    );
+    for k in 0..4 {
+        disc(
+            out,
+            Vec3::new(cooker_x - 27.0 + k as f32 * 18.0, 82.0, front + 2.0),
+            7.0,
+            4.0,
+            CHROME,
+            0.0,
+        );
+    }
+    slab(
+        out,
+        Vec3::new(cooker_x, 40.0, front + 1.0),
+        Vec3::new(70.0, 62.0, 3.0),
+        Stuff::Metal,
+        Color::srgb(0.22, 0.22, 0.24),
+    );
+    slab(
+        out,
+        Vec3::new(cooker_x, 44.0, front + 3.0),
+        Vec3::new(52.0, 34.0, 2.0),
+        Stuff::Glass,
+        Color::srgba(0.10, 0.11, 0.12, 0.82),
+    );
+    slab(
+        out,
+        Vec3::new(cooker_x, 68.0, front + 5.0),
+        Vec3::new(64.0, 4.0, 5.0),
+        Stuff::Metal,
+        CHROME,
     );
     slab(
         out,

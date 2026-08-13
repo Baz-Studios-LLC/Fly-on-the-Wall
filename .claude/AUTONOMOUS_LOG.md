@@ -303,6 +303,17 @@ the session. Do not treat one room or prop as completion.
   between the door and the next window, which is the only place they fit — the
   window law would have said so otherwise, as it has three times now.
 
+
+## Pass fourteen: the kitchen's faces
+
+- The fridge, the cooker and the wall cabinets were all carcasses with nothing
+  on their fronts — the same fault as the toilet, the wardrobe, the chest and
+  the washer, and by now clearly the single most common one in this file. A
+  carcass says how big a thing is; the face says what it is.
+- Fridge over freezer with a shadow gap and a handle down the same side of each.
+  A hob with four rings, a control fascia with four knobs, an oven door with a
+  glass window and a bar handle. Doors and handles on the wall units.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
