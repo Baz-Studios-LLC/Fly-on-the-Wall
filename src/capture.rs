@@ -118,6 +118,11 @@ fn auto_capture(
     target: Option<Res<CaptureTarget>>,
     flies: Query<(&crate::fly::Fly, &crate::fly::Intent)>,
     meshes: Query<&Mesh3d>,
+    mesh_assets: Res<Assets<Mesh>>,
+    material_assets: Res<Assets<StandardMaterial>>,
+    lights: Query<&PointLight>,
+    spots: Query<&SpotLight>,
+    diagnostics: Res<bevy::diagnostic::DiagnosticsStore>,
     keys: Res<ButtonInput<KeyCode>>,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -164,6 +169,21 @@ fn auto_capture(
         Some(target) => Screenshot::image(target.image.clone()),
         None => Screenshot::primary_window(),
     };
+    // Cost, measured rather than guessed at. Optimising without a number is
+    // how a renderer ends up slower and more complicated at the same time.
+    let fps = diagnostics
+        .get(&bevy::diagnostic::FrameTimeDiagnosticsPlugin::FPS)
+        .and_then(|d| d.smoothed())
+        .unwrap_or(0.0);
+    info!(
+        "COST draws={} meshes={} materials={} lights={} fps={:.0}",
+        meshes.iter().count(),
+        mesh_assets.len(),
+        material_assets.len(),
+        lights.iter().count() + spots.iter().count(),
+        fps,
+    );
+
     commands
         .spawn(shot)
         .observe(save_to_disk(capture.path.clone()));

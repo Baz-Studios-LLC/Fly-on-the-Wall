@@ -43,6 +43,7 @@
 //! | `FLY_INSPECT=<deg>` | park the camera close to the fly at that azimuth — 0 behind, 180 head-on — and stand it on the living room floor. For looking at the model, not playing. |
 //! | `FLY_CAPTURE=<path>` | render for a moment, save a frame there, exit |
 //! | `FLY_CAPTURE_DELAY=<s>` | move the shutter (default 4) |
+//! | `FLY_UNCAPPED=1` | drop vsync, so the frame rate means something |
 
 mod blueprint;
 mod body;
@@ -68,6 +69,14 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: "Fly on the Wall — flight test".into(),
+                        // Vsync is right for playing and useless for measuring:
+                        // a frame rate pinned to the display tells you the
+                        // display's refresh rate and nothing about the house.
+                        present_mode: if std::env::var("FLY_UNCAPPED").is_ok() {
+                            bevy::window::PresentMode::AutoNoVsync
+                        } else {
+                            bevy::window::PresentMode::AutoVsync
+                        },
                         ..default()
                     }),
                     ..default()

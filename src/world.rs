@@ -715,37 +715,66 @@ impl Plugin for WorldPlugin {
     }
 }
 
+/// Every solid in the house is a box, and a box is a unit cube with a scale on
+/// it. Handing each one its own `Cuboid` mesh and its own material — which is
+/// what this did first — cost 1559 meshes and 1549 materials for a house whose
+/// entire vocabulary is one shape and about thirty colours, and it defeats
+/// batching outright: the renderer groups draws by material, so a house where
+/// no two boards share one is a house with no two boards in the same draw.
+///
+/// One cube, and a palette keyed by how a surface *looks*. Colour is quantised
+/// to eight bits a channel before it becomes a key, which costs nothing visible
+/// and means the deterministic grain on two neighbouring floorboards collapses
+/// to one entry when it lands on the same byte.
 fn dress_the_set(
     mut commands: Commands,
     home: Res<Home>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let cube = meshes.add(Cuboid::from_length(1.0));
+    let mut palette: std::collections::HashMap<[u8; 6], Handle<StandardMaterial>> =
+        std::collections::HashMap::new();
+
     for (i, solid) in home.solids.iter().enumerate() {
-        let mesh = meshes.add(Cuboid::new(
-            solid.half.x * 2.0,
-            solid.half.y * 2.0,
-            solid.half.z * 2.0,
-        ));
-        let material = materials.add(StandardMaterial {
-            base_color: solid.paint.unwrap_or_else(|| solid.stuff.tint()),
-            perceptual_roughness: solid.stuff.perceptual_roughness(),
-            metallic: if solid.stuff == Stuff::Metal {
-                0.6
-            } else {
-                0.0
-            },
-            alpha_mode: if solid.sheer {
-                AlphaMode::Blend
-            } else {
-                AlphaMode::Opaque
-            },
-            ..default()
-        });
+        let colour = solid.paint.unwrap_or_else(|| solid.stuff.tint());
+        let rgba = colour.to_linear();
+        let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let key = [
+            byte(rgba.red),
+            byte(rgba.green),
+            byte(rgba.blue),
+            byte(rgba.alpha),
+            solid.stuff as u8,
+            solid.sheer as u8,
+        ];
+        let material = palette
+            .entry(key)
+            .or_insert_with(|| {
+                materials.add(StandardMaterial {
+                    base_color: colour,
+                    perceptual_roughness: solid.stuff.perceptual_roughness(),
+                    metallic: if solid.stuff == Stuff::Metal {
+                        0.6
+                    } else {
+                        0.0
+                    },
+                    alpha_mode: if solid.sheer {
+                        AlphaMode::Blend
+                    } else {
+                        AlphaMode::Opaque
+                    },
+                    ..default()
+                })
+            })
+            .clone();
+
         let mut entity = commands.spawn((
-            Mesh3d(mesh),
+            Mesh3d(cube.clone()),
             MeshMaterial3d(material),
-            Transform::from_translation(solid.center).with_rotation(solid.rot),
+            Transform::from_translation(solid.center)
+                .with_rotation(solid.rot)
+                .with_scale(solid.half * 2.0),
         ));
         if home.door == Some(i) {
             entity.insert(DoorPanel);

@@ -459,7 +459,19 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
 /// Hung on every window in the house from one pass, because the windows already
 /// know where they are and asking them is the only way this stays right when one
 /// moves.
+/// Curtains, on the room side of the glass.
+///
+/// The first version of this hung every panel and pole on the wall's own
+/// centreline, which is where the *opening* is. An eight-centimetre curtain
+/// inside a twenty-centimetre wall is a curtain nobody can see: the whole house
+/// had them, and not one showed. They now stand proud of the inside face, which
+/// is also the only place a fly could ever land on one.
 fn dress_the_windows(out: &mut Vec<Solid>) {
+    let heart = crate::house::centre();
+    // Clear of the plaster by a centimetre, so the fabric reads as hanging in
+    // front of the wall rather than growing out of it.
+    let proud = crate::house::WALL_OUTER * 0.5 + 5.0;
+
     for (lo, hi) in crate::house::window_openings() {
         let mid = (lo + hi) * 0.5;
         let span = hi - lo;
@@ -467,6 +479,12 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
         let along_x = span.x > span.z;
         let wide = if along_x { span.x } else { span.z };
         let head = hi.y;
+        // Inward along the wall's thin axis.
+        let inward = if along_x {
+            Vec3::Z * (heart.y - mid.z).signum()
+        } else {
+            Vec3::X * (heart.x - mid.x).signum()
+        } * proud;
 
         // The pole, a little wider than the opening.
         let pole = if along_x {
@@ -476,7 +494,7 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
         };
         slab(
             out,
-            Vec3::new(mid.x, head + 12.0, mid.z),
+            Vec3::new(mid.x, head + 12.0, mid.z) + inward,
             pole,
             Stuff::Metal,
             SLATE,
@@ -499,7 +517,7 @@ fn dress_the_windows(out: &mut Vec<Solid>) {
             } else {
                 Vec3::new(8.0, drop, 34.0)
             };
-            slab(out, at, size, Stuff::Fabric, WOOL_WARM);
+            slab(out, at + inward, size, Stuff::Fabric, WOOL_WARM);
         }
     }
 }

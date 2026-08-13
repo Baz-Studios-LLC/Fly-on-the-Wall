@@ -314,6 +314,77 @@ const SOUTH_WINDOWS: [f32; 4] = [6.0, 21.0, 30.0, 41.0];
 const WEST_WINDOWS: [f32; 3] = [6.0, 17.0, 29.0];
 const EAST_WINDOW: f32 = 29.0;
 
+/// A room's floor: boards, tile or concrete, by what the room is for.
+///
+/// Strips rather than one plane. It costs a few dozen solids per room, tiles the
+/// same rectangle so collision is unchanged, and it is the difference between a
+/// floor and a colour — the largest single surface in any shot of any room.
+fn lay_floor(out: &mut Vec<Solid>, r: &Room) {
+    let (stuff, base, run, tone, cross) = match r.use_for {
+        // Tile, in squarer courses and a cooler colour.
+        Use::Bath | Use::Utility => (
+            Stuff::Stone,
+            Color::srgb(0.72, 0.73, 0.71),
+            34.0,
+            0.05,
+            true,
+        ),
+        // The garage is a poured slab: no courses at all, just a little
+        // mottling, and it sits lower than the house.
+        Use::Garage => (
+            Stuff::Stone,
+            Color::srgb(0.44, 0.44, 0.46),
+            110.0,
+            0.03,
+            false,
+        ),
+        _ => (
+            Stuff::Floorboard,
+            Color::srgb(0.45, 0.33, 0.22),
+            19.0,
+            0.06,
+            false,
+        ),
+    };
+
+    let top = if r.use_for == Use::Garage { -6.0 } else { 0.0 };
+    let lip = INNER;
+    let (lo, hi) = (r.min - lip, r.max + lip);
+
+    let mut at = lo.y;
+    let mut i = 0;
+    while at < hi.y {
+        let to = (at + run).min(hi.y);
+        let mut plank = Solid::between(Vec3::new(lo.x, -SLAB, at), Vec3::new(hi.x, top, to), stuff);
+        // A hair of variation, and every fourth course a shade off, which is
+        // what stops a run of them reading as stripes.
+        let t = grain(at) * tone + if i % 4 == 0 { -tone * 0.5 } else { 0.0 };
+        plank.paint = Some(Color::srgb(
+            (base.to_srgba().red + t).clamp(0.0, 1.0),
+            (base.to_srgba().green + t * 0.85).clamp(0.0, 1.0),
+            (base.to_srgba().blue + t * 0.7).clamp(0.0, 1.0),
+        ));
+        out.push(plank);
+        // Tile is cut across as well as along, so it reads as squares.
+        if cross {
+            let mut x = lo.x;
+            while x < hi.x {
+                let nx = (x + run).min(hi.x);
+                let mut grout = Solid::between(
+                    Vec3::new(nx - 1.0, -SLAB, at),
+                    Vec3::new(nx, top + 0.2, to),
+                    stuff,
+                );
+                grout.paint = Some(Color::srgb(0.60, 0.61, 0.60));
+                out.push(grout);
+                x = nx;
+            }
+        }
+        at = to;
+        i += 1;
+    }
+}
+
 /// Deterministic grain, from a position. Never a generator: two captures of the
 /// same house have to be comparable.
 fn grain(v: f32) -> f32 {
@@ -350,44 +421,15 @@ pub fn build() -> Home {
         Stuff::Grass,
     ));
 
-    // -- Floor, as boards --------------------------------------------------
+    // -- Floors, one per room ---------------------------------------------
     //
-    // The largest single surface in every shot, and it was one flat brown
-    // plane. Boards cost nothing — they tile the same rectangle, so the
-    // collision is identical to the slab they replace — and they are the
-    // difference between a floor and a colour. Each takes its tone from its own
-    // position, so the grain never repeats and never differs between runs.
-    {
-        const BOARD: f32 = 19.0;
-        let mut z = n;
-        let mut i = 0;
-        while z < so {
-            let to = (z + BOARD).min(so);
-            let mut plank = Solid::between(
-                Vec3::new(w, -SLAB, z),
-                Vec3::new(house_east, 0.0, to),
-                Stuff::Floorboard,
-            );
-            // A hair of variation, and every fourth board a shade darker, which
-            // is what stops a run of boards reading as stripes.
-            let t = grain(z) * 0.06 + if i % 4 == 0 { -0.03 } else { 0.0 };
-            plank.paint = Some(Color::srgb(
-                (0.45 + t).clamp(0.0, 1.0),
-                (0.33 + t * 0.8).clamp(0.0, 1.0),
-                (0.22 + t * 0.6).clamp(0.0, 1.0),
-            ));
-            s.push(plank);
-            z = to;
-            i += 1;
-        }
+    // Laid per room and by what the room is for, because a floor is one of the
+    // loudest things a room says about itself and a bathroom with floorboards
+    // in it says the wrong one. Each is run slightly into the surrounding walls
+    // so no seam can open at a threshold.
+    for r in rooms() {
+        lay_floor(&mut s, &r);
     }
-    // The garage slab is concrete and lower — a step down from the laundry, the
-    // way every ranch does it, and a fly-scale ledge into the bargain.
-    s.push(Solid::between(
-        Vec3::new(house_east, -SLAB, n),
-        Vec3::new(e, -6.0, garage_south),
-        Stuff::Stone,
-    ));
 
     // -- Exterior ----------------------------------------------------------
     let windows = |list: &[f32], from: f32| -> Vec<Opening> {
@@ -609,6 +651,24 @@ fn glaze(s: &mut Vec<Solid>) {
 /// rather than remembered. Twice in one pass a kitchen fitting was placed over
 /// glass — first a run of wall cabinets, then a cooker hood — and both times it
 /// was invisible in the plan and unmissable from inside the room.
+/// The thickness of an exterior wall, which anything hung on the inside of one
+/// needs to know to stand clear of it.
+pub const WALL_OUTER: f32 = OUTER;
+
+/// The middle of the footprint. Every window in the house is in an exterior
+/// wall, so "which side is the room on" is answered by "the side the middle of
+/// the house is on" — which is how curtains work out where to hang.
+pub fn centre() -> Vec2 {
+    let rooms = rooms();
+    let mut lo = rooms[0].min;
+    let mut hi = rooms[0].max;
+    for r in &rooms {
+        lo = lo.min(r.min);
+        hi = hi.max(r.max);
+    }
+    (lo + hi) * 0.5
+}
+
 pub fn window_openings() -> Vec<(Vec3, Vec3)> {
     let (w, _e, n, so, _gs, house_east) = envelope();
     let half = WINDOW_WIDE * 0.5;
