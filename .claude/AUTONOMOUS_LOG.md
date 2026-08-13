@@ -510,6 +510,28 @@ one picture centred on each wall and nothing on any surface is a show home.
   roofs over the fence are most of what a north-facing window in a street like
   this ever shows.
 
+
+## Pass twenty-eight: a stripe on the wall
+
+Faint vertical banding across a patch of one wall. Three wrong answers before
+the right one, each ruled out by a test rather than a guess:
+
+1. *The paint skin z-fighting with the wall.* Plausible — it sat half a
+   centimetre proud. Splitting each wall into two painted halves removes the
+   coplanar pair entirely, and the banding was unchanged. (Kept anyway: it is a
+   better construction and the same box count.)
+2. *Shadow acne from the downlight*, which grazes every wall in its room and
+   would explain a patch bounded by the light's cone. Raised the spot's depth
+   and normal bias for centimetre scale. Unchanged. (Kept: the defaults are
+   tuned for metres.)
+3. Turning `base_color_texture` off for one run: **gone**. It was the texture.
+
+Vertical stripes mean a texture that varies along one axis only, and the wood
+grain did — `hash2(0, y)`. Which way that stripe lands depends on how the face
+happens to be oriented, and Bevy's cuboid UVs put v across the horizontal on
+some faces. Wood grain is mostly isotropic now, which it can afford to be:
+almost all the wood in this house is painted trim.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

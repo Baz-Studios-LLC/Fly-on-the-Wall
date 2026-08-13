@@ -299,38 +299,37 @@ fn wall_run(
                 Vec3::new(a.x + half, high, a.y + e),
             )
         };
-        out.push(Solid::between(min, max, stuff));
-
-        // Paint, on whichever face looks into a room.
+        // The wall, in two halves, each painted for the room its face looks
+        // into.
         //
-        // A skin half a centimetre proud of the plaster, coloured by the room
-        // it faces — which the run works out the same way the cladding works
-        // out which way is outdoors: a probe thirty centimetres off the face,
-        // asking which room that point is in. A wall between two rooms is
-        // painted twice, once on each side, which is what happens in a house.
+        // The first version left the wall whole and stuck a paint skin half a
+        // centimetre proud of each side, and those skins z-fought with the wall
+        // behind them: fine vertical banding across whole pieces at grazing
+        // angles. Splitting the wall removes the coplanar pair entirely and
+        // costs nothing — it is the same volume and the same box count.
+        //
+        // Which room a face looks into comes from the same trick the cladding
+        // uses to find the outdoors: a probe thirty centimetres off it.
         for face in [-1.0f32, 1.0] {
             let probe = if along_x {
                 Vec2::new((a.x + s + a.x + e) * 0.5, a.y + face * (half + 30.0))
             } else {
                 Vec2::new(a.x + face * (half + 30.0), (a.y + s + a.y + e) * 0.5)
             };
-            let Some(room) = room_at(probe) else {
-                continue;
-            };
-            let (pmin, pmax) = if along_x {
+            let (hmin, hmax) = if along_x {
                 (
-                    Vec3::new(a.x + s, low, a.y + face * half),
-                    Vec3::new(a.x + e, high, a.y + face * (half + 0.6)),
+                    Vec3::new(a.x + s, low, a.y),
+                    Vec3::new(a.x + e, high, a.y + face * half),
                 )
             } else {
                 (
-                    Vec3::new(a.x + face * half, low, a.y + s),
-                    Vec3::new(a.x + face * (half + 0.6), high, a.y + e),
+                    Vec3::new(a.x, low, a.y + s),
+                    Vec3::new(a.x + face * half, high, a.y + e),
                 )
             };
-            let mut paint = Solid::between(pmin.min(pmax), pmin.max(pmax), Stuff::Plaster);
-            paint.paint = Some(wall_colour(&room));
-            out.push(paint);
+            let mut leaf = Solid::between(hmin.min(hmax), hmin.max(hmax), stuff);
+            leaf.paint = room_at(probe).map(|room| wall_colour(&room));
+            out.push(leaf);
         }
 
         // Lap siding, on whichever face of an exterior wall looks outward.
@@ -2308,6 +2307,13 @@ pub fn light_it(commands: &mut Commands) {
                 outer_angle: 1.25,
                 inner_angle: 0.95,
                 shadow_maps_enabled: true,
+                // A downlight grazes every wall in the room it is in, which is
+                // the exact condition shadow maps produce acne under: fine
+                // banding across a patch of wall bounded by the light's own
+                // cone. The default biases are tuned for a world measured in
+                // metres and this one is in centimetres.
+                shadow_depth_bias: 0.06,
+                shadow_normal_bias: 5.0,
                 ..default()
             },
             Transform::from_xyz(at.x, CEILING - 6.0, at.y)

@@ -774,13 +774,15 @@ fn surface_texture(stuff: Stuff) -> Image {
                     let fine = hash2(x / 3, y);
                     1.0 - 0.14 * streak - 0.05 * fine
                 }
-                // Softer than a floorboard's. Most of the wood in this house
-                // is painted trim, and a painted architrave with a floorboard's
-                // grain on it reads as corrugation.
-                Stuff::Wood => {
-                    let streak = hash2(0, y);
-                    1.0 - 0.045 * streak - 0.02 * hash2(x / 2, y)
-                }
+                // Softer than a floorboard's, and mostly *not* directional.
+                //
+                // A grain that varies only along v is a stripe, and which way a
+                // stripe lands depends on how the face happens to be oriented:
+                // the same wood texture that reads as grain on a shelf came out
+                // as vertical banding across a patch of wall, because Bevy's
+                // cuboid UVs put v across the horizontal there. Most of the
+                // wood in this house is painted trim anyway.
+                Stuff::Wood => 1.0 - 0.022 * hash2(0, y) - 0.03 * hash2(x, y),
                 // A weave: two threads crossing, with slubs in it.
                 Stuff::Fabric => {
                     let over = ((x / 2 + y / 2) % 2) as f32;
