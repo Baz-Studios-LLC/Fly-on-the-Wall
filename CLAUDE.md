@@ -7,6 +7,10 @@ behavior and documented decisions as the source of truth.
 
 - This is a Rust 2024 and Bevy 0.19 project. Verify APIs against that version.
 - One world unit is one centimetre.
+- Every occupiable room must provide clear interior floor dimensions of at least
+  15 feet by 15 feet (`457.2 cm x 457.2 cm`). Measure between finished interior
+  surfaces; wall thickness, trim, and built-ins must not reduce either dimension
+  below this minimum.
 - The current flight model is approved. Preserve its feel and controls unless a
   house change exposes a concrete collision or traversal bug.
 - Rendering geometry and collision geometry must agree. A visible solid should
@@ -59,6 +63,8 @@ Evaluate all of the following:
 
 - Complete architecture: floors, walls, ceilings, roof where visible, doors,
   windows, frames, trim, stairs, thresholds, and believable room connections.
+- No occupiable room smaller than 15 feet by 15 feet of clear interior floor
+  space; verify generated room bounds rather than relying on nominal dimensions.
 - Room identity and function: every room should read clearly from its contents
   and layout without labels.
 - Essential furnishings and fixtures appropriate to each room.
