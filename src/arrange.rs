@@ -20,8 +20,11 @@
 //! | left mouse or `G` | take hold of it, and let go of it |
 //! | `←` `→` | turn it, twelve degrees a press |
 //! | `↑` `↓` | raise and lower it — how a mug gets onto a shelf |
-//! | `Ctrl` `S` | save the arrangement |
+//! | `Ctrl` `S` or `Cmd` `S` | save the arrangement |
 //! | `Backspace` | put everything back where the generator had it |
+//!
+//! A save goes to `~/.fly-on-the-wall/arrangement.txt` and is read back on the
+//! next run, so a layout worked out by hand outlives the build it was made in.
 //!
 //! None of those are the game's. `Q` is the first-person toggle, `R` rolls the
 //! camera and `E` cycles the ajar door, so the first pass at this fought the
@@ -61,6 +64,10 @@ struct Marker;
 /// How many boxes the biggest piece in the house has. The car is about sixty.
 const GHOST_POOL: usize = 96;
 
+/// The last thing worth telling the player, and when it was said.
+#[derive(Resource, Default, Deref, DerefMut)]
+struct Said(Option<(String, f32)>);
+
 #[derive(Component)]
 struct Crosshair;
 
@@ -77,6 +84,7 @@ impl Plugin for ArrangePlugin {
             on: std::env::var("FLY_ARRANGE").is_ok(),
             ..default()
         })
+        .init_resource::<Said>()
         .add_systems(Startup, spawn_marker)
         // *After* the renderer has spawned its entities, not alongside it.
         // `dress_the_set` spawns through deferred commands, so anything in
@@ -332,8 +340,10 @@ fn carry(
 fn save_or_reset(
     arranging: Res<Arranging>,
     mut home: ResMut<Home>,
+    time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mut parts: Query<(&Part, &mut Transform), Without<Marker>>,
+    mut said: ResMut<Said>,
 ) {
     if !arranging.on {
         return;
@@ -362,13 +372,32 @@ fn save_or_reset(
                 }
             }
         }
-        match std::fs::write(arrangement_path(), &text) {
-            Ok(()) => info!("arrangement saved to {}", arrangement_path().display()),
-            Err(e) => error!("could not save the arrangement: {e}"),
+        let path = save_path();
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
         }
+        // Say so on screen. There is no console when the game is started from
+        // the launcher, so a save that only logs is a save nobody can tell
+        // happened — and "did that work?" is the one question a save has to
+        // answer.
+        **said = Some(match std::fs::write(&path, &text) {
+            Ok(()) => {
+                let moved = text.lines().filter(|l| !l.starts_with('#')).count();
+                info!("arrangement saved to {}", path.display());
+                (
+                    format!("saved {moved} pieces to {}", path.display()),
+                    time.elapsed_secs(),
+                )
+            }
+            Err(e) => {
+                error!("could not save the arrangement: {e}");
+                (format!("COULD NOT SAVE: {e}"), time.elapsed_secs())
+            }
+        });
     }
 
     if keys.just_pressed(KeyCode::Backspace) {
+        **said = Some(("everything put back".into(), time.elapsed_secs()));
         let moves: Vec<_> = arranging
             .moved
             .iter()
@@ -383,20 +412,41 @@ fn save_or_reset(
     }
 }
 
-fn arrangement_path() -> std::path::PathBuf {
-    // Beside the executable, the same place the assets live, so a saved layout
-    // travels with the build it was made in.
-    std::env::current_exe()
+/// Where a saved arrangement goes: in the player's own directory, not inside
+/// the application.
+///
+/// Beside the executable was the first answer and it is wrong for anything
+/// installed: the launcher replaces the whole bundle on update, so every layout
+/// anybody had worked out would go with it, and the bundle may not even be
+/// writable. This is the one path that survives a reinstall.
+fn save_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::PathBuf::from(home)
+        .join(".fly-on-the-wall")
+        .join("arrangement.txt")
+}
+
+/// Where one is looked for: the player's copy first, then one shipped beside
+/// the executable, so a build can carry an authored layout of its own.
+fn load_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = vec![save_path()];
+    if let Some(beside) = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join("arrangement.txt")))
-        .unwrap_or_else(|| "arrangement.txt".into())
+    {
+        paths.push(beside);
+    }
+    paths
 }
 
 fn load_arrangement(
     mut home: ResMut<Home>,
     mut parts: Query<(&Part, &mut Transform), Without<Marker>>,
 ) {
-    let Ok(text) = std::fs::read_to_string(arrangement_path()) else {
+    let Some(text) = load_paths()
+        .into_iter()
+        .find_map(|p| std::fs::read_to_string(p).ok())
+    else {
         return;
     };
     let mut moved = 0;
@@ -434,6 +484,8 @@ fn load_arrangement(
 fn show(
     arranging: Res<Arranging>,
     home: Res<Home>,
+    time: Res<Time>,
+    said: Res<Said>,
     mut readouts: Query<(&mut Text, &mut Visibility), With<Readout>>,
     mut crosshairs: Query<&mut Visibility, (With<Crosshair>, Without<Readout>)>,
 ) {
@@ -463,8 +515,15 @@ fn show(
             format!("piece {p}   {:.0} x {:.0} x {:.0} cm", s.x, s.y, s.z)
         })
         .unwrap_or_else(|| "nothing in front of you".into());
+    // A confirmation outlives the keypress by a few seconds and then goes.
+    let note = said
+        .0
+        .as_ref()
+        .filter(|(_, when)| time.elapsed_secs() - *when < 5.0)
+        .map(|(what, _)| format!("\n{what}"))
+        .unwrap_or_default();
     text.0 = format!(
-        "ARRANGING   -   {}{}\n{}",
+        "ARRANGING   -   {}{}\n{}{note}",
         size,
         if arranging.held.is_some() {
             "   -   carrying"

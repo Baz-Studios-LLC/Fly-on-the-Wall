@@ -34,7 +34,7 @@
 //! | `F12` | save a screenshot |
 //! | `Esc` | release the mouse |
 //! | `F11` | full screen ↔ window |
-//! | `Tab` or `F4` | arrange mode: move the furniture yourself |
+//! | `Tab` or `F4` | arrange mode: move the furniture yourself (`Ctrl`+`S` saves) |
 //!
 //! ## Switches
 //!

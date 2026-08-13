@@ -779,6 +779,24 @@ Both from Brett using it.
 - The floating law audits the *generated* house, not the arrangement, so lifting
   something onto a shelf does not trip it. That is the right way round.
 
+
+## Pass forty: making the save answerable
+
+Brett asked how to save, and the honest answer was `Ctrl+S` — followed by two
+problems with it.
+
+- **It wrote inside the application.** Beside the executable was the first
+  answer and it is wrong for anything installed: the launcher replaces the whole
+  bundle on update, so every layout anybody had worked out would go with it, and
+  the bundle may not even be writable. Saves go to
+  `~/.fly-on-the-wall/arrangement.txt` now. A build can still ship one of its
+  own beside the executable, and that is read as a fallback.
+- **Nothing said it had worked.** There is no console when the game starts from
+  the launcher, so a save that only logged was a save nobody could tell had
+  happened — and "did that work?" is the single question a save has to answer.
+  It now says so on screen, with the count and the path, for five seconds.
+  Backspace says so too.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
