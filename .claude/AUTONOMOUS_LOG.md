@@ -381,6 +381,28 @@ the session. Do not treat one room or prop as completion.
   hundred and eighty metres, which put visible blocks the size of a car on the
   lawn.
 
+
+## Pass twenty: the siding, twice wrong
+
+The north elevation came back stippled all over, and it took two wrong
+diagnoses to get to what it was.
+
+1. *Shadow acne* — it is not. A north wall with the sun in the south-west has
+   `N·L < 0` and never samples the shadow map at all.
+2. *Exposed board tops* — closer. Each course had a three-centimetre gap above
+   it, and the top face of a board points up, at the sun. A hundred lit slivers
+   three centimetres wide, seen at a grazing angle, alias into exactly what
+   shadow acne looks like. Closing the gap by lapping the boards fixed that
+   and immediately introduced the third thing:
+3. *Z-fighting*. Overlapping boards at the same depth put two front faces on
+   one plane, which stipples in three-centimetre bands at every course line.
+
+The answer was to stop building lap siding flat. A lapped board's bottom edge
+stands proud of its top — that is what throws the shadow line that makes siding
+read as siding. Tilting each board fifteen hundredths of a radian covers the
+tops *and* puts no two faces on a plane, and the sunlit elevation gained real
+relief into the bargain.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

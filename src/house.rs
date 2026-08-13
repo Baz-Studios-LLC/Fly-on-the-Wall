@@ -291,26 +291,51 @@ fn wall_run(
                 if inside_envelope(probe) {
                     continue;
                 }
-                const BOARD: f32 = 21.0;
+                // Boards lap, and a lapped board is not flat against the
+                // wall: its bottom edge stands proud of its top, which is what
+                // throws the shadow line that makes siding read as siding.
+                //
+                // Two wrong versions before this one, both of which stippled
+                // the whole north elevation. Leaving a gap between courses
+                // exposes the top face of every board — those face up, the sun
+                // is up, and a hundred lit slivers three centimetres wide alias
+                // into what looks exactly like shadow acne. Closing the gap by
+                // overlapping them instead put every board's front face on the
+                // same plane as its neighbour's, which is z-fighting in
+                // three-centimetre bands. Tilting each board solves both: the
+                // tops are covered and no two faces are coplanar.
+                const BOARD: f32 = 18.0;
+                const TILT: f32 = 0.15;
                 let courses = ((high - low) / BOARD).floor().max(1.0) as usize;
                 for k in 0..courses {
                     let y = low + BOARD * k as f32;
-                    if y + BOARD - 3.0 > high {
+                    if y + BOARD * 1.4 > high {
                         break;
                     }
                     let n = grain(a.x + a.y + s + y * 2.3);
-                    let mut board = if along_x {
-                        Solid::between(
-                            Vec3::new(a.x + s, y, a.y + face * half),
-                            Vec3::new(a.x + e, y + BOARD - 3.0, a.y + face * (half + 2.6)),
-                            Stuff::Wood,
+                    let size = if along_x {
+                        Vec3::new(e - s, BOARD * 1.35, 3.4)
+                    } else {
+                        Vec3::new(3.4, BOARD * 1.35, e - s)
+                    };
+                    let mut board = Solid::between(-size * 0.5, size * 0.5, Stuff::Wood);
+                    board.center = if along_x {
+                        Vec3::new(
+                            a.x + (s + e) * 0.5,
+                            y + BOARD * 0.5,
+                            a.y + face * (half + 1.9),
                         )
                     } else {
-                        Solid::between(
-                            Vec3::new(a.x + face * half, y, a.y + s),
-                            Vec3::new(a.x + face * (half + 2.6), y + BOARD - 3.0, a.y + e),
-                            Stuff::Wood,
+                        Vec3::new(
+                            a.x + face * (half + 1.9),
+                            y + BOARD * 0.5,
+                            a.y + (s + e) * 0.5,
                         )
+                    };
+                    board.rot = if along_x {
+                        Quat::from_rotation_x(face * TILT)
+                    } else {
+                        Quat::from_rotation_z(-face * TILT)
                     };
                     board.paint = Some(Color::srgb(
                         0.80 + n * 0.012,
@@ -950,8 +975,8 @@ fn neighbourhood(out: &mut Vec<Solid>) {
     }
 
     // -- The back yard ------------------------------------------------------
-    let fence_z = n - 1000.0;
-    let (fw, fe) = (w - 500.0, e + 500.0);
+    let fence_z = n - 640.0;
+    let (fw, fe) = (w - 340.0, e + 340.0);
     fn fence(out: &mut Vec<Solid>, a: Vec2, b: Vec2) {
         let along = (b - a).normalize_or_zero();
         let run = (b - a).length();
