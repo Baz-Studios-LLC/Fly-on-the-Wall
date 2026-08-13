@@ -121,6 +121,14 @@ pub struct Solid {
     /// worked while the only things outside were a path and a shrub; it stops
     /// working the moment there is a house across the road.
     pub outdoors: bool,
+    /// Which piece of furniture this box belongs to, as the index of the first
+    /// box in that piece — unique without a counter, and stable for as long as
+    /// the generator is deterministic, which it is.
+    ///
+    /// A sofa is about forty boxes and nothing in the generator ever said which
+    /// forty. `u32::MAX` means the box is part of the building rather than
+    /// something standing in it.
+    pub piece: u32,
     /// Drawn see-through and excluded from shadow casting: glass.
     pub sheer: bool,
     /// Overhead: the roof, or a ceiling under it. Hidden in the plan view,
@@ -163,6 +171,7 @@ impl Solid {
             roof: false,
             glow: 0.0,
             outdoors: false,
+            piece: u32::MAX,
             stuff,
         }
     }
@@ -439,6 +448,7 @@ impl Door {
                 DOOR_WIDTH * 0.5,
             ),
             rot,
+            piece: u32::MAX,
             outdoors: false,
             glow: 0.0,
             stuff: Stuff::Wood,
@@ -452,6 +462,16 @@ impl Door {
 /// Marker for the door's rendered mesh, so its transform can follow the solid.
 #[derive(Component)]
 struct DoorPanel;
+
+/// One drawn box, and the index of the solid it came from.
+///
+/// The renderer spawns an entity per solid and then forgets which is which.
+/// Arrange mode moves a solid and has to move the thing on screen to match, so
+/// the link has to be kept.
+#[derive(Component)]
+pub struct Part {
+    pub solid: usize,
+}
 
 // ---------------------------------------------------------------------------
 // Building it

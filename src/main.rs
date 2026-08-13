@@ -34,6 +34,7 @@
 //! | `F12` | save a screenshot |
 //! | `Esc` | release the mouse |
 //! | `F11` | full screen ↔ window |
+//! | `Tab` | arrange mode: move the furniture yourself |
 //!
 //! ## Switches
 //!
@@ -46,8 +47,10 @@
 //! | `FLY_CAPTURE_DELAY=<s>` | move the shutter (default 4) |
 //! | `FLY_UNCAPPED=1` | drop vsync, so the frame rate means something |
 //! | `FLY_WINDOWED=1` | play in a window; every capture switch implies it |
+//! | `FLY_ARRANGE=1` | open straight into arrange mode |
 //! | `FLY_OUTSIDE=<deg>` | stand outdoors and look at the whole house — 0 south, 90 east |
 
+mod arrange;
 mod blueprint;
 mod body;
 mod camera;
@@ -116,6 +119,7 @@ fn main() {
             debug::DebugPlugin,
             capture::CapturePlugin,
             title::TitlePlugin,
+            arrange::ArrangePlugin,
         ))
         .add_systems(Startup, light_the_house)
         .add_systems(Update, toggle_fullscreen)

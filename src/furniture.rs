@@ -102,6 +102,7 @@ fn legged(
     top_paint: Color,
     leg_paint: Color,
 ) {
+    let mark = out.len();
     slab(
         out,
         Vec3::new(at.x, high - thick * 0.5, at.y),
@@ -125,6 +126,7 @@ fn legged(
             );
         }
     }
+    piece_up(out, mark);
 }
 
 /// A run of base cabinets along a wall: plinth, carcass, and a worktop that
@@ -140,6 +142,7 @@ fn counter_run(
     face: Vec2,
     gaps: &[(f32, f32)],
 ) {
+    let mark = out.len();
     const PLINTH: f32 = 12.0;
     const HIGH: f32 = 91.0;
     const TOP: f32 = 4.0;
@@ -224,11 +227,13 @@ fn counter_run(
             WORKTOP,
         );
     }
+    piece_up(out, mark);
 }
 
 /// Wall cabinets: a box with its underside at head height, which is the best
 /// inverted perch in any house.
 fn wall_cabinets(out: &mut Vec<Solid>, from: Vec2, to: Vec2, depth: f32) {
+    let mark = out.len();
     const UNDER: f32 = 148.0;
     const TALL: f32 = 78.0;
     let mid = (from + to) * 0.5;
@@ -280,11 +285,13 @@ fn wall_cabinets(out: &mut Vec<Solid>, from: Vec2, to: Vec2, depth: f32) {
             CHROME,
         );
     }
+    piece_up(out, mark);
 }
 
 /// A bed: frame, mattress, and two pillows. The frame is inset from the
 /// mattress so there is a rail to stand on, and it stands off the floor.
 fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
+    let mark = out.len();
     const CLEAR: f32 = 22.0;
     const FRAME: f32 = 14.0;
     const MATTRESS: f32 = 22.0;
@@ -375,6 +382,7 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
             PORCELAIN,
         );
     }
+    piece_up(out, mark);
 }
 
 /// A chair: a legged seat with a back on the side `away` points to.
@@ -383,6 +391,7 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
 /// of repeated recognisable form that wants a constructor — the bedrooms needed
 /// one the moment they got a desk.
 fn chair(out: &mut Vec<Solid>, at: Vec2, away: Vec2) {
+    let mark = out.len();
     legged(
         out,
         at,
@@ -406,6 +415,7 @@ fn chair(out: &mut Vec<Solid>, at: Vec2, away: Vec2) {
         Stuff::Wood,
         DARK_OAK,
     );
+    piece_up(out, mark);
 }
 
 /// A wardrobe: plinth, carcass, two doors with a shadow gap between them, two
@@ -413,6 +423,7 @@ fn chair(out: &mut Vec<Solid>, at: Vec2, away: Vec2) {
 /// of furniture in a bedroom nobody can mistake for anything else and so the
 /// one least worth leaving as a box.
 fn wardrobe(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2) {
+    let mark = out.len();
     let across = Vec2::new(face.y.abs(), face.x.abs());
     let wide = if across.x > 0.5 { size.x } else { size.z };
     slab(
@@ -468,12 +479,14 @@ fn wardrobe(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2) {
             BRASS,
         );
     }
+    piece_up(out, mark);
 }
 
 /// A chest of drawers: carcass, plinth, drawer fronts with a shadow gap between
 /// them, and a handle on each. A chest without fronts is a cube, and a bedroom
 /// with a cube in it is a bedroom nobody has finished.
 fn drawers(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2, rows: usize) {
+    let mark = out.len();
     slab(
         out,
         Vec3::new(at.x, 5.0, at.y),
@@ -533,6 +546,7 @@ fn drawers(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2, rows: usize) 
             BRASS,
         );
     }
+    piece_up(out, mark);
 }
 
 /// An eight-sided disc lying flat: four crossed bars, all eight corners on the
@@ -558,6 +572,7 @@ fn disc(out: &mut Vec<Solid>, at: Vec3, across: f32, thick: f32, paint: Color, g
 /// A cluster of frames on a wall — a gallery, not a single picture centred on
 /// nothing. Real walls have five of them at four sizes, not quite aligned.
 fn frames(out: &mut Vec<Solid>, at: Vec3, along_x: bool, spread: f32, seed: f32) {
+    let mark = out.len();
     // Frame, mount, image. The first version painted the frame and the picture
     // in it the same darkness, and five of those on a wall read as five brown
     // blocks — it is the pale mount between the two that says "picture".
@@ -584,10 +599,12 @@ fn frames(out: &mut Vec<Solid>, at: Vec3, along_x: bool, spread: f32, seed: f32)
         // wall-snapping as every other framed thing.
         picture(out, centre, wide, high, along_x, art[k]);
     }
+    piece_up(out, mark);
 }
 
 /// A standard lamp: foot, stem, and a shade you can see the underside of.
 fn floor_lamp(out: &mut Vec<Solid>, at: Vec2) {
+    let mark = out.len();
     disc(
         out,
         Vec3::new(at.x, 2.0, at.y),
@@ -616,10 +633,12 @@ fn floor_lamp(out: &mut Vec<Solid>, at: Vec2) {
             SHADE,
         );
     }
+    piece_up(out, mark);
 }
 
 /// A basket, with whatever has been dropped in it.
 fn basket(out: &mut Vec<Solid>, at: Vec2, wide: f32, tall: f32, paint: Color) {
+    let mark = out.len();
     disc(
         out,
         Vec3::new(at.x, tall * 0.5, at.y),
@@ -636,11 +655,13 @@ fn basket(out: &mut Vec<Solid>, at: Vec2, wide: f32, tall: f32, paint: Color) {
         Color::srgb(0.52, 0.44, 0.34),
         0.0,
     );
+    piece_up(out, mark);
 }
 
 /// A stack of books, each one a shade and a size off the one under it, with
 /// the top one nudged out of square.
 fn books(out: &mut Vec<Solid>, at: Vec3, how_many: usize, seed: f32) {
+    let mark = out.len();
     let mut y = at.y;
     for k in 0..how_many {
         let n = wobble(at.x + seed, at.z + k as f32 * 13.0);
@@ -661,11 +682,13 @@ fn books(out: &mut Vec<Solid>, at: Vec3, how_many: usize, seed: f32) {
         );
         y += thick;
     }
+    piece_up(out, mark);
 }
 
 /// A mug: a body and a handle, both small enough that a fly could stand on the
 /// rim and look in.
 fn mug(out: &mut Vec<Solid>, at: Vec3, paint: Color) {
+    let mark = out.len();
     disc(out, at + Vec3::new(0.0, 5.0, 0.0), 9.0, 10.0, paint, 0.0);
     slab(
         out,
@@ -674,10 +697,12 @@ fn mug(out: &mut Vec<Solid>, at: Vec3, paint: Color) {
         Stuff::Stone,
         paint,
     );
+    piece_up(out, mark);
 }
 
 /// A pot plant: a tapered pot, a little soil, and a mass of leaves.
 fn pot_plant(out: &mut Vec<Solid>, at: Vec2, tall: f32) {
+    let mark = out.len();
     let pot = tall * 0.28;
     disc(
         out,
@@ -723,6 +748,7 @@ fn pot_plant(out: &mut Vec<Solid>, at: Vec2, tall: f32) {
         ));
         out.push(leaf);
     }
+    piece_up(out, mark);
 }
 
 /// A ceiling fan: downrod, motor, five pitched blades and a light under it.
@@ -733,6 +759,7 @@ fn pot_plant(out: &mut Vec<Solid>, at: Vec2, tall: f32) {
 /// twice over: it is what a ranch house of this period has, and at fly scale it
 /// is five landing strips and a set of edges to walk round.
 fn ceiling_fan(out: &mut Vec<Solid>, at: Vec2, ceiling: f32) {
+    let mark = out.len();
     let hub = ceiling - 44.0;
     slab(
         out,
@@ -771,10 +798,12 @@ fn ceiling_fan(out: &mut Vec<Solid>, at: Vec2, ceiling: f32) {
         Color::srgb(1.0, 0.97, 0.90),
         11.0,
     );
+    piece_up(out, mark);
 }
 
 /// A table lamp: foot, stem, and an eight-sided shade.
 fn lamp(out: &mut Vec<Solid>, at: Vec3) {
+    let mark = out.len();
     slab(
         out,
         at + Vec3::new(0.0, 2.0, 0.0),
@@ -802,6 +831,19 @@ fn lamp(out: &mut Vec<Solid>, at: Vec3) {
             SHADE,
         );
     }
+    piece_up(out, mark);
+}
+
+/// Everything one constructor adds is one piece of furniture.
+///
+/// The id is the index of the first box in the piece: unique without a counter,
+/// and stable for as long as the generator is deterministic. Nested calls sort
+/// themselves out for free — the inner constructor tags its own boxes first and
+/// the outer one paints over them, so a cushion belongs to its sofa.
+fn piece_up(out: &mut [Solid], mark: usize) {
+    for solid in &mut out[mark..] {
+        solid.piece = mark as u32;
+    }
 }
 
 /// A box with its corners taken off: three crossed slabs, each full length on
@@ -825,6 +867,7 @@ fn soft(out: &mut Vec<Solid>, at: Vec3, size: Vec3, round: f32, stuff: Stuff, pa
 /// A sofa: plinth, seat cushion, back, and two arms — five parts, so it has
 /// seams, an underside and a gap behind the cushion.
 fn sofa(out: &mut Vec<Solid>, at: Vec2, size: Vec2, back: Vec2) {
+    let mark = out.len();
     let across = Vec2::new(back.y.abs(), back.x.abs());
     let long = if across.x > 0.5 { size.x } else { size.y };
     let deep = if across.x > 0.5 { size.y } else { size.x };
@@ -907,6 +950,7 @@ fn sofa(out: &mut Vec<Solid>, at: Vec2, size: Vec2, back: Vec2) {
             );
         }
     }
+    piece_up(out, mark);
 }
 
 /// A tall box standing off the wall, with a real gap behind it.
@@ -915,6 +959,7 @@ fn sofa(out: &mut Vec<Solid>, at: Vec2, size: Vec2, back: Vec2) {
 /// flight, trivial on foot, warm, and dark — which is four things a fly cares
 /// about in one place.
 fn appliance(out: &mut Vec<Solid>, at: Vec2, size: Vec3, paint: Color) {
+    let mark = out.len();
     slab(
         out,
         Vec3::new(at.x, size.y * 0.5, at.y),
@@ -922,10 +967,12 @@ fn appliance(out: &mut Vec<Solid>, at: Vec2, size: Vec3, paint: Color) {
         Stuff::Metal,
         paint,
     );
+    piece_up(out, mark);
 }
 
 /// Open shelving: uprights and boards, so every board is a landing.
 fn shelves(out: &mut Vec<Solid>, at: Vec2, size: Vec2, high: f32, boards: usize, along_x: bool) {
+    let mark = out.len();
     // `size` is (length, depth) and `along_x` says which way the length runs;
     // `dim` already does the axis mapping, so swapping the pair here as well
     // undid it. The garage's shelving came out three metres wide across the
@@ -1018,10 +1065,12 @@ fn shelves(out: &mut Vec<Solid>, at: Vec2, size: Vec2, high: f32, boards: usize,
             along += thick + 1.5;
         }
     }
+    piece_up(out, mark);
 }
 
 /// A rug: thin, wide, and the one thing on the floor a fly can feel the edge of.
 fn rug(out: &mut Vec<Solid>, at: Vec2, size: Vec2, paint: Color) {
+    let mark = out.len();
     slab(
         out,
         Vec3::new(at.x, 0.6, at.y),
@@ -1029,6 +1078,7 @@ fn rug(out: &mut Vec<Solid>, at: Vec2, size: Vec2, paint: Color) {
         Stuff::Fabric,
         paint,
     );
+    piece_up(out, mark);
 }
 
 /// A framed picture on a wall: a frame and a canvas set inside it.
@@ -1037,6 +1087,7 @@ fn rug(out: &mut Vec<Solid>, at: Vec2, size: Vec2, paint: Color) {
 /// what makes it read as a picture instead of a painted rectangle — and because
 /// the rebate between them is a two-centimetre shelf a fly can stand on.
 fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, tone: Color) {
+    let mark = out.len();
     let d = |t: f32| {
         if along_x {
             Vec3::new(wide, tall, t)
@@ -1155,6 +1206,7 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
         Stuff::Fabric,
         tone,
     );
+    piece_up(out, mark);
 }
 
 /// Curtains: a pair of panels either side of a window, and a pole across it.
@@ -1301,6 +1353,7 @@ fn turned(out: &mut Vec<Solid>, at: Vec3, size: Vec3, rot: Quat, stuff: Stuff, p
 /// which is what puts all eight corners on the same circle. The axle runs along
 /// x, because every wheel in this house is on a car pointing down the garage.
 fn wheel(out: &mut Vec<Solid>, at: Vec3, radius: f32, width: f32) {
+    let mark = out.len();
     const SIDES: usize = 4;
     let across = 2.0 * radius * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
     for k in 0..SIDES {
@@ -1327,6 +1380,7 @@ fn wheel(out: &mut Vec<Solid>, at: Vec3, radius: f32, width: f32) {
             HUB,
         );
     }
+    piece_up(out, mark);
 }
 
 /// The family car: nose toward the door, down the length of the garage.
@@ -1337,6 +1391,7 @@ fn wheel(out: &mut Vec<Solid>, at: Vec3, radius: f32, width: f32) {
 /// human scale, and at fly scale it becomes the most interesting furniture in
 /// the building: warm metal, a dozen ledges, and a sheltered underside.
 fn car(out: &mut Vec<Solid>, at: Vec2) {
+    let mark = out.len();
     let (x, z) = (at.x, at.y);
     let body = |o: &mut Vec<Solid>, c: Vec3, s: Vec3| slab(o, c, s, Stuff::Metal, PAINTWORK);
 
@@ -1533,6 +1588,7 @@ fn car(out: &mut Vec<Solid>, at: Vec2) {
         Stuff::Metal,
         PLATE,
     );
+    piece_up(out, mark);
 }
 
 /// The sectional door, shut.
@@ -1635,6 +1691,7 @@ fn garage_door(out: &mut Vec<Solid>) {
 /// recessed panels: the same stile-and-rail construction a real door has, which
 /// is why the shadow lines fall where a person expects them to.
 fn door_leaf(out: &mut Vec<Solid>, hinge: Vec3, wide: f32, high: f32, swing: Quat) {
+    let mark = out.len();
     let leaf = 4.6;
     let mut put = |x0: f32, x1: f32, y0: f32, y1: f32, thick: f32, paint: Color| {
         let local = Vec3::new((x0 + x1) * 0.5, (y0 + y1) * 0.5, 0.0);
@@ -1690,6 +1747,7 @@ fn door_leaf(out: &mut Vec<Solid>, hinge: Vec3, wide: f32, high: f32, swing: Qua
             BRASS,
         );
     }
+    piece_up(out, mark);
 }
 
 /// Lining and architrave round an opening in a wall that runs north to south.
@@ -1991,6 +2049,7 @@ fn front_door(out: &mut Vec<Solid>) {
 /// silhouettes people read instantly, and the difference between them and a
 /// stack of cubes is the difference between a room and a placeholder.
 fn toilet(out: &mut Vec<Solid>, at: Vec2, out_of: Vec2) {
+    let mark = out.len();
     // Local frame: +z is the way it faces, +x across.
     let turn = Quat::from_rotation_y(out_of.x.atan2(out_of.y));
     let put = |o: &mut Vec<Solid>, local: Vec3, size: Vec3, paint: Color, stuff: Stuff| {
@@ -2062,10 +2121,12 @@ fn toilet(out: &mut Vec<Solid>, at: Vec2, out_of: Vec2) {
         Stuff::Fabric,
         SEAT_RING,
     );
+    piece_up(out, mark);
 }
 
 /// A mixer tap: a body and a spout reaching out over whatever it fills.
 fn tap(out: &mut Vec<Solid>, at: Vec3, reach: Vec2) {
+    let mark = out.len();
     slab(
         out,
         at + Vec3::new(0.0, 7.0, 0.0),
@@ -2101,11 +2162,13 @@ fn tap(out: &mut Vec<Solid>, at: Vec3, reach: Vec2) {
             CHROME,
         );
     }
+    piece_up(out, mark);
 }
 
 /// A basin sunk into a counter: a rim, four thin sides and a floor, so it holds
 /// a shape rather than being a lump on a worktop.
 fn basin(out: &mut Vec<Solid>, at: Vec3, wide: f32, deep: f32) {
+    let mark = out.len();
     let (w, d, high, side) = (wide, deep, 15.0, 4.0);
     slab(
         out,
@@ -2130,6 +2193,7 @@ fn basin(out: &mut Vec<Solid>, at: Vec3, wide: f32, deep: f32) {
             PORCELAIN,
         );
     }
+    piece_up(out, mark);
 }
 
 /// A tiled panel: a dark backing with courses of tile standing proud of it, so
@@ -2139,6 +2203,7 @@ fn basin(out: &mut Vec<Solid>, at: Vec3, wide: f32, deep: f32) {
 /// the distance a wall is looked at from, the horizontal bands are what the eye
 /// picks up — the floor already has its cross-cut for the close read.
 fn tiling(out: &mut Vec<Solid>, at: Vec3, size: Vec3, along_x: bool) {
+    let mark = out.len();
     slab(out, at, size, Stuff::Stone, Color::srgb(0.55, 0.56, 0.55));
     let course = 23.0;
     let rows = (size.y / course).floor().max(1.0) as usize;
@@ -2158,11 +2223,13 @@ fn tiling(out: &mut Vec<Solid>, at: Vec3, size: Vec3, along_x: bool) {
             Color::srgb(shade, shade + 0.015, shade + 0.01),
         );
     }
+    piece_up(out, mark);
 }
 
 /// A towel rail with two towels over it. The towels are the only soft thing in
 /// a tiled room and they are what stops it reading as a showroom.
 fn towel_rail(out: &mut Vec<Solid>, at: Vec3, wide: f32, along_x: bool, face: f32) {
+    let mark = out.len();
     let bar = if along_x {
         Vec3::new(wide, 3.0, 3.0)
     } else {
@@ -2191,6 +2258,7 @@ fn towel_rail(out: &mut Vec<Solid>, at: Vec3, wide: f32, along_x: bool, face: f3
             if i == 0 { TOWEL_A } else { TOWEL_B },
         );
     }
+    piece_up(out, mark);
 }
 
 // ---------------------------------------------------------------------------
@@ -2199,6 +2267,7 @@ fn towel_rail(out: &mut Vec<Solid>, at: Vec3, wide: f32, along_x: bool, face: f3
 
 /// Furnish every room. Called once, after the shell.
 pub fn furnish(out: &mut Vec<Solid>) {
+    let first = out.len();
     for r in house::rooms() {
         match r.use_for {
             Use::Living => living(out, &r),
@@ -2215,6 +2284,25 @@ pub fn furnish(out: &mut Vec<Solid>) {
     switches_and_sockets(out);
     // Last, so a curtain can see what is already standing under its window.
     dress_the_windows(out);
+
+    // Anything a constructor did not claim is a piece on its own: a mug, a
+    // book, a toy on the floor. Those are exactly the things somebody
+    // rearranging a room would want to pick up one at a time.
+    for i in first..out.len() {
+        if out[i].piece == u32::MAX {
+            out[i].piece = i as u32;
+        }
+    }
+    let pieces = out[first..]
+        .iter()
+        .map(|s| s.piece)
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    info!(
+        "furniture: {} boxes in {} pieces",
+        out.len() - first,
+        pieces
+    );
 }
 
 /// Does this box share space with anything already built?

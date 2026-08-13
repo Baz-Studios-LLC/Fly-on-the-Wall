@@ -663,6 +663,32 @@ arithmetic and arithmetic is off by two.
 - `FLY_DIVE=<seconds>` starts part-way through the move so it can be captured
   at a chosen moment rather than guessed at.
 
+
+## Pass thirty-four: moving the furniture yourself
+
+Brett asked whether a mode for arranging the house by hand was plausible. It
+was, and the obstacle was not the moving — it was that **nothing had identity**.
+`furniture.rs` emits loose boxes; a sofa is about forty of them and no part of
+the generator ever said which forty.
+
+- **Pieces.** Every constructor now tags what it added with the index of its
+  first box: unique without a counter, stable because the generator is
+  deterministic, and nested calls sort themselves out for free — the inner
+  constructor tags first and the outer paints over it, so a cushion belongs to
+  its sofa. Anything left unclaimed becomes a piece on its own, which is right
+  for a mug or a toy. **1490 boxes in 673 pieces.**
+- **The fly is the cursor.** No editor camera and no orbit rig: you are still
+  the fly, you fly over to the thing, and what you are pointing at is whatever
+  is in front of you. Tab in and out, look to highlight, E to take and drop, Q
+  and R to turn, Ctrl+S to save, Backspace to put the whole room back.
+- **What comes out is a file the generator reads.** A layout worked out by hand
+  survives a rebuild, which is the part that makes this worth having rather
+  than a toy.
+- Verified: grouping, picking, the highlight, and loading a hand-written
+  arrangement (a bookshelf moved and turned on the next run). Not verified by
+  capture: the grab and the save keystrokes, which a screenshot cannot press —
+  they share `shift` with the load path, which is exercised.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
