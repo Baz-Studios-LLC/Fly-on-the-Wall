@@ -559,6 +559,30 @@ almost all the wood in this house is painted trim.
   - Mount and image insets are proportional now. A fixed twenty-centimetre
     border is a mount on a big frame and a letterbox slot on a small one.
 
+
+## Pass thirty: a layout review, room by room
+
+Judged from the plan view, which is the only honest way to look at arrangement.
+
+- **The great room was the bad one.** Sofa against one wall, television against
+  the other: nineteen feet apart, with a void the size of a bedroom between
+  them. The seating group is floated now — sofa, rug, coffee table and lamp
+  gathered into a zone about ten feet across — and the floor left over becomes
+  the route between the hall's two openings, which it needed anyway.
+- The lamp and basket had to move again once the sofa did: they ended up
+  standing in that route. A standard lamp planted in a walkway is a thing
+  people walk into.
+- **The western third then read as bare circulation with a full bookshelf
+  standing in it and nothing to sit on.** It has a reading chair, a side table
+  and a lamp now. A bookshelf nobody can read at is storage.
+- **The two children's bedrooms were identical** — bed, wardrobe, chest and
+  desk in the same places, which is one room built twice. Bedroom two is
+  mirrored: wardrobe on the east wall, chest on the west, desk at the other end
+  of its clear run. `clear_of_windows_on` grew an `East` case for it.
+- The plan view was also framing the *neighbours'* roofs, because `gable_roof`
+  marks its work as roof and nothing else, and the plan frames on everything
+  that is not outdoors.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

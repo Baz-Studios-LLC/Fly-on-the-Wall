@@ -60,7 +60,7 @@ const DOOR_FACE: Color = Color::srgb(0.30, 0.22, 0.16);
 const DOOR_PANEL: Color = Color::srgb(0.26, 0.19, 0.14);
 const TRIMWORK: Color = Color::srgb(0.92, 0.91, 0.88);
 const THRESHOLD: Color = Color::srgb(0.42, 0.32, 0.22);
-const BRASS: Color = Color::srgb(0.72, 0.60, 0.30);
+const BRASS: Color = Color::srgb(0.58, 0.50, 0.32);
 const PAVING: Color = Color::srgb(0.62, 0.61, 0.58);
 const CABIN: Color = Color::srgb(0.20, 0.20, 0.21);
 const SEAT: Color = Color::srgb(0.32, 0.30, 0.28);
@@ -2177,26 +2177,33 @@ fn clashes(out: &[Solid], at: Vec3, size: Vec3) -> bool {
 fn living(out: &mut Vec<Solid>, r: &Room) {
     let m = r.middle();
     ceiling_fan(out, m, crate::house::CEILING);
+
+    // The seating group is *floated*, not pushed to the walls.
+    //
+    // This room is twenty-two feet across, and the sofa sat against one wall
+    // with the television against the other: nineteen feet between somebody
+    // sitting down and the thing they are looking at, and a void the size of a
+    // bedroom in between. A big room wants its furniture gathered into a zone
+    // the size of a small one, and the floor left over becomes the route
+    // through — which is what the two openings from the hall need anyway.
+    let seat = Vec2::new(r.min.x + 330.0, m.y);
+    let media = Vec2::new(r.max.x - 34.0, m.y);
+    let table = Vec2::new(seat.x + 150.0, m.y);
     rug(
         out,
-        m,
-        Vec2::new(r.wide() * 0.55, r.deep() * 0.40),
+        Vec2::new((seat.x + media.x) * 0.5 - 20.0, m.y),
+        Vec2::new(r.wide() * 0.52, r.deep() * 0.40),
         WOOL_WARM,
     );
 
-    // Sofa against the west side of the room, facing east across the rug.
-    sofa(
-        out,
-        Vec2::new(r.min.x + 70.0, m.y),
-        Vec2::new(96.0, 220.0),
-        Vec2::new(-1.0, 0.0),
-    );
+    // Sofa facing east across the rug at the television.
+    sofa(out, seat, Vec2::new(96.0, 220.0), Vec2::new(-1.0, 0.0));
     // Cushions along the back of it, and a blanket over one arm.
     for k in 0..3 {
         let z = m.y + (k as f32 - 1.0) * 62.0;
         turned(
             out,
-            Vec3::new(r.min.x + 62.0, 62.0, z),
+            Vec3::new(seat.x - 8.0, 62.0, z),
             Vec3::new(14.0, 40.0, 44.0),
             Quat::from_rotation_z(0.22 + wobble(z, 3.0) * 0.08),
             Stuff::Fabric,
@@ -2207,7 +2214,7 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     // makes a blanket a blanket is the part hanging down the outside.
     soft(
         out,
-        Vec3::new(r.min.x + 66.0, 70.0, m.y + 102.0),
+        Vec3::new(seat.x - 4.0, 70.0, m.y + 102.0),
         Vec3::new(62.0, 9.0, 48.0),
         3.0,
         Stuff::Fabric,
@@ -2215,7 +2222,7 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     );
     soft(
         out,
-        Vec3::new(r.min.x + 66.0, 48.0, m.y + 124.0),
+        Vec3::new(seat.x - 4.0, 48.0, m.y + 124.0),
         Vec3::new(58.0, 46.0, 8.0),
         3.0,
         Stuff::Fabric,
@@ -2223,7 +2230,6 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     );
 
     // Coffee table on the rug, with the things that live on one.
-    let table = Vec2::new(m.x - 40.0, m.y);
     legged(
         out,
         table,
@@ -2331,17 +2337,19 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         (gal_hi - gal_lo).min(320.0),
         19.0,
     );
-    floor_lamp(out, Vec2::new(r.min.x + 62.0, m.y - 168.0));
+    // Beside the sofa on the rug, not behind it: the floor behind a floated
+    // sofa is the route from the hall, and a standard lamp planted in a walkway
+    // is a thing people walk into.
+    floor_lamp(out, Vec2::new(seat.x + 46.0, m.y - 152.0));
     basket(
         out,
-        Vec2::new(r.min.x + 148.0, m.y - 136.0),
+        Vec2::new(seat.x + 40.0, m.y + 150.0),
         34.0,
         30.0,
         Color::srgb(0.58, 0.48, 0.34),
     );
-    books(out, Vec3::new(r.min.x + 148.0, 26.0, m.y - 136.0), 3, 11.0);
+    books(out, Vec3::new(seat.x + 40.0, 26.0, m.y + 150.0), 3, 11.0);
     // On the media unit: a soundbar, a photograph, and something living.
-    let media = Vec2::new(r.max.x - 34.0, m.y);
     slab(
         out,
         Vec3::new(media.x - 6.0, 60.0, media.y),
@@ -2385,6 +2393,27 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         0.0,
     );
     books(out, Vec3::new(m.x + 96.0, 0.6, m.y - 150.0), 2, 27.0);
+
+    // A reading corner by the bookshelf.
+    //
+    // Floating the seating group left the western third of this room as bare
+    // circulation, with a full bookshelf standing in it and nothing to sit on.
+    // A chair, a table and a lamp turn a walkway into somewhere to be — and a
+    // bookshelf nobody can read at is just storage.
+    let read = Vec2::new(r.min.x + 108.0, r.min.y + 250.0);
+    sofa(out, read, Vec2::new(92.0, 96.0), Vec2::new(-1.0, 0.0));
+    legged(
+        out,
+        read + Vec2::new(18.0, 84.0),
+        Vec2::new(46.0, 46.0),
+        54.0,
+        4.0,
+        5.0,
+        OAK,
+        DARK_OAK,
+    );
+    lamp(out, Vec3::new(read.x + 18.0, 54.0, read.y + 84.0));
+    books(out, Vec3::new(read.x + 26.0, 0.6, read.y - 74.0), 4, 63.0);
 
     // A plant in the corner, and a stack of books beside the sofa.
     pot_plant(out, Vec2::new(r.min.x + 82.0, r.max.y - 96.0), 138.0);
@@ -2443,6 +2472,7 @@ enum Wall {
     North,
     South,
     West,
+    East,
 }
 
 /// The widest windowless run along one wall of a room.
@@ -2458,6 +2488,7 @@ fn clear_of_windows_on(r: &Room, wall: Wall) -> (f32, f32) {
         Wall::North => r.min.y,
         Wall::South => r.max.y,
         Wall::West => r.min.x,
+        Wall::East => r.max.x,
     };
     let (from, to) = if along_x {
         (r.min.x, r.max.x)
@@ -2805,6 +2836,10 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
 
 fn bedroom(out: &mut Vec<Solid>, r: &Room) {
     let m = r.middle();
+    // Two children's rooms with the bed, wardrobe, chest and desk in identical
+    // positions read as one room built twice, which is the repetitive
+    // placeholder arrangement the brief warns about. One of them is mirrored.
+    let flip = r.name == "bedroom two";
     // The headboard wall has windows in it, so the bed and the picture over it
     // both go where there are none. Hanging art over glass is exactly the fault
     // the window law exists to catch, and it caught this one.
@@ -2853,24 +2888,36 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
         Color::srgb(0.38, 0.42, 0.40),
     );
 
-    // A chest of drawers against the far wall.
+    // A chest of drawers against the wall the wardrobe is not on.
     drawers(
         out,
-        Vec2::new(r.max.x - 40.0, m.y + 60.0),
+        Vec2::new(
+            if flip { r.min.x + 40.0 } else { r.max.x - 40.0 },
+            m.y + 60.0,
+        ),
         Vec3::new(52.0, 82.0, 130.0),
-        Vec2::new(-1.0, 0.0),
+        Vec2::new(if flip { 1.0 } else { -1.0 }, 0.0),
         4,
     );
     // And a wardrobe in the corner, which is the tallest thing in the room and
     // the only place with a top surface nobody ever dusts.
-    // Against the west wall, in whatever stretch of it has no window — the
-    // first version stood it half over the glass in two bedrooms out of three.
-    let (west_lo, west_hi) = clear_of_windows_on(r, Wall::West);
+    // Against a side wall, in whatever stretch of it has no window — the first
+    // version stood it half over the glass in two bedrooms out of three.
+    //
+    // And on the *other* side wall in bedroom two. Two children's rooms with
+    // the bed, the wardrobe, the chest and the desk in identical positions read
+    // as one room built twice, which is exactly the repetitive placeholder
+    // arrangement the brief warns about. Mirroring costs nothing.
+    let side_wall = if flip { Wall::East } else { Wall::West };
+    let (side_lo, side_hi) = clear_of_windows_on(r, side_wall);
     wardrobe(
         out,
-        Vec2::new(r.min.x + 38.0, (west_lo + west_hi) * 0.5),
-        Vec3::new(64.0, 196.0, (west_hi - west_lo - 24.0).clamp(72.0, 150.0)),
-        Vec2::new(1.0, 0.0),
+        Vec2::new(
+            if flip { r.max.x - 38.0 } else { r.min.x + 38.0 },
+            (side_lo + side_hi) * 0.5,
+        ),
+        Vec3::new(64.0, 196.0, (side_hi - side_lo - 24.0).clamp(72.0, 150.0)),
+        Vec2::new(if flip { -1.0 } else { 1.0 }, 0.0),
     );
 
     // A lamp on the nightstand nearest the door side, and the things that
@@ -2889,14 +2936,23 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
         Color::srgb(0.30, 0.32, 0.34),
         0.0,
     );
-    pot_plant(out, Vec2::new(r.max.x - 40.0, m.y + 116.0), 46.0);
+    pot_plant(
+        out,
+        Vec2::new(
+            if flip { r.min.x + 40.0 } else { r.max.x - 40.0 },
+            m.y + 116.0,
+        ),
+        46.0,
+    );
 
     // The side walls were bare in every bedroom capture. A desk under the far
     // window in the children's rooms, a chair pushed under it, and a pair of
     // small pictures on the wall the bed does not use.
     if !double {
+        // At opposite ends of the clear run in the two rooms.
         let (dl, dh) = clear_of_windows_on(r, Wall::South);
-        let desk = Vec2::new((dl + dh) * 0.5, r.max.y - 44.0);
+        let along = if flip { 0.72 } else { 0.28 };
+        let desk = Vec2::new(dl + (dh - dl) * along, r.max.y - 44.0);
         legged(
             out,
             desk,

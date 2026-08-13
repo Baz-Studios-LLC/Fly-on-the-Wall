@@ -995,7 +995,15 @@ fn neighbourhood(out: &mut Vec<Solid>) {
                 out.push(hole);
             }
         }
+        // Their roofs are outdoors too. They are built by the same constructor
+        // the real house uses, which marks its work as roof and nothing else —
+        // and the plan view frames on everything that is not outdoors, so five
+        // neighbours' roofs were pulling the whole drawing out to a thumbnail.
+        let before = out.len();
         gable_roof(out, min, max, along_x, top + SLAB + 8.0);
+        for solid in &mut out[before..] {
+            solid.outdoors = true;
+        }
     }
 
     // Two across the road, set back behind their own lawns, and one either
