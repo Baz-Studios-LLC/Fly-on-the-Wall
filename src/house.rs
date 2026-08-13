@@ -85,6 +85,10 @@ const SKIRT_PROUD: f32 = 2.0;
 /// height a fly wants to sit and watch from.
 const CORNICE_HIGH: f32 = 7.0;
 const CORNICE_PROUD: f32 = 3.0;
+/// The furthest anything nailed to a wall may stand out from it: cornice,
+/// skirting, cladding, window casing, a sill. The envelope law allows exactly
+/// this much and no more, so a sill is trim and a shelf is an escapee.
+pub const TRIM_PROUD: f32 = 20.0;
 
 const DOOR_WIDE: f32 = 92.0;
 const DOOR_HIGH: f32 = 205.0;
@@ -269,6 +273,55 @@ fn wall_run(
         };
         out.push(Solid::between(min, max, stuff));
 
+        // Lap siding, on whichever face of an exterior wall looks outward.
+        //
+        // The whole building was flat cream plaster. Boards are the cheapest
+        // thing that puts a scale on an elevation: they tell you how big the
+        // house is before you have looked at anything else in the frame. Only
+        // exterior walls get them, and "exterior" is not a flag anyone has to
+        // remember to set — it is a probe thirty centimetres off each face,
+        // asking whether that is still indoors.
+        if thick >= OUTER - 0.01 {
+            for face in [-1.0f32, 1.0] {
+                let probe = if along_x {
+                    Vec2::new((a.x + s + a.x + e) * 0.5, a.y + face * (half + 30.0))
+                } else {
+                    Vec2::new(a.x + face * (half + 30.0), (a.y + s + a.y + e) * 0.5)
+                };
+                if inside_envelope(probe) {
+                    continue;
+                }
+                const BOARD: f32 = 21.0;
+                let courses = ((high - low) / BOARD).floor().max(1.0) as usize;
+                for k in 0..courses {
+                    let y = low + BOARD * k as f32;
+                    if y + BOARD - 3.0 > high {
+                        break;
+                    }
+                    let n = grain(a.x + a.y + s + y * 2.3);
+                    let mut board = if along_x {
+                        Solid::between(
+                            Vec3::new(a.x + s, y, a.y + face * half),
+                            Vec3::new(a.x + e, y + BOARD - 3.0, a.y + face * (half + 2.6)),
+                            Stuff::Wood,
+                        )
+                    } else {
+                        Solid::between(
+                            Vec3::new(a.x + face * half, y, a.y + s),
+                            Vec3::new(a.x + face * (half + 2.6), y + BOARD - 3.0, a.y + e),
+                            Stuff::Wood,
+                        )
+                    };
+                    board.paint = Some(Color::srgb(
+                        0.80 + n * 0.012,
+                        0.785 + n * 0.012,
+                        0.745 + n * 0.010,
+                    ));
+                    out.push(board);
+                }
+            }
+        }
+
         // Cornice, on any piece that reaches the ceiling.
         if high >= CEILING - 0.01 && low < CEILING - CORNICE_HIGH {
             for face in [-1.0f32, 1.0] {
@@ -431,6 +484,106 @@ fn envelope() -> (f32, f32, f32, f32, f32, f32) {
         ft(24.0) + h, // the garage's south wall
         ft(46.0) + h, // where the house ends and the garage begins
     )
+}
+
+/// Casing and a sill round every window, on whichever face is outdoors.
+///
+/// With the walls clad, a window became a rectangular hole punched in a run of
+/// boards, which is the one thing siding never does — it is always trimmed out.
+/// Four boards and a sill each, and the same probe the cladding uses to work
+/// out which way is out.
+fn window_trim(out: &mut Vec<Solid>) {
+    let trim = Color::srgb(0.94, 0.93, 0.90);
+    for (lo, hi) in window_openings() {
+        let along_x = (hi.x - lo.x) > (hi.z - lo.z);
+        let (mid_x, mid_z) = ((lo.x + hi.x) * 0.5, (lo.z + hi.z) * 0.5);
+        for face in [-1.0f32, 1.0] {
+            let probe = if along_x {
+                Vec2::new(mid_x, mid_z + face * 40.0)
+            } else {
+                Vec2::new(mid_x + face * 40.0, mid_z)
+            };
+            if inside_envelope(probe) {
+                continue;
+            }
+            let out_face = if along_x {
+                mid_z + face * (OUTER * 0.5 + 3.0)
+            } else {
+                mid_x + face * (OUTER * 0.5 + 3.0)
+            };
+            let (wide, board) = if along_x {
+                (hi.x - lo.x, 11.0)
+            } else {
+                (hi.z - lo.z, 11.0)
+            };
+            let mut put = |cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32| {
+                let mut b = Solid::between(
+                    Vec3::new(cx - sx * 0.5, cy - sy * 0.5, cz - sz * 0.5),
+                    Vec3::new(cx + sx * 0.5, cy + sy * 0.5, cz + sz * 0.5),
+                    Stuff::Wood,
+                );
+                b.paint = Some(trim);
+                out.push(b);
+            };
+            let high = hi.y - lo.y.max(SILL);
+            let cy = (SILL + HEAD) * 0.5;
+            if along_x {
+                for side in [-1.0f32, 1.0] {
+                    put(
+                        mid_x + side * (wide * 0.5 + board * 0.5),
+                        cy,
+                        out_face,
+                        board,
+                        high + board * 2.0,
+                        5.0,
+                    );
+                }
+                put(
+                    mid_x,
+                    HEAD + board * 0.5,
+                    out_face,
+                    wide + board * 2.0,
+                    board,
+                    6.0,
+                );
+                put(
+                    mid_x,
+                    SILL - 4.0,
+                    out_face + face * 1.5,
+                    wide + board * 2.6,
+                    8.0,
+                    9.0,
+                );
+            } else {
+                for side in [-1.0f32, 1.0] {
+                    put(
+                        out_face,
+                        cy,
+                        mid_z + side * (wide * 0.5 + board * 0.5),
+                        5.0,
+                        high + board * 2.0,
+                        board,
+                    );
+                }
+                put(
+                    out_face,
+                    HEAD + board * 0.5,
+                    mid_z,
+                    6.0,
+                    board,
+                    wide + board * 2.0,
+                );
+                put(
+                    out_face + face * 1.5,
+                    SILL - 4.0,
+                    mid_z,
+                    9.0,
+                    8.0,
+                    wide + board * 2.6,
+                );
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -917,6 +1070,7 @@ pub fn build() -> Home {
 
     roof(&mut s);
     grounds(&mut s);
+    window_trim(&mut s);
     glaze(&mut s);
     fixtures(&mut s);
     crate::furniture::furnish(&mut s);
@@ -1112,7 +1266,7 @@ fn inside_envelope(p: Vec2) -> bool {
     // seam can open at a threshold, and the skirting and cornice stand proud of
     // the plaster on both faces; a line drawn down the middle of the wall calls
     // every floorboard and every length of moulding in the house an escapee.
-    let m = OUTER * 0.5 + CORNICE_PROUD + HAIR;
+    let m = OUTER * 0.5 + TRIM_PROUD + HAIR;
     if p.x < w - m || p.x > e + m || p.y < n - m || p.y > so + m {
         return false;
     }

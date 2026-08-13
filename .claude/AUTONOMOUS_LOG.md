@@ -216,6 +216,23 @@ the session. Do not treat one room or prop as completion.
   wall colour, shrub colour — were judged on colours that were not the colours.
   `FLY_OUTSIDE` now meters for daylight. A camera meters for where it stands.
 
+
+## Pass eight: cladding
+
+- **Lap siding on every exterior wall**, emitted inside `wall_run` so it is cut
+  around the openings the run already knows about. Which face is exterior is not
+  a flag anyone has to remember to set: it is a probe thirty centimetres off
+  each face asking `inside_envelope`. Boards are the cheapest thing that puts a
+  scale on an elevation — they say how big the house is before you have looked
+  at anything else in the frame.
+- **Casing and sills round every window**, for the same reason: with the walls
+  clad, a window became a rectangle punched in a run of boards, and siding is
+  never left untrimmed.
+- `TRIM_PROUD` now names how far anything nailed to a wall may stand out from
+  it, and the envelope law allows exactly that. A sill is trim; a shelf is an
+  escapee. The law caught the first sills at twenty-two centimetres.
+- Cost: 2662 draws, 15 meshes, 230 materials, 20 lights.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -227,5 +244,4 @@ the session. Do not treat one room or prop as completion.
 
 ## Next
 
-- Exterior walls are flat untextured plaster; the house wants cladding courses.
 - Then: fly-scale routes, undersides and landing surfaces; restrained clutter.
