@@ -394,9 +394,10 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
 /// the asset is missing — and the model is simply what gets drawn instead. So
 /// nothing downstream has to know which kind of furniture it is dealing with.
 fn use_model(out: &mut Vec<Solid>, mark: usize, path: &'static str, at: Vec3, turn: f32) {
-    for solid in &mut out[mark..] {
-        solid.unseen = true;
-    }
+    // Whatever was built for this piece is thrown away rather than kept as an
+    // invisible proxy: the model's own mesh is what the collision comes from
+    // now, so there is no second version of the couch to keep in step.
+    out.truncate(mark);
     let mut model = Solid::between(at - Vec3::splat(2.0), at + Vec3::splat(2.0), Stuff::Fabric);
     model.model = Some(path);
     model.rot = Quat::from_rotation_y(turn);
@@ -2363,13 +2364,9 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         WOOL_WARM,
     );
 
-    // Sofa facing east across the rug at the television.
-    //
-    // Drawn as one of Brett's models. Its boxes are still built and still do
-    // the collision, so the fly can land on the arm of a couch nobody
-    // generated.
+    // Sofa facing east across the rug at the television — one of Brett's
+    // models, with collision taken from its own mesh.
     let sofa_mark = out.len();
-    sofa(out, seat, Vec2::new(96.0, 220.0), Vec2::new(-1.0, 0.0));
     use_model(
         out,
         sofa_mark,

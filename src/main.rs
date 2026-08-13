@@ -49,6 +49,7 @@
 //! | `FLY_WINDOWED=1` | play in a window; every capture switch implies it |
 //! | `FLY_ARRANGE=1` | open straight into arrange mode |
 //! | `FLY_FOLK=<deg>` | stand in front of a person and look at them |
+//! | `FLY_HULL=1` | draw the collision worked out for made models |
 //! | `FLY_OUTSIDE=<deg>` | stand outdoors and look at the whole house — 0 south, 90 east |
 
 mod arrange;
@@ -62,6 +63,7 @@ mod folk;
 mod furniture;
 mod house;
 mod lamps;
+mod made;
 mod rooms;
 mod title;
 mod wingbeat;
@@ -123,6 +125,7 @@ fn main() {
             title::TitlePlugin,
             arrange::ArrangePlugin,
             folk::FolkPlugin,
+            made::MadePlugin,
         ))
         .add_systems(Startup, light_the_house)
         .add_systems(Update, toggle_fullscreen)

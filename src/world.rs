@@ -886,6 +886,10 @@ fn dress_the_set(
         if let Some(path) = solid.model {
             commands.spawn((
                 Part { solid: i },
+                // Its collision is worked out from the mesh once the scene has
+                // loaded, so a model brings its own and nobody hand-authors a
+                // proxy for it.
+                crate::made::NeedsHull { piece: solid.piece },
                 WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path))),
                 Transform::from_translation(solid.center)
                     .with_rotation(solid.rot)

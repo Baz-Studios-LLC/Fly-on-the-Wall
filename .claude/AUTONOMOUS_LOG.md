@@ -870,6 +870,32 @@ The style holds together better than expected — shared lighting and a muted
 palette do most of it — but the model is plainly the best thing in the room now,
 which raises the question of what else gets replaced and in what order.
 
+
+## Pass forty-four: collision from the mesh
+
+Brett: give the model the collision and delete the old couch. Right — keeping an
+invisible generated sofa in step with a model is exactly the maintenance the
+seam was supposed to avoid, and it does not scale to a house full of models.
+
+A model arrives as ten thousand triangles and this game's collision is oriented
+boxes, which the entire flight model rests on and which is not worth replacing
+to seat one couch. So the triangles become boxes: the mesh is voxelised on a
+seven-centimetre grid and the occupied cells are greedily merged back into as
+few boxes as will cover them. **10,695 triangles to 140 boxes.**
+
+- Occupancy by barycentric sampling of each triangle rather than exact
+  triangle-box overlap: at seven centimetres it misses nothing that matters and
+  is a tenth of the code.
+- The boxes join the model's piece, so arrange mode still moves the couch.
+- The generated sofa is *gone*, not hidden. `use_model` truncates whatever was
+  built for the piece.
+- `FLY_HULL=1` draws the result. Collision that cannot be seen is collision
+  nobody can check, and a hull derived from a mesh is the sort of thing that
+  looks right in a log line and is wrong in the room. It follows the arms, the
+  back, the cushions and the base.
+
+Any model dropped in from here gets its own collision with no hand-authoring.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
