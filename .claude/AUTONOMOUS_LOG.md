@@ -233,6 +233,21 @@ the session. Do not treat one room or prop as completion.
   escapee. The law caught the first sills at twenty-two centimetres.
 - Cost: 2662 draws, 15 meshes, 230 materials, 20 lights.
 
+
+## Pass nine: the ceiling
+
+- Playing the game rather than posing a camera showed the obvious next gap: the
+  fly starts *on the ceiling*, and the ceiling was a featureless plane taking
+  half the frame. It matters more here than in most games — it is where the
+  player begins and where a fly spends its time.
+- **A ceiling fan in the great room**: downrod, canopy, motor, five pitched
+  blades and a light kit, which is also where that room's lamp already was. It
+  is what a ranch of this period has, and at fly scale it is five landing strips
+  and a set of edges to walk round. `fixtures` skips the great room now, because
+  the fan carries its own light.
+- The eight-sided disc is a shared constructor now — the car's wheels, the
+  ceiling roses, the lamp shade and the fan all use it.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

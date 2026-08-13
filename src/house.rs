@@ -1556,6 +1556,10 @@ fn octagon(out: &mut Vec<Solid>, at: Vec3, across: f32, thick: f32, paint: Color
 /// at all.
 pub fn fixtures(out: &mut Vec<Solid>) {
     for r in rooms() {
+        // The great room has a fan, and the fan carries its own light.
+        if r.use_for == Use::Living {
+            continue;
+        }
         let at = r.middle();
         let wide = if r.use_for == Use::Garage { 52.0 } else { 42.0 };
         octagon(

@@ -47,6 +47,8 @@ const BUMPER: Color = Color::srgb(0.20, 0.21, 0.23);
 const LAMP: Color = Color::srgb(0.96, 0.94, 0.84);
 const TAIL: Color = Color::srgb(0.54, 0.10, 0.09);
 const PLATE: Color = Color::srgb(0.88, 0.88, 0.85);
+const FAN_METAL: Color = Color::srgb(0.30, 0.30, 0.32);
+const FAN_BLADE: Color = Color::srgb(0.36, 0.26, 0.18);
 const DUVET: Color = Color::srgb(0.72, 0.74, 0.78);
 const THROW: Color = Color::srgb(0.46, 0.40, 0.36);
 const SHADE: Color = Color::srgb(0.90, 0.86, 0.76);
@@ -491,6 +493,74 @@ fn drawers(out: &mut Vec<Solid>, at: Vec2, size: Vec3, face: Vec2, rows: usize) 
             BRASS,
         );
     }
+}
+
+/// An eight-sided disc lying flat: four crossed bars, all eight corners on the
+/// same circle. The same construction as the car's wheels and the ceiling
+/// roses, which is the third place it has earned its keep.
+fn disc(out: &mut Vec<Solid>, at: Vec3, across: f32, thick: f32, paint: Color, glow: f32) {
+    const SIDES: usize = 4;
+    let bar = across * (std::f32::consts::PI / (2.0 * SIDES as f32)).tan();
+    for k in 0..SIDES {
+        let mut solid = Solid::between(
+            Vec3::new(-across * 0.5, -thick * 0.5, -bar * 0.5),
+            Vec3::new(across * 0.5, thick * 0.5, bar * 0.5),
+            Stuff::Metal,
+        );
+        solid.center = at;
+        solid.rot = Quat::from_rotation_y(k as f32 * std::f32::consts::PI / SIDES as f32);
+        solid.paint = Some(paint);
+        solid.glow = glow;
+        out.push(solid);
+    }
+}
+
+/// A ceiling fan: downrod, motor, five pitched blades and a light under it.
+///
+/// The ceiling had one flush fixture in it and was otherwise a featureless
+/// plane — which matters more here than in most games, because it is where the
+/// player starts and where a fly spends its time. A fan is the right answer
+/// twice over: it is what a ranch house of this period has, and at fly scale it
+/// is five landing strips and a set of edges to walk round.
+fn ceiling_fan(out: &mut Vec<Solid>, at: Vec2, ceiling: f32) {
+    let hub = ceiling - 44.0;
+    slab(
+        out,
+        Vec3::new(at.x, ceiling - 14.0, at.y),
+        Vec3::new(6.0, 28.0, 6.0),
+        Stuff::Metal,
+        FAN_METAL,
+    );
+    disc(
+        out,
+        Vec3::new(at.x, ceiling - 4.0, at.y),
+        26.0,
+        6.0,
+        FAN_METAL,
+        0.0,
+    );
+    disc(out, Vec3::new(at.x, hub, at.y), 34.0, 18.0, FAN_METAL, 0.0);
+    for k in 0..5 {
+        let yaw = k as f32 * std::f32::consts::TAU / 5.0;
+        let turn = Quat::from_rotation_y(yaw);
+        turned(
+            out,
+            Vec3::new(at.x, hub - 2.0, at.y) + turn * Vec3::new(66.0, 0.0, 0.0),
+            Vec3::new(92.0, 3.0, 24.0),
+            turn * Quat::from_rotation_x(0.22),
+            Stuff::Wood,
+            FAN_BLADE,
+        );
+    }
+    // The light kit, which is where this room's lamp already is.
+    disc(
+        out,
+        Vec3::new(at.x, hub - 18.0, at.y),
+        30.0,
+        14.0,
+        Color::srgb(1.0, 0.97, 0.90),
+        11.0,
+    );
 }
 
 /// A table lamp: foot, stem, and an eight-sided shade.
@@ -1597,6 +1667,7 @@ fn clashes(out: &[Solid], at: Vec3, size: Vec3) -> bool {
 
 fn living(out: &mut Vec<Solid>, r: &Room) {
     let m = r.middle();
+    ceiling_fan(out, m, crate::house::CEILING);
     rug(
         out,
         m,
