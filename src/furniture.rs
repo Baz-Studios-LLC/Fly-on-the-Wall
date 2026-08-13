@@ -1180,6 +1180,106 @@ fn door_leaf(out: &mut Vec<Solid>, hinge: Vec3, wide: f32, high: f32, swing: Qua
     }
 }
 
+/// Lining and architrave round an opening in a wall that runs north to south.
+///
+/// A hole with square plaster edges reads as unfinished from every angle; the
+/// lining and the band of casing round it are most of what makes a doorway look
+/// like part of a built house.
+fn case_opening(out: &mut Vec<Solid>, lo: Vec3, hi: Vec3) {
+    let x = (lo.x + hi.x) * 0.5;
+    let thick = hi.x - lo.x;
+    let mid_z = (lo.z + hi.z) * 0.5;
+    let wide = hi.z - lo.z;
+    // Lining: the reveal itself, boarded out.
+    for side in [-1.0f32, 1.0] {
+        slab(
+            out,
+            Vec3::new(x, hi.y * 0.5, mid_z + side * (wide * 0.5 - 1.5)),
+            Vec3::new(thick, hi.y, 3.0),
+            Stuff::Wood,
+            TRIMWORK,
+        );
+    }
+    slab(
+        out,
+        Vec3::new(x, hi.y - 1.5, mid_z),
+        Vec3::new(thick, 3.0, wide),
+        Stuff::Wood,
+        TRIMWORK,
+    );
+    // Architrave, both faces.
+    for face in [-1.0f32, 1.0] {
+        let fx = x + face * (thick * 0.5 + 1.5);
+        for side in [-1.0f32, 1.0] {
+            slab(
+                out,
+                Vec3::new(fx, hi.y * 0.5, mid_z + side * (wide * 0.5 + 5.0)),
+                Vec3::new(3.0, hi.y + 10.0, 10.0),
+                Stuff::Wood,
+                TRIMWORK,
+            );
+        }
+        slab(
+            out,
+            Vec3::new(fx, hi.y + 5.0, mid_z),
+            Vec3::new(3.0, 10.0, wide + 20.0),
+            Stuff::Wood,
+            TRIMWORK,
+        );
+    }
+}
+
+/// Cases every interior opening, and hangs a leaf in the ones that have one.
+///
+/// The leaves never shut. Partly because the traversal law would fail the
+/// moment they did — a fly cannot work a handle — and partly because a house
+/// where every internal door is closed is a house nobody is living in. Each one
+/// stands somewhere between wide open against its wall and just ajar, picked
+/// off its own position so the same door is at the same angle every run.
+fn interior_doors(out: &mut Vec<Solid>) {
+    for (lo, hi) in crate::house::cased_openings() {
+        case_opening(out, lo, hi);
+    }
+    for (lo, hi) in crate::house::interior_doors() {
+        case_opening(out, lo, hi);
+        let x = (lo.x + hi.x) * 0.5;
+        let wide = hi.z - lo.z;
+        // Hinged at the +z jamb, swinging back toward -x. How far it stands
+        // open is picked off its own position, so the same door is at the same
+        // angle every run — and then walked back until the leaf is not standing
+        // in a bed or a wardrobe. A door has to open into a room that is
+        // already furnished, so it is the door that gives way.
+        let hinge = Vec3::new(x, 2.0, hi.z - 3.0);
+        let len = wide - 6.0;
+        let want = 0.45 + (wobble(lo.z, hi.y) * 0.5 + 0.5) * 1.05;
+        let mut open = 0.30;
+        for step in 0..7 {
+            let a = want - step as f32 * 0.18;
+            if a < 0.30 {
+                break;
+            }
+            let swing = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 + a);
+            // Only the outer part of the sweep: the hinge end always overlaps
+            // the lining it is hung in.
+            let near = hinge + swing * Vec3::new(len * 0.45, 0.0, 0.0);
+            let far = hinge + swing * Vec3::new(len, 0.0, 0.0);
+            let middle = (near + far) * 0.5 + Vec3::new(0.0, hi.y * 0.5, 0.0);
+            let span = (far - near).abs() + Vec3::new(10.0, hi.y, 10.0);
+            if !clashes(out, middle, span) {
+                open = a;
+                break;
+            }
+        }
+        door_leaf(
+            out,
+            hinge,
+            len,
+            hi.y - 4.0,
+            Quat::from_rotation_y(std::f32::consts::FRAC_PI_2 + open),
+        );
+    }
+}
+
 /// The front door: cased both sides, hung ajar, with a stoop to stand on.
 ///
 /// Ajar because it is the only opening in the house that is not glazed shut,
@@ -1476,6 +1576,7 @@ pub fn furnish(out: &mut Vec<Solid>) {
         }
     }
     front_door(out);
+    interior_doors(out);
     // Last, so a curtain can see what is already standing under its window.
     dress_the_windows(out);
 }

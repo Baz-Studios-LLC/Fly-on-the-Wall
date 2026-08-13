@@ -868,6 +868,45 @@ fn glaze(s: &mut Vec<Solid>) {
 /// rather than remembered. Twice in one pass a kitchen fitting was placed over
 /// glass — first a run of wall cabinets, then a cooker hood — and both times it
 /// was invisible in the plan and unmissable from inside the room.
+/// Every hinged interior doorway, in world centimetres.
+///
+/// All of them are in walls that run north to south, so all of them hinge about
+/// a vertical axis at one end of the opening.
+pub fn interior_doors() -> Vec<(Vec3, Vec3)> {
+    let (_w, _e, _n, _so, _gs, house_east) = envelope();
+    let half = DOOR_WIDE * 0.5;
+    let mut out = Vec::new();
+    for (x, zs, t) in [
+        (ft(12.0), [6.0f32, 17.0, 29.0].as_slice(), INNER),
+        (ft(33.67), [3.3f32, 14.0, 28.0].as_slice(), INNER),
+        (house_east, [3.3f32].as_slice(), OUTER),
+    ] {
+        for &z in zs {
+            out.push((
+                Vec3::new(x - t * 0.5, 0.0, ft(z) - half),
+                Vec3::new(x + t * 0.5, DOOR_HIGH, ft(z) + half),
+            ));
+        }
+    }
+    out
+}
+
+/// The wide cased openings between the hall and the middle of the house. No
+/// leaves — but they are still holes in a wall, and a hole in a wall in a
+/// finished house has a lining and an architrave round it.
+pub fn cased_openings() -> Vec<(Vec3, Vec3)> {
+    [(7.0f32, 6.0f32), (25.0, 8.0)]
+        .into_iter()
+        .map(|(z, wide)| {
+            let half = ft(wide) * 0.5;
+            (
+                Vec3::new(ft(16.0) - INNER * 0.5, 0.0, ft(z) - half),
+                Vec3::new(ft(16.0) + INNER * 0.5, 230.0, ft(z) + half),
+            )
+        })
+        .collect()
+}
+
 /// The front door's opening, in world centimetres. The only way in or out of
 /// this house that is not glazed shut.
 pub fn front_door() -> (Vec3, Vec3) {

@@ -181,6 +181,23 @@ the session. Do not treat one room or prop as completion.
   This is the third separate time this rule has caught something; it is by far
   the highest-value law in the file.
 
+
+## Pass six: the doorways
+
+- Every interior opening was a bare hole with square plaster edges. They all
+  have a lining and an architrave both faces now, which is most of what makes a
+  doorway read as part of a built house, and the two wide cased openings between
+  the hall and the middle of the house get the same treatment without a leaf.
+- **Seven interior doors, hung.** None of them shut: the traversal law fails the
+  moment they do — a fly cannot work a handle — and a house with every internal
+  door closed is a house nobody lives in. Each stands somewhere between wide
+  open and just ajar, picked off its own position so a door is at the same angle
+  every run, then **walked back until the leaf is not standing in a bed or a
+  wardrobe**. The door gives way, because it is opening into a room that was
+  furnished before it got there.
+- Cost after this pass: 2245 draws, 15 meshes, 182 materials, 20 lights. Frame
+  rate is still display-bound, capped or not.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
@@ -194,6 +211,4 @@ the session. Do not treat one room or prop as completion.
 
 - No drive to the garage door and no path to the front step.
 - Exterior walls are flat untextured plaster; the house wants cladding courses.
-- Interior openings are still honest holes — no leaves on any internal door.
-  Shutting them would break the traversal law, so they need to hang ajar.
 - Then: fly-scale routes, undersides and landing surfaces; restrained clutter.
