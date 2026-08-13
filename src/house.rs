@@ -350,20 +350,33 @@ fn wall_run(
         // Cornice, on any piece that reaches the ceiling.
         if high >= CEILING - 0.01 && low < CEILING - CORNICE_HIGH {
             for face in [-1.0f32, 1.0] {
-                let (cmin, cmax) = if along_x {
+                // Stepped, like the skirting. A cornice run as one square
+                // section reads as a stripe of paint where the wall meets the
+                // ceiling; two steps and it reads as a moulding, because the
+                // lower one is in shadow and the upper one is not.
+                for (bottom, top, proud) in [
                     (
-                        Vec3::new(a.x + s, CEILING - CORNICE_HIGH, a.y + face * half),
-                        Vec3::new(a.x + e, CEILING, a.y + face * (half + CORNICE_PROUD)),
-                    )
-                } else {
-                    (
-                        Vec3::new(a.x + face * half, CEILING - CORNICE_HIGH, a.y + s),
-                        Vec3::new(a.x + face * (half + CORNICE_PROUD), CEILING, a.y + e),
-                    )
-                };
-                let mut trim = Solid::between(cmin.min(cmax), cmin.max(cmax), Stuff::Wood);
-                trim.paint = Some(Color::srgb(0.93, 0.92, 0.90));
-                out.push(trim);
+                        CEILING - CORNICE_HIGH,
+                        CEILING - CORNICE_HIGH + 2.4,
+                        CORNICE_PROUD - 1.4,
+                    ),
+                    (CEILING - CORNICE_HIGH + 2.4, CEILING, CORNICE_PROUD),
+                ] {
+                    let (cmin, cmax) = if along_x {
+                        (
+                            Vec3::new(a.x + s, bottom, a.y + face * half),
+                            Vec3::new(a.x + e, top, a.y + face * (half + proud)),
+                        )
+                    } else {
+                        (
+                            Vec3::new(a.x + face * half, bottom, a.y + s),
+                            Vec3::new(a.x + face * (half + proud), top, a.y + e),
+                        )
+                    };
+                    let mut trim = Solid::between(cmin.min(cmax), cmin.max(cmax), Stuff::Wood);
+                    trim.paint = Some(Color::srgb(0.93, 0.92, 0.90));
+                    out.push(trim);
+                }
             }
         }
 
@@ -375,22 +388,30 @@ fn wall_run(
         // were. Both faces, since a partition has a room on each side.
         if low <= 0.01 && high > SKIRT_HIGH {
             for face in [-1.0f32, 1.0] {
-                let (smin, smax) = if along_x {
-                    (
-                        Vec3::new(a.x + s, 0.0, a.y + face * half),
-                        Vec3::new(a.x + e, SKIRT_HIGH, a.y + face * (half + SKIRT_PROUD)),
-                    )
-                } else {
-                    (
-                        Vec3::new(a.x + face * half, 0.0, a.y + s),
-                        Vec3::new(a.x + face * (half + SKIRT_PROUD), SKIRT_HIGH, a.y + e),
-                    )
-                };
-                let lo = smin.min(smax);
-                let hi = smin.max(smax);
-                let mut skirt = Solid::between(lo, hi, Stuff::Wood);
-                skirt.paint = Some(Color::srgb(0.90, 0.89, 0.86));
-                out.push(skirt);
+                // A profile, not a plank. Skirting is a board with something on
+                // top of it — here the board, then a bead set back from its
+                // face — and the step between the two is what catches a line of
+                // light all the way round a room at ankle height. It is two
+                // boxes instead of one and it is in every room in the house.
+                for (bottom, top, proud) in [
+                    (0.0, SKIRT_HIGH - 2.6, SKIRT_PROUD),
+                    (SKIRT_HIGH - 2.6, SKIRT_HIGH, SKIRT_PROUD - 0.9),
+                ] {
+                    let (smin, smax) = if along_x {
+                        (
+                            Vec3::new(a.x + s, bottom, a.y + face * half),
+                            Vec3::new(a.x + e, top, a.y + face * (half + proud)),
+                        )
+                    } else {
+                        (
+                            Vec3::new(a.x + face * half, bottom, a.y + s),
+                            Vec3::new(a.x + face * (half + proud), top, a.y + e),
+                        )
+                    };
+                    let mut skirt = Solid::between(smin.min(smax), smin.max(smax), Stuff::Wood);
+                    skirt.paint = Some(Color::srgb(0.90, 0.89, 0.86));
+                    out.push(skirt);
+                }
             }
         }
     };

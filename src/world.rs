@@ -774,9 +774,12 @@ fn surface_texture(stuff: Stuff) -> Image {
                     let fine = hash2(x / 3, y);
                     1.0 - 0.14 * streak - 0.05 * fine
                 }
+                // Softer than a floorboard's. Most of the wood in this house
+                // is painted trim, and a painted architrave with a floorboard's
+                // grain on it reads as corrugation.
                 Stuff::Wood => {
                     let streak = hash2(0, y);
-                    1.0 - 0.09 * streak - 0.04 * hash2(x / 2, y)
+                    1.0 - 0.045 * streak - 0.02 * hash2(x / 2, y)
                 }
                 // A weave: two threads crossing, with slubs in it.
                 Stuff::Fabric => {
@@ -851,9 +854,15 @@ fn dress_the_set(
         // serves every box that looks alike, so the tiling rate has to be part
         // of what "alike" means — otherwise a floorboard and a table leg share
         // a material and the leg gets a floorboard's worth of grain on it.
-        // The ground plane is a hundred and eighty metres across; clamping the
-        // repeat low turns its grain into visible blocks the size of a car.
-        let tile = (solid.half.max_element() / 26.0).round().clamp(1.0, 60.0);
+        //
+        // Keyed off the *middle* extent, not the largest. A skirting board is
+        // four metres long and nine centimetres tall; rating it by its length
+        // repeats the grain eight times across those nine centimetres, and
+        // every moulding in the house came out looking like corduroy. The
+        // median is the dimension that actually governs how the face reads.
+        let h = solid.half.to_array();
+        let mid = h[0].max(h[1]).min(h[0].min(h[1]).max(h[2]));
+        let tile = (mid / 26.0).round().clamp(1.0, 60.0);
         let key = [
             byte(rgba.red),
             byte(rgba.green),

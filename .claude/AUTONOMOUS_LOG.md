@@ -418,6 +418,23 @@ relief into the bargain.
 - The blanket over the arm read as a plank until it got the part that hangs
   down the outside. That is what makes a blanket a blanket.
 
+
+## Pass twenty-two: mouldings, and a texture bug they exposed
+
+- Skirting and cornice were single square sections — a stripe of paint where
+  the wall meets the floor and another where it meets the ceiling. Both are
+  stepped now: a board with a bead set back from its face, and a cornice in two
+  planes. The step is what catches a line of light all the way round a room,
+  and it is in every room in the house for two extra boxes a run.
+- Doubling the trim made a texture bug obvious. The tiling rate was keyed off a
+  solid's **largest** extent, so a skirting board four metres long and nine
+  centimetres tall repeated its grain eight times across those nine
+  centimetres: every moulding in the house looked like corduroy. Keyed off the
+  **median** extent instead — the dimension that actually governs how a face
+  reads — it is clean, and materials fell from 745 to 470 as a side effect.
+- Wood grain amplitude halved. Most of the wood in this house is painted trim,
+  and painted joinery does not have a floorboard's grain on it.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
