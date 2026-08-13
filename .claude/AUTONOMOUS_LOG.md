@@ -553,7 +553,11 @@ almost all the wood in this house is painted trim.
     so it floated while its mount and image moved flush behind it — dark blocks
     again.
   - What works: ignore the caller's offset and the wall's thickness both, and
-    hang on the nearest large room-facing surface behind the picture.
+    hang on the nearest large room-facing surface — *bounded to a nudge*.
+    Unbounded, two pictures snapped to surfaces metres away and reappeared in a
+    kitchen window, which the window law caught immediately.
+  - Mount and image insets are proportional now. A fixed twenty-centimetre
+    border is a mount on a big frame and a letterbox slot on a small one.
 
 ## Deferred
 

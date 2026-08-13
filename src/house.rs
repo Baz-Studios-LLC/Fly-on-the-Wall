@@ -1979,11 +1979,14 @@ pub fn audit(home: &Home) {
             if gap.x < -1.0 && gap.y < -1.0 && gap.z < -1.0 {
                 error!(
                     "something is standing in the window at ({:.0},{:.0},{:.0}): \
-                     a {:?} box at ({:.0},{:.0},{:.0})",
+                     a {:?} box {:.0}x{:.0}x{:.0} at ({:.0},{:.0},{:.0})",
                     mid.x,
                     mid.y,
                     mid.z,
                     solid.stuff,
+                    solid.half.x * 2.0,
+                    solid.half.y * 2.0,
+                    solid.half.z * 2.0,
                     solid.center.x,
                     solid.center.y,
                     solid.center.z,

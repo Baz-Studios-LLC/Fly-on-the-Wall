@@ -1096,7 +1096,12 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
         // Nearest, either way. Not "nearest behind": a caller's offset can put
         // the picture *inside* the wall as easily as in front of it, and both
         // want the same answer.
-        .min_by(|a, b| (a - here).abs().partial_cmp(&(b - here).abs()).unwrap());
+        .min_by(|a, b| (a - here).abs().partial_cmp(&(b - here).abs()).unwrap())
+        // Only ever a nudge. Unbounded, a picture whose caller put it somewhere
+        // unexpected snaps to a surface metres away and reappears on a
+        // different wall — two of them landed in a kitchen window, which is how
+        // this turned up.
+        .filter(|face| (face - here).abs() < 26.0);
     let at = match back {
         Some(face) => {
             let flush = face + side * 1.0;
@@ -1124,14 +1129,23 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
         )
     };
     let _ = face;
+    // Insets in proportion, not in centimetres. A fixed twenty-centimetre
+    // border is a mount on a big frame and a letterbox slot on a small one.
+    let small = wide.min(tall);
     slab(
         out,
         at + out_of,
-        inset(7.0),
+        inset(small * 0.16),
         Stuff::Fabric,
         Color::srgb(0.92, 0.91, 0.88),
     );
-    slab(out, at + out_of * 1.6, inset(20.0), Stuff::Fabric, tone);
+    slab(
+        out,
+        at + out_of * 1.6,
+        inset(small * 0.42),
+        Stuff::Fabric,
+        tone,
+    );
 }
 
 /// Curtains: a pair of panels either side of a window, and a pole across it.
