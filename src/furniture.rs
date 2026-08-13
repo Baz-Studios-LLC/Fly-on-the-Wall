@@ -1893,6 +1893,64 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         Color::srgb(0.18, 0.18, 0.19),
     );
 
+    // The front door opens straight into this room, so this room has to be the
+    // hall as well: a mat to wipe on, hooks for coats, and shoes kicked off
+    // beside them. The hooks go in the stretch of wall between the door and the
+    // next window, which is seventy-eight centimetres and the only place they
+    // fit — the window law would have said so otherwise.
+    let (door_lo, door_hi) = crate::house::front_door();
+    let door_x = (door_lo.x + door_hi.x) * 0.5;
+    let inner = door_lo.z - 4.0;
+    rug(
+        out,
+        Vec2::new(door_x, inner - 46.0),
+        Vec2::new(104.0, 66.0),
+        Color::srgb(0.34, 0.30, 0.26),
+    );
+    let hooks = door_x + 78.0;
+    slab(
+        out,
+        Vec3::new(hooks, 168.0, inner - 3.0),
+        Vec3::new(62.0, 9.0, 4.0),
+        Stuff::Wood,
+        DARK_OAK,
+    );
+    for k in 0..3 {
+        let x = hooks - 20.0 + k as f32 * 20.0;
+        slab(
+            out,
+            Vec3::new(x, 162.0, inner - 8.0),
+            Vec3::new(3.0, 4.0, 10.0),
+            Stuff::Metal,
+            BRASS,
+        );
+        if k == 1 {
+            continue;
+        }
+        // A coat on two of the three.
+        turned(
+            out,
+            Vec3::new(x, 122.0, inner - 12.0),
+            Vec3::new(34.0, 84.0, 12.0),
+            Quat::from_rotation_z(wobble(x, 2.0) * 0.05),
+            Stuff::Fabric,
+            if k == 0 {
+                THROW
+            } else {
+                Color::srgb(0.26, 0.32, 0.38)
+            },
+        );
+    }
+    for (i, off) in [-26.0f32, 4.0].into_iter().enumerate() {
+        slab(
+            out,
+            Vec3::new(hooks + off, 5.0, inner - 34.0 - i as f32 * 6.0),
+            Vec3::new(11.0, 10.0, 27.0),
+            Stuff::Fabric,
+            Color::srgb(0.20, 0.18, 0.17),
+        );
+    }
+
     // A plant in the corner, and a stack of books beside the sofa.
     pot_plant(out, Vec2::new(r.min.x + 82.0, r.max.y - 96.0), 138.0);
     books(out, Vec3::new(r.min.x + 62.0, 0.0, m.y - 148.0), 5, 4.0);

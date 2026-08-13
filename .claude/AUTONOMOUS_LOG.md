@@ -294,6 +294,15 @@ the session. Do not treat one room or prop as completion.
   and the plate is screwed to it. First version placed six of sixty-eight.
 - Cost: 2837 draws, 15 meshes, 278 materials, 20 lights, still display-bound.
 
+
+## Pass thirteen: the entry
+
+- The front door opens straight into the great room, so that room has to be the
+  hall as well. A mat to wipe on, a rail with hooks, two coats on it and shoes
+  kicked off underneath. The hooks go in the seventy-eight centimetres of wall
+  between the door and the next window, which is the only place they fit — the
+  window law would have said so otherwise, as it has three times now.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
