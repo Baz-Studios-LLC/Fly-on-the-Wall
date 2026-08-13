@@ -1149,37 +1149,98 @@ pub fn build() -> Home {
 /// Real glass: a fly can land on it, walk it, and be fooled by it, which is the
 /// most recognisable thing a housefly does indoors. `world` keeps it out of the
 /// shadow pass, or every window would be a hole that let no light through.
+/// Double-hung sashes, and one of them left up.
+///
+/// Every window was a single sheet of glass filling its hole. A real one is two
+/// sashes with a meeting rail between them, and the difference matters more
+/// here than the frame lines: a sash can be *raised*, and a raised sash is how
+/// a fly gets into a house. The kitchen window over the sink is up eight
+/// centimetres, which is nothing to a person and a doorway to the player.
 fn glaze(s: &mut Vec<Solid>) {
     let (w, _e, n, so, _gs, house_east) = envelope();
-    let pane = 2.0;
     let half = WINDOW_WIDE * 0.5;
+    let frame = Color::srgb(0.93, 0.92, 0.89);
+    /// The window over the kitchen sink.
+    const LEFT_OPEN: f32 = 21.0;
+
+    // `at` is the centre of the opening in the plane of the wall.
+    let mut sash = |out: &mut Vec<Solid>, at: Vec3, along_x: bool, lift: f32| {
+        let meet = (SILL + HEAD) * 0.5;
+        let rail = 5.0;
+        let put = |out: &mut Vec<Solid>,
+                   along: f32,
+                   wide: f32,
+                   y0: f32,
+                   y1: f32,
+                   thick: f32,
+                   paint: Option<Color>| {
+            let (min, max) = if along_x {
+                (
+                    Vec3::new(at.x + along - wide * 0.5, y0, at.z - thick * 0.5),
+                    Vec3::new(at.x + along + wide * 0.5, y1, at.z + thick * 0.5),
+                )
+            } else {
+                (
+                    Vec3::new(at.x - thick * 0.5, y0, at.z + along - wide * 0.5),
+                    Vec3::new(at.x + thick * 0.5, y1, at.z + along + wide * 0.5),
+                )
+            };
+            let mut solid = Solid::between(
+                min,
+                max,
+                if paint.is_some() {
+                    Stuff::Wood
+                } else {
+                    Stuff::Glass
+                },
+            );
+            solid.paint = paint;
+            out.push(solid);
+        };
+
+        // Lower sash, raised by `lift`. Upper sash, always shut.
+        for (y0, y1, up) in [(SILL, meet, lift), (meet - rail, HEAD, 0.0)] {
+            let (a, b) = (y0 + up, y1 + up);
+            put(
+                out,
+                0.0,
+                WINDOW_WIDE - rail * 2.0,
+                a + rail,
+                b - rail,
+                2.0,
+                None,
+            );
+            for side in [-1.0f32, 1.0] {
+                put(
+                    out,
+                    side * (half - rail * 0.5),
+                    rail,
+                    a,
+                    b,
+                    5.0,
+                    Some(frame),
+                );
+            }
+            put(out, 0.0, WINDOW_WIDE, a, a + rail, 5.0, Some(frame));
+            put(out, 0.0, WINDOW_WIDE, b - rail, b, 5.0, Some(frame));
+        }
+    };
 
     for &x in &NORTH_WINDOWS {
-        s.push(Solid::between(
-            Vec3::new(ft(x) - half, SILL, n - pane * 0.5),
-            Vec3::new(ft(x) + half, HEAD, n + pane * 0.5),
-            Stuff::Glass,
-        ));
+        let lift = if (x - LEFT_OPEN).abs() < 0.01 {
+            8.0
+        } else {
+            0.0
+        };
+        sash(s, Vec3::new(ft(x), 0.0, n), true, lift);
     }
     for &x in &SOUTH_WINDOWS {
-        s.push(Solid::between(
-            Vec3::new(ft(x) - half, SILL, so - pane * 0.5),
-            Vec3::new(ft(x) + half, HEAD, so + pane * 0.5),
-            Stuff::Glass,
-        ));
+        sash(s, Vec3::new(ft(x), 0.0, so), true, 0.0);
     }
     for &z in &WEST_WINDOWS {
-        s.push(Solid::between(
-            Vec3::new(w - pane * 0.5, SILL, ft(z) - half),
-            Vec3::new(w + pane * 0.5, HEAD, ft(z) + half),
-            Stuff::Glass,
-        ));
+        sash(s, Vec3::new(w, 0.0, ft(z)), false, 0.0);
     }
-    s.push(Solid::between(
-        Vec3::new(house_east - pane * 0.5, SILL, ft(EAST_WINDOW) - half),
-        Vec3::new(house_east + pane * 0.5, HEAD, ft(EAST_WINDOW) + half),
-        Stuff::Glass,
-    ));
+    sash(s, Vec3::new(house_east, 0.0, ft(EAST_WINDOW)), false, 0.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1384,12 +1445,30 @@ pub fn audit(home: &Home) {
         }
     }
 
-    // Nothing stands in a window. Glass is allowed to; it is the window.
+    // Nothing stands in *front of* a window.
+    //
+    // Glass was the only exemption while a window was a single sheet of it.
+    // Real ones have sashes, and a sash is not an obstruction — it is the
+    // window. What separates the two is which side of the plaster they sit on:
+    // a stile lies inside the reveal, and a wall cabinet, a cooker hood or a
+    // picture stands proud of it. Everything this law has ever caught was proud
+    // of the wall by eight centimetres or more.
     for (lo, hi) in window_openings() {
         let mid = (lo + hi) * 0.5;
         let half = (hi - lo) * 0.5;
+        // The opening is much thicker than the wall on purpose; the wall's own
+        // plane is its middle, and the thin axis is whichever it is thinnest in.
+        let thin_z = (hi.x - lo.x) > (hi.z - lo.z);
         for solid in &home.solids {
             if solid.stuff == Stuff::Glass {
+                continue;
+            }
+            let inside_reveal = if thin_z {
+                (solid.center.z - mid.z).abs() + solid.half.z < 4.5
+            } else {
+                (solid.center.x - mid.x).abs() + solid.half.x < 4.5
+            };
+            if inside_reveal {
                 continue;
             }
             let gap = (solid.center - mid).abs() - (solid.half + half);
