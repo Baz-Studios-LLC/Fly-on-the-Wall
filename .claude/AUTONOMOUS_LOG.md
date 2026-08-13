@@ -758,6 +758,27 @@ The second was hidden by the first: before `Part` existed, loading happened to
 work anyway because the renderer read the already-mutated solids. Fixing one
 made the other visible.
 
+
+## Pass thirty-nine: height, and things that are one thing
+
+Both from Brett using it.
+
+- **Raise and lower**, on the up and down arrows. Height is on its own keys
+  rather than following the fly: tying it to where you are hovering makes it
+  impossible to slide something along a shelf without lifting it off. The saved
+  file carries `piece x y z yaw` now — getting a mug off the floor and onto a
+  shelf is half of what arranging is for.
+- **Composites are one piece.** Constructors were already grouped, but plenty
+  of objects are assembled from loose slabs in the room code and each slab was
+  its own piece: the bath and its tap and screen, the shower, the linen press,
+  the media unit and its television, the kitchen island, the fridge and its
+  doors, the cooker and its whole face, both machines and their fascias. Marking
+  a block is two lines — take the length before, `piece_up` after — so no
+  restructuring was needed. **673 pieces down to 559**, which is 114 loose boxes
+  finding the object they belong to.
+- The floating law audits the *generated* house, not the arrangement, so lifting
+  something onto a shelf does not trip it. That is the right way round.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

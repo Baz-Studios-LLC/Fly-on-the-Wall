@@ -19,6 +19,7 @@
 //! | look | whatever the crosshair is on is highlighted |
 //! | left mouse or `G` | take hold of it, and let go of it |
 //! | `←` `→` | turn it, twelve degrees a press |
+//! | `↑` `↓` | raise and lower it — how a mug gets onto a shelf |
 //! | `Ctrl` `S` | save the arrangement |
 //! | `Backspace` | put everything back where the generator had it |
 //!
@@ -46,7 +47,9 @@ pub struct Arranging {
     looking_at: Option<u32>,
     /// The piece being carried, and how far in front of the fly it was taken.
     held: Option<(u32, f32)>,
-    /// Where every moved piece started, so it can all be put back.
+    /// Where every moved piece started, so it can all be put back. The Vec3
+    /// carries height as well as plan position: half the point of arranging is
+    /// getting something off the floor and onto a shelf.
     moved: std::collections::HashMap<u32, (Vec3, f32)>,
 }
 
@@ -251,6 +254,7 @@ fn shift(
 fn carry(
     mut arranging: ResMut<Arranging>,
     mut home: ResMut<Home>,
+    time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
     eyes: Query<&GlobalTransform, With<Camera3d>>,
@@ -272,10 +276,10 @@ fn carry(
                 // Remember where it started the first time it is picked up, so
                 // Backspace can put the whole room back.
                 if let Some((lo, hi)) = bounds(&home, piece) {
-                    arranging.moved.entry(piece).or_insert((
-                        Vec3::new((lo.x + hi.x) * 0.5, 0.0, (lo.z + hi.z) * 0.5),
-                        0.0,
-                    ));
+                    arranging
+                        .moved
+                        .entry(piece)
+                        .or_insert(((lo + hi) * 0.5, 0.0));
                 }
                 (piece, held_at.clamp(60.0, REACH))
             }),
@@ -297,6 +301,17 @@ fn carry(
     let mut by = Vec3::new(want.x - heart.x, 0.0, want.z - heart.z);
     // A little damping, or the piece jitters with every twitch of the mouse.
     by *= 0.35;
+    // Height is on its own keys rather than following the fly. Tying it to
+    // where you are hovering makes it impossible to slide something along a
+    // shelf without also lifting it off.
+    let lift = if keys.pressed(KeyCode::ArrowUp) {
+        1.0
+    } else if keys.pressed(KeyCode::ArrowDown) {
+        -1.0
+    } else {
+        0.0
+    };
+    by.y = lift * 55.0 * time.delta_secs();
 
     let turn = if keys.just_pressed(KeyCode::ArrowLeft) {
         -TURN
@@ -325,7 +340,7 @@ fn save_or_reset(
     }
     let holding = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::SuperLeft);
     if holding && keys.just_pressed(KeyCode::KeyS) {
-        let mut text = String::from("# piece  x  z  yaw — written by arrange mode\n");
+        let mut text = String::from("# piece  x  y  z  yaw — written by arrange mode\n");
         let mut seen = std::collections::HashSet::new();
         for piece in home
             .solids
@@ -338,10 +353,12 @@ fn save_or_reset(
             }
             if let (Some((lo, hi)), Some(was)) = (bounds(&home, piece), arranging.moved.get(&piece))
             {
-                let now = Vec3::new((lo.x + hi.x) * 0.5, 0.0, (lo.z + hi.z) * 0.5);
-                let by = now - was.0;
+                let by = (lo + hi) * 0.5 - was.0;
                 if by.length() > 0.5 || was.1.abs() > 0.001 {
-                    text.push_str(&format!("{piece} {:.2} {:.2} {:.4}\n", by.x, by.z, was.1));
+                    text.push_str(&format!(
+                        "{piece} {:.2} {:.2} {:.2} {:.4}\n",
+                        by.x, by.y, by.z, was.1
+                    ));
                 }
             }
         }
@@ -359,8 +376,7 @@ fn save_or_reset(
             .collect();
         for (piece, was, turn) in moves {
             if let Some((lo, hi)) = bounds(&home, piece) {
-                let now = Vec3::new((lo.x + hi.x) * 0.5, 0.0, (lo.z + hi.z) * 0.5);
-                shift(&mut home, &mut parts, piece, was - now, -turn);
+                shift(&mut home, &mut parts, piece, was - (lo + hi) * 0.5, -turn);
             }
         }
         info!("everything back where the generator had it");
@@ -389,20 +405,25 @@ fn load_arrangement(
         .filter(|l| !l.starts_with('#') && !l.is_empty())
     {
         let mut bits = line.split_whitespace();
-        let (Some(p), Some(x), Some(z), Some(yaw)) =
-            (bits.next(), bits.next(), bits.next(), bits.next())
-        else {
+        let (Some(p), Some(x), Some(y), Some(z), Some(yaw)) = (
+            bits.next(),
+            bits.next(),
+            bits.next(),
+            bits.next(),
+            bits.next(),
+        ) else {
             continue;
         };
-        let (Ok(p), Ok(x), Ok(z), Ok(yaw)) = (
+        let (Ok(p), Ok(x), Ok(y), Ok(z), Ok(yaw)) = (
             p.parse::<u32>(),
             x.parse::<f32>(),
+            y.parse::<f32>(),
             z.parse::<f32>(),
             yaw.parse::<f32>(),
         ) else {
             continue;
         };
-        shift(&mut home, &mut parts, p, Vec3::new(x, 0.0, z), yaw);
+        shift(&mut home, &mut parts, p, Vec3::new(x, y, z), yaw);
         moved += 1;
     }
     if moved > 0 {
@@ -454,7 +475,7 @@ fn show(
         // are holding something, and a line that says so at all times is a line
         // that gets ignored.
         if arranging.held.is_some() {
-            "left / right arrows turn it    click or G to put it down    Ctrl+S save"
+            "left right arrows turn    up down arrows raise lower    click or G to put it down    Ctrl+S save"
         } else {
             "click or G to pick it up    Backspace put it all back    Tab done"
         }

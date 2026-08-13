@@ -2568,7 +2568,9 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     // A plant in the corner, and a stack of books beside the sofa.
     pot_plant(out, Vec2::new(r.min.x + 82.0, r.max.y - 96.0), 138.0);
     books(out, Vec3::new(r.min.x + 62.0, 0.0, m.y - 148.0), 5, 4.0);
-    // Media unit opposite the sofa, with the television standing on it.
+    // Media unit opposite the sofa, with the television standing on it — and
+    // the television is part of it, as far as moving it goes.
+    let media_mark = out.len();
     let east = Vec2::new(r.max.x - 34.0, m.y);
     slab(
         out,
@@ -2584,6 +2586,8 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         Stuff::Metal,
         SLATE,
     );
+    piece_up(out, media_mark);
+
     // Bookshelves in the far corner.
     shelves(
         out,
@@ -2741,6 +2745,7 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
 
     // The fridge, standing off the north wall with a gap behind it. The gap is
     // the point: unreachable in flight, trivial on foot, warm and dark.
+    let fridge_mark = out.len();
     let fridge = Vec2::new(r.max.x - 100.0, r.min.y + 56.0);
     appliance(out, fridge, Vec3::new(78.0, 178.0, 68.0), STEEL);
     // Fridge over freezer, a shadow gap between them, and a handle down the
@@ -2761,8 +2766,14 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
             CHROME,
         );
     }
+    piece_up(out, fridge_mark);
+
     // The cooker goes in the widest stretch of wall with no window in it, so
     // its extractor has somewhere to be that is not over glass.
+    //
+    // Hob, fascia, knobs, oven door and handle all included: an appliance is
+    // one object to anybody moving it, however many boxes its face takes.
+    let cooker_mark = out.len();
     let cooker = Vec2::new(cooker_x, north);
     appliance(out, cooker, Vec3::new(76.0, 90.0, 62.0), SLATE);
     // A hob with four rings, a control fascia, and an oven door with a window
@@ -2833,6 +2844,7 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
     );
 
     // An island with a worktop proud on every side.
+    let island_mark = out.len();
     let island = Vec2::new(m.x + 30.0, m.y + 40.0);
     slab(
         out,
@@ -2848,6 +2860,8 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
         Stuff::Stone,
         WORKTOP,
     );
+    piece_up(out, island_mark);
+
     // Two stools tucked under the island's overhang.
     for s in [-1.0f32, 1.0] {
         let p = island + Vec2::new(s * 52.0, 74.0);
@@ -2923,6 +2937,8 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
             0.0,
         );
     }
+
+    piece_up(out, cooker_mark);
 
     // A knife block, a tea towel on the cooker, and a notice board by the door
     // — the things a kitchen accumulates that are not appliances.
@@ -3264,6 +3280,11 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
 
     // The bath, in the south-west corner: four sides and a floor, so it holds a
     // shape and a fly can get down inside it.
+    //
+    // Marked as one piece from here to the screen. A bath assembled from five
+    // slabs and then fitted with a tap is five things to whoever is trying to
+    // pick it up, which is the wrong answer to "move the bath".
+    let bath_mark = out.len();
     let (bw, bd, bh, wall) = (176.0, 82.0, 58.0, 6.0);
     let b = Vec2::new(r.min.x + 8.0 + bw * 0.5, r.max.y - 6.0 - bd * 0.5);
     slab(
@@ -3317,6 +3338,8 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
         Stuff::Glass,
         Color::srgba(0.84, 0.90, 0.92, 0.30),
     );
+    piece_up(out, bath_mark);
+
     // A mat to step out onto.
     rug(
         out,
@@ -3411,6 +3434,7 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
 
     // A linen press against the east wall: two doors, two handles, and a plinth
     // it stands on.
+    let press_mark = out.len();
     let press = Vec2::new(r.max.x - 34.0, r.min.y + 210.0);
     slab(
         out,
@@ -3443,7 +3467,10 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
         );
     }
 
+    piece_up(out, press_mark);
+
     // A shower in the far corner: a tray, two glass sides, and a riser.
+    let shower_mark = out.len();
     let tray = Vec2::new(r.max.x - 66.0, r.max.y - 72.0);
     let (sw, sd) = (118.0, 130.0);
     slab(
@@ -3482,6 +3509,8 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
         CHROME,
     );
 
+    piece_up(out, shower_mark);
+
     // And a laundry basket, because clothes come off somewhere.
     slab(
         out,
@@ -3504,6 +3533,7 @@ fn laundry(out: &mut Vec<Solid>, r: &Room) {
     // house, which will matter a great deal to a fly the moment warmth is a
     // thing the game models.
     for (i, paint) in [STEEL, PORCELAIN].into_iter().enumerate() {
+        let machine_mark = out.len();
         let at = Vec2::new(r.min.x + 70.0 + i as f32 * 74.0, r.min.y + 46.0);
         appliance(out, at, Vec3::new(66.0, 88.0, 64.0), paint);
         // A carcass and nothing else is a white cupboard: side by side and both
@@ -3560,6 +3590,7 @@ fn laundry(out: &mut Vec<Solid>, r: &Room) {
                 CHROME,
             );
         }
+        piece_up(out, machine_mark);
     }
     // A folding counter over them, and a shelf above that.
     slab(
