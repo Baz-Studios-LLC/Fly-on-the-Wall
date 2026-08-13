@@ -732,20 +732,119 @@ impl Plugin for WorldPlugin {
 /// to eight bits a channel before it becomes a key, which costs nothing visible
 /// and means the deterministic grain on two neighbouring floorboards collapses
 /// to one entry when it lands on the same byte.
+
+/// A small tiling texture for one kind of surface.
+///
+/// Every material in this house has been a flat colour, which is the single
+/// loudest thing about how it looks: real plaster has tooth, a floorboard has
+/// grain running down its length, wool has a weave, concrete has aggregate in
+/// it. None of that needs an artist — it needs a hash and sixty-four pixels
+/// square, multiplied into the colour that was already there.
+///
+/// Kept close to white on purpose. The texture *modulates* the palette rather
+/// than replacing it, so every colour decision made so far still holds.
+fn surface_texture(stuff: Stuff) -> Image {
+    const SIZE: u32 = 64;
+
+    fn hash2(x: u32, y: u32) -> f32 {
+        let mut h = x
+            .wrapping_mul(374_761_393)
+            .wrapping_add(y.wrapping_mul(668_265_263));
+        h = (h ^ (h >> 13)).wrapping_mul(1_274_126_177);
+        ((h ^ (h >> 16)) & 0xffff) as f32 / 65535.0
+    }
+
+    let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let v = match stuff {
+                // Tooth: fine, almost invisible until it catches a raking light.
+                Stuff::Plaster => 1.0 - 0.05 * hash2(x, y),
+                // Grain running along the board, so the streaks are strong
+                // across the width and weak along the length.
+                Stuff::Floorboard => {
+                    let streak = hash2(0, y);
+                    let fine = hash2(x / 3, y);
+                    1.0 - 0.14 * streak - 0.05 * fine
+                }
+                Stuff::Wood => {
+                    let streak = hash2(0, y);
+                    1.0 - 0.09 * streak - 0.04 * hash2(x / 2, y)
+                }
+                // A weave: two threads crossing, with slubs in it.
+                Stuff::Fabric => {
+                    let over = ((x / 2 + y / 2) % 2) as f32;
+                    1.0 - 0.05 * over - 0.06 * hash2(x, y)
+                }
+                // Aggregate.
+                Stuff::Stone => {
+                    let big = hash2(x / 4, y / 4);
+                    1.0 - 0.06 * big - 0.07 * hash2(x, y)
+                }
+                // Brushed, so the lines run one way only.
+                Stuff::Metal => 1.0 - 0.045 * hash2(0, y) - 0.02 * hash2(x, y),
+                Stuff::Grass => 1.0 - 0.20 * hash2(x / 2, y / 2) - 0.08 * hash2(x, y),
+                Stuff::Glass => 1.0,
+            };
+            let b = (v.clamp(0.0, 1.0) * 255.0) as u8;
+            data.extend_from_slice(&[b, b, b, 255]);
+        }
+    }
+
+    let mut image = Image::new(
+        bevy::render::render_resource::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        bevy::render::render_resource::TextureDimension::D2,
+        data,
+        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::RENDER_WORLD,
+    );
+    // It has to repeat, or scaling the UVs past one just stretches the last
+    // pixel across the rest of the surface.
+    image.sampler = bevy::image::ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
+        address_mode_u: bevy::image::ImageAddressMode::Repeat,
+        address_mode_v: bevy::image::ImageAddressMode::Repeat,
+        ..default()
+    });
+    image
+}
+
 fn dress_the_set(
     mut commands: Commands,
     home: Res<Home>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     let cube = meshes.add(Cuboid::from_length(1.0));
-    let mut palette: std::collections::HashMap<[u8; 6], Handle<StandardMaterial>> =
+    let grain: Vec<Handle<Image>> = [
+        Stuff::Plaster,
+        Stuff::Grass,
+        Stuff::Floorboard,
+        Stuff::Wood,
+        Stuff::Fabric,
+        Stuff::Metal,
+        Stuff::Stone,
+        Stuff::Glass,
+    ]
+    .into_iter()
+    .map(|k| images.add(surface_texture(k)))
+    .collect();
+    let mut palette: std::collections::HashMap<[u8; 7], Handle<StandardMaterial>> =
         std::collections::HashMap::new();
 
     for (i, solid) in home.solids.iter().enumerate() {
         let colour = solid.paint.unwrap_or_else(|| solid.stuff.tint());
         let rgba = colour.to_linear();
         let byte = |c: f32| (c.clamp(0.0, 1.0) * 255.0).round() as u8;
+        // How many times the grain repeats across this solid. One material
+        // serves every box that looks alike, so the tiling rate has to be part
+        // of what "alike" means — otherwise a floorboard and a table leg share
+        // a material and the leg gets a floorboard's worth of grain on it.
+        let tile = (solid.half.max_element() / 26.0).round().clamp(1.0, 14.0);
         let key = [
             byte(rgba.red),
             byte(rgba.green),
@@ -753,12 +852,16 @@ fn dress_the_set(
             byte(rgba.alpha),
             solid.stuff as u8,
             solid.sheer as u8 | (byte(solid.glow / 24.0) << 1),
+            tile as u8,
         ];
         let material = palette
             .entry(key)
             .or_insert_with(|| {
                 materials.add(StandardMaterial {
                     base_color: colour,
+                    base_color_texture: (solid.stuff != Stuff::Glass)
+                        .then(|| grain[solid.stuff as usize].clone()),
+                    uv_transform: bevy::math::Affine2::from_scale(Vec2::splat(tile)),
                     emissive: (rgba * solid.glow).with_alpha(1.0),
                     perceptual_roughness: solid.stuff.perceptual_roughness(),
                     metallic: if solid.stuff == Stuff::Metal {

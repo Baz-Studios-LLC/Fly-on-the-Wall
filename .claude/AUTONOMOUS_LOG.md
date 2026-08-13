@@ -339,6 +339,22 @@ the session. Do not treat one room or prop as completion.
   hung crooked on it, and paint tins underneath. The wall above a workbench is
   the one wall in a house that is never blank — and it was the last blank one.
 
+
+## Pass eighteen: texture
+
+- Brett asked for refinement rather than more objects, and the loudest thing
+  about how this house looked was that **every surface in it was a flat
+  colour**. There is a sixty-four-pixel procedural texture per material now:
+  tooth on plaster, grain running the length of a floorboard, a weave with
+  slubs in it on fabric, aggregate in stone, a brushed direction on metal.
+- They *modulate* the palette rather than replacing it — kept close to white on
+  purpose — so every colour decision made in the previous seventeen passes
+  still holds.
+- The tiling rate has to be part of the material key. One material serves every
+  box that looks alike, and without it a floorboard and a table leg share a
+  material and the leg gets a floorboard's worth of grain on it. Materials
+  359 -> 616 as a result, which is the price of the thing working.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

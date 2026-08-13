@@ -1164,7 +1164,7 @@ fn glaze(s: &mut Vec<Solid>) {
     const LEFT_OPEN: f32 = 21.0;
 
     // `at` is the centre of the opening in the plane of the wall.
-    let mut sash = |out: &mut Vec<Solid>, at: Vec3, along_x: bool, lift: f32| {
+    let sash = |out: &mut Vec<Solid>, at: Vec3, along_x: bool, lift: f32| {
         let meet = (SILL + HEAD) * 0.5;
         let rail = 5.0;
         let put = |out: &mut Vec<Solid>,
