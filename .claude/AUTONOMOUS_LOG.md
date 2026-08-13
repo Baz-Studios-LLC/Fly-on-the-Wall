@@ -583,6 +583,33 @@ Judged from the plan view, which is the only honest way to look at arrangement.
   marks its work as roof and nothing else, and the plan frames on everything
   that is not outdoors.
 
+
+## Pass thirty-one: what Brett found by flying (v0.2.1)
+
+Three faults, all found by playing and none by any capture I had taken.
+
+- **A gallery hanging in mid-air over the dining table.** It was hung on the
+  great room's "north wall", and there is no wall there — the kitchen and the
+  great room are one open volume. The snap found nothing behind the frames and
+  left them where they were asked for.
+- **Pictures inside doorways.** `clear_of_windows_on` was named for the only
+  thing it knew about, and that was the bug: a gallery spread across a door
+  opening and a notice board hung inside a cased one, because neither is a
+  window. It asks `house::all_openings` now — windows, interior doors, cased
+  openings, the front door and the vehicle door.
+- **A wardrobe standing inside a bed.** The bed takes the widest clear run on
+  the north wall and the wardrobe takes the widest on the side wall, and on
+  adjacent walls those two runs meet in the same corner. The bed is built
+  first, so the wardrobe gives way: it tries the middle of its run, then each
+  end of the room, and takes the first that is clear.
+- And a photograph floating eighteen centimetres above the media unit, because
+  it was going through `picture`, which hangs things on walls. It stands on its
+  own foot now.
+
+**The law that made all of this findable:** `picture` refuses to build when
+there is no wall behind it, and says which one and where. Four came out on the
+first run — the exact four Brett was looking at.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

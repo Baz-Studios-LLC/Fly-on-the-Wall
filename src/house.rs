@@ -1789,6 +1789,22 @@ pub fn cased_openings() -> Vec<(Vec3, Vec3)> {
         .collect()
 }
 
+/// Every hole in the building: windows, interior doors, the wide cased
+/// openings, the front door and the vehicle door.
+///
+/// `clear_of_windows_on` was named for the only thing it knew about, and that
+/// was the bug: a gallery hung itself across a doorway and a notice board
+/// inside a cased opening, because neither is a window. Anything looking for a
+/// blank stretch of wall wants all of them.
+pub fn all_openings() -> Vec<(Vec3, Vec3)> {
+    let mut out = window_openings();
+    out.extend(interior_doors());
+    out.extend(cased_openings());
+    out.push(front_door());
+    out.push(vehicle_door());
+    out
+}
+
 /// The front door's opening, in world centimetres. The only way in or out of
 /// this house that is not glazed shut.
 pub fn front_door() -> (Vec3, Vec3) {

@@ -1102,16 +1102,22 @@ fn picture(out: &mut Vec<Solid>, at: Vec3, wide: f32, tall: f32, along_x: bool, 
         // different wall — two of them landed in a kitchen window, which is how
         // this turned up.
         .filter(|face| (face - here).abs() < 26.0);
-    let at = match back {
-        Some(face) => {
-            let flush = face + side * 1.0;
-            if along_x {
-                Vec3::new(at.x, at.y, flush)
-            } else {
-                Vec3::new(flush, at.y, at.z)
-            }
-        }
-        None => at,
+    let Some(face) = back else {
+        // Nothing behind it. A picture needs a wall, and leaving it where the
+        // caller asked is how five of them ended up hanging in mid-air over the
+        // open plan — the great room's "north wall" is the kitchen, and there
+        // is no wall there at all. Refuse, and say which one and where.
+        warn!(
+            "a picture at ({:.0},{:.0},{:.0}) has no wall behind it",
+            at.x, at.y, at.z
+        );
+        return;
+    };
+    let flush = face + side * 1.0;
+    let at = if along_x {
+        Vec3::new(at.x, at.y, flush)
+    } else {
+        Vec3::new(flush, at.y, at.z)
     };
     slab(out, at, d(2.0), Stuff::Wood, DARK_OAK);
     let out_of = axis * side * 1.4;
@@ -2322,21 +2328,17 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     // Above the media unit, on the long blank wall the room is usually looked
     // at across — a gallery on the wall behind the camera is a gallery nobody
     // sees, which is where the first version put it.
+    let (gal_lo, gal_hi) = clear_of_windows_on(r, Wall::East);
     frames(
         out,
-        Vec3::new(r.max.x - 7.0, 182.0, m.y - 20.0),
+        Vec3::new(r.max.x - 7.0, 182.0, (gal_lo + gal_hi) * 0.5),
         false,
-        340.0,
+        (gal_hi - gal_lo - 40.0).clamp(90.0, 340.0),
         3.0,
     );
-    let (gal_lo, gal_hi) = clear_of_windows_on(r, Wall::North);
-    frames(
-        out,
-        Vec3::new((gal_lo + gal_hi) * 0.5, 176.0, r.min.y + 7.0),
-        true,
-        (gal_hi - gal_lo).min(320.0),
-        19.0,
-    );
+    // No second cluster on the north side: this room's north "wall" is the
+    // kitchen. It is one open volume, and the gallery that used to go there
+    // hung in the middle of the air above the dining table.
     // Beside the sofa on the rug, not behind it: the floor behind a floated
     // sofa is the route from the hall, and a standard lamp planted in a walkway
     // is a thing people walk into.
@@ -2357,14 +2359,23 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         Stuff::Metal,
         Color::srgb(0.20, 0.20, 0.22),
     );
-    picture(
-        out,
-        Vec3::new(media.x - 10.0, 74.0, media.y - 66.0),
-        26.0,
-        20.0,
-        false,
-        Color::srgb(0.46, 0.40, 0.34),
-    );
+    // A standing photograph on the unit, leaning back on its own foot. It was
+    // going through `picture`, which hangs things on walls — so it sat eighteen
+    // centimetres above the top of the unit with nothing behind it.
+    for (thick, inset_by, paint) in [
+        (3.0f32, 0.0f32, DARK_OAK),
+        (2.0, 5.0, Color::srgb(0.92, 0.91, 0.88)),
+        (1.4, 11.0, Color::srgb(0.46, 0.40, 0.34)),
+    ] {
+        turned(
+            out,
+            Vec3::new(media.x - 12.0 - inset_by * 0.1, 70.0, media.y - 66.0),
+            Vec3::new(thick, 30.0 - inset_by, 24.0 - inset_by),
+            Quat::from_rotation_z(0.12),
+            Stuff::Wood,
+            paint,
+        );
+    }
     pot_plant(out, Vec2::new(media.x - 12.0, media.y + 72.0), 52.0);
     // On the coffee table: a dish and a candle beside the books.
     disc(
@@ -2443,11 +2454,13 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         4,
         true,
     );
-    // A picture over the sofa, which is where a house puts one.
+    // A big picture on the west wall — in the run of it with no opening. The
+    // middle of that wall is one of the two ways into this room.
+    let (wl, wh) = clear_of_windows_on(r, Wall::West);
     picture(
         out,
-        Vec3::new(r.min.x + 6.0, 168.0, m.y),
-        130.0,
+        Vec3::new(r.min.x + 6.0, 168.0, (wl + wh) * 0.5),
+        (wh - wl - 40.0).clamp(60.0, 130.0),
         84.0,
         false,
         Color::srgb(0.62, 0.58, 0.50),
@@ -2475,13 +2488,15 @@ enum Wall {
     East,
 }
 
-/// The widest windowless run along one wall of a room.
+/// The widest unbroken run along one wall of a room — no window, no door, no
+/// opening of any kind.
 ///
-/// Anything tall goes here. A cooker hood, a run of wall cabinets, a picture
-/// over a bed and — the last time this was north-only — a wardrobe and two more
-/// pictures all ended up over glass by being placed at a hand-picked offset.
-/// The fix that does not need repeating is to ask where the windows are rather
-/// than to remember, on whichever wall is being used.
+/// Anything tall or hung goes here. A cooker hood, a run of wall cabinets, a
+/// picture over a bed, a wardrobe. Two rounds of this rule: first it only
+/// looked at the north wall, and a wardrobe went over west-wall glass in two
+/// bedrooms; then it only looked at *windows*, and a gallery hung itself across
+/// a doorway while a notice board hung inside a cased opening. It asks about
+/// every hole in the wall now.
 fn clear_of_windows_on(r: &Room, wall: Wall) -> (f32, f32) {
     let along_x = matches!(wall, Wall::North | Wall::South);
     let line = match wall {
@@ -2496,7 +2511,7 @@ fn clear_of_windows_on(r: &Room, wall: Wall) -> (f32, f32) {
         (r.min.y, r.max.y)
     };
 
-    let mut spans: Vec<(f32, f32)> = crate::house::window_openings()
+    let mut spans: Vec<(f32, f32)> = crate::house::all_openings()
         .into_iter()
         .filter(|(lo, hi)| {
             let mid = (*lo + *hi) * 0.5;
@@ -2797,9 +2812,10 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
         Stuff::Fabric,
         TOWEL_A,
     );
+    let (nl, nh) = clear_of_windows_on(r, Wall::West);
     picture(
         out,
-        Vec3::new(r.min.x + 8.0, 150.0, m.y - 40.0),
+        Vec3::new(r.min.x + 8.0, 150.0, (nl + nh) * 0.5),
         60.0,
         44.0,
         false,
@@ -2910,13 +2926,31 @@ fn bedroom(out: &mut Vec<Solid>, r: &Room) {
     // arrangement the brief warns about. Mirroring costs nothing.
     let side_wall = if flip { Wall::East } else { Wall::West };
     let (side_lo, side_hi) = clear_of_windows_on(r, side_wall);
+    let press_x = if flip { r.max.x - 38.0 } else { r.min.x + 38.0 };
+    let press_deep = (side_hi - side_lo - 24.0).clamp(72.0, 150.0);
+    // The bed and the wardrobe were both taking the *widest* clear run on their
+    // own wall, and on adjacent walls the widest runs meet in the same corner —
+    // so the wardrobe stood inside the bed. The bed is already built by the
+    // time this runs, so the wardrobe is what gives way: try the middle of the
+    // run, then each end of the room, and take the first that is clear.
+    let along = [
+        (side_lo + side_hi) * 0.5,
+        r.max.y - press_deep * 0.5 - 26.0,
+        r.min.y + press_deep * 0.5 + 26.0,
+    ]
+    .into_iter()
+    .find(|z| {
+        !clashes(
+            out,
+            Vec3::new(press_x, 104.0, *z),
+            Vec3::new(70.0, 200.0, press_deep + 10.0),
+        )
+    })
+    .unwrap_or(r.max.y - press_deep * 0.5 - 26.0);
     wardrobe(
         out,
-        Vec2::new(
-            if flip { r.max.x - 38.0 } else { r.min.x + 38.0 },
-            (side_lo + side_hi) * 0.5,
-        ),
-        Vec3::new(64.0, 196.0, (side_hi - side_lo - 24.0).clamp(72.0, 150.0)),
+        Vec2::new(press_x, along),
+        Vec3::new(64.0, 196.0, press_deep),
         Vec2::new(if flip { -1.0 } else { 1.0 }, 0.0),
     );
 
