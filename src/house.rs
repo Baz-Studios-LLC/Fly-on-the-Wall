@@ -544,6 +544,42 @@ fn glaze(s: &mut Vec<Solid>) {
 // Checking the laws
 // ---------------------------------------------------------------------------
 
+/// Every window's clear opening, as a box in world space.
+///
+/// Shared by the audit so that "nothing stands in a window" can be *checked*
+/// rather than remembered. Twice in one pass a kitchen fitting was placed over
+/// glass — first a run of wall cabinets, then a cooker hood — and both times it
+/// was invisible in the plan and unmissable from inside the room.
+pub fn window_openings() -> Vec<(Vec3, Vec3)> {
+    let (w, _e, n, so, _gs, house_east) = envelope();
+    let half = WINDOW_WIDE * 0.5;
+    let t = OUTER;
+    let mut out = Vec::new();
+    for &x in &NORTH_WINDOWS {
+        out.push((
+            Vec3::new(ft(x) - half, SILL, n - t),
+            Vec3::new(ft(x) + half, HEAD, n + t),
+        ));
+    }
+    for &x in &SOUTH_WINDOWS {
+        out.push((
+            Vec3::new(ft(x) - half, SILL, so - t),
+            Vec3::new(ft(x) + half, HEAD, so + t),
+        ));
+    }
+    for &z in &WEST_WINDOWS {
+        out.push((
+            Vec3::new(w - t, SILL, ft(z) - half),
+            Vec3::new(w + t, HEAD, ft(z) + half),
+        ));
+    }
+    out.push((
+        Vec3::new(house_east - t, SILL, ft(EAST_WINDOW) - half),
+        Vec3::new(house_east + t, HEAD, ft(EAST_WINDOW) + half),
+    ));
+    out
+}
+
 /// Measure what was actually built, and complain if it breaks a law.
 ///
 /// The plan's numbers are not evidence. A room is only fifteen feet if it
@@ -596,6 +632,34 @@ pub fn audit(home: &Home) {
                     }
                     _ => {}
                 }
+            }
+        }
+    }
+
+    // Nothing stands in a window. Glass is allowed to; it is the window.
+    for (lo, hi) in window_openings() {
+        let mid = (lo + hi) * 0.5;
+        let half = (hi - lo) * 0.5;
+        for solid in &home.solids {
+            if solid.stuff == Stuff::Glass {
+                continue;
+            }
+            let gap = (solid.center - mid).abs() - (solid.half + half);
+            // Overlapping on all three axes, by more than a hair — a wall
+            // *around* an opening touches it exactly and is not an obstruction.
+            if gap.x < -1.0 && gap.y < -1.0 && gap.z < -1.0 {
+                error!(
+                    "something is standing in the window at ({:.0},{:.0},{:.0}): \
+                     a {:?} box at ({:.0},{:.0},{:.0})",
+                    mid.x,
+                    mid.y,
+                    mid.z,
+                    solid.stuff,
+                    solid.center.x,
+                    solid.center.y,
+                    solid.center.z,
+                );
+                faults += 1;
             }
         }
     }

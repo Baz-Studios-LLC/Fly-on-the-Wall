@@ -98,6 +98,10 @@ const INSPECT_DISTANCE: f32 = 2.1;
 /// about whether a room is worth being in. This is the other half: a fixed
 /// viewpoint per room, from a corner at standing height, so two passes over the
 /// same room can be compared frame to frame rather than from memory.
+/// `FLY_ROOM=kitchen` or `FLY_ROOM=kitchen:ne` — the room, and optionally which
+/// corner to stand in. One diagonal cannot show a whole room: whichever two
+/// walls the camera has its back to are invisible, and in a kitchen that is
+/// every counter in it. Two opposite corners see everything.
 pub fn room_view() -> Option<String> {
     std::env::var("FLY_ROOM").ok().filter(|r| !r.is_empty())
 }
@@ -219,16 +223,31 @@ fn place_the_eye(
     let dt = time.delta_secs();
 
     // Standing in one room, looking across it.
-    if let Some(name) = room_view() {
+    if let Some(spec) = room_view() {
+        let (name, corner) = match spec.split_once(':') {
+            Some((n, c)) => (n.to_string(), c.to_ascii_lowercase()),
+            None => (spec.clone(), "sw".to_string()),
+        };
         let r = crate::house::rooms()
             .into_iter()
             .find(|r| r.name.eq_ignore_ascii_case(&name));
         if let Some(r) = r {
-            let m = r.middle();
-            // From the room's south-west quarter, at the height of somebody
-            // standing in the doorway, looking at the middle of the far half.
-            let from = Vec3::new(r.min.x + r.wide() * 0.12, 155.0, r.min.y + r.deep() * 0.12);
-            let at = Vec3::new(m.x + r.wide() * 0.12, 70.0, m.y + r.deep() * 0.12);
+            // Corner to opposite corner, which is the only line that sees a
+            // whole room. Aiming at the *middle* instead — which is what this
+            // did first — puts everything along the near two walls behind the
+            // camera, and a kitchen's entire worth of counters with it.
+            let (near, far) = match corner.as_str() {
+                "ne" => (Vec2::new(0.90, 0.90), Vec2::new(0.15, 0.15)),
+                "nw" => (Vec2::new(0.10, 0.90), Vec2::new(0.85, 0.15)),
+                "se" => (Vec2::new(0.90, 0.10), Vec2::new(0.15, 0.85)),
+                _ => (Vec2::new(0.10, 0.10), Vec2::new(0.85, 0.85)),
+            };
+            let from = Vec3::new(
+                r.min.x + r.wide() * near.x,
+                165.0,
+                r.min.y + r.deep() * near.y,
+            );
+            let at = Vec3::new(r.min.x + r.wide() * far.x, 55.0, r.min.y + r.deep() * far.y);
             transform.translation = from;
             transform.look_at(at, Vec3::Y);
             if let Projection::Perspective(perspective) = &mut *projection {

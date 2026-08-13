@@ -104,54 +104,98 @@ fn legged(
 ///
 /// `along` is the wall's axis. The overhang is the point of the whole thing at
 /// this scale — it is the sheltered ledge that runs the length of a kitchen.
-fn counter_run(out: &mut Vec<Solid>, from: Vec2, to: Vec2, depth: f32, face: Vec2) {
+fn counter_run(
+    out: &mut Vec<Solid>,
+    from: Vec2,
+    to: Vec2,
+    depth: f32,
+    face: Vec2,
+    gaps: &[(f32, f32)],
+) {
     const PLINTH: f32 = 12.0;
     const HIGH: f32 = 91.0;
     const TOP: f32 = 4.0;
     const OVER: f32 = 4.0;
 
-    let mid = (from + to) * 0.5;
-    let run = (to - from).length();
     let along = (to - from).normalize_or_zero();
-    // Size along the run, and across it.
+    let along_x = along.x.abs() > 0.5;
+    // Where along the run a coordinate sits, and the point at a given distance.
+    let coord = |p: Vec2| if along_x { p.x } else { p.y };
+    let point = |d: f32| from + along * d;
     let size = |long: f32, across: f32| {
-        Vec3::new(
-            if along.x.abs() > 0.5 { long } else { across },
-            0.0,
-            if along.x.abs() > 0.5 { across } else { long },
-        )
+        if along_x {
+            Vec3::new(long, 0.0, across)
+        } else {
+            Vec3::new(across, 0.0, long)
+        }
     };
 
-    // Plinth, set back so the toe kick is a real recess.
+    // The run, broken around whatever stands in it.
+    //
+    // A cooker is not a thing that sits on top of a counter, it is a thing the
+    // counter stops for — and burying one inside the carcass, which is what
+    // happened first, leaves an appliance entirely inside a cupboard.
+    let start = coord(from);
+    let end = coord(to);
+    let (lo, hi) = (start.min(end), start.max(end));
+    let mut cuts: Vec<(f32, f32)> = gaps
+        .iter()
+        .map(|&(a, b)| (a.min(b).max(lo), a.max(b).min(hi)))
+        .filter(|(a, b)| b > a)
+        .collect();
+    cuts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    let mut walked = lo;
+    let mut runs: Vec<(f32, f32)> = Vec::new();
+    for (a, b) in cuts {
+        if a > walked {
+            runs.push((walked, a));
+        }
+        walked = walked.max(b);
+    }
+    if walked < hi {
+        runs.push((walked, hi));
+    }
+
     let kick = 6.0;
-    let plinth_at = mid + face * kick * 0.5;
-    let s = size(run, depth - kick);
-    slab(
-        out,
-        Vec3::new(plinth_at.x, PLINTH * 0.5, plinth_at.y),
-        Vec3::new(s.x, PLINTH, s.z),
-        Stuff::Wood,
-        SLATE,
-    );
-    // Carcass.
-    let s = size(run, depth);
-    slab(
-        out,
-        Vec3::new(mid.x, PLINTH + (HIGH - TOP - PLINTH) * 0.5, mid.y),
-        Vec3::new(s.x, HIGH - TOP - PLINTH, s.z),
-        Stuff::Wood,
-        CARCASS,
-    );
-    // Worktop, proud of the carcass on the room side.
-    let top_at = mid - face * OVER * 0.5;
-    let s = size(run, depth + OVER);
-    slab(
-        out,
-        Vec3::new(top_at.x, HIGH - TOP * 0.5, top_at.y),
-        Vec3::new(s.x, TOP, s.z),
-        Stuff::Stone,
-        WORKTOP,
-    );
+    for (a, b) in runs {
+        let length = b - a;
+        if length < 12.0 {
+            continue;
+        }
+        let mid = point((a + b) * 0.5 - start.min(end)) + along * 0.0;
+        let mid = Vec2::new(
+            if along_x { (a + b) * 0.5 } else { mid.x },
+            if along_x { mid.y } else { (a + b) * 0.5 },
+        );
+
+        let plinth_at = mid + face * kick * 0.5;
+        let s = size(length, depth - kick);
+        slab(
+            out,
+            Vec3::new(plinth_at.x, PLINTH * 0.5, plinth_at.y),
+            Vec3::new(s.x, PLINTH, s.z),
+            Stuff::Wood,
+            SLATE,
+        );
+        let s = size(length, depth);
+        slab(
+            out,
+            Vec3::new(mid.x, PLINTH + (HIGH - TOP - PLINTH) * 0.5, mid.y),
+            Vec3::new(s.x, HIGH - TOP - PLINTH, s.z),
+            Stuff::Wood,
+            CARCASS,
+        );
+        let top_at = mid - face * OVER * 0.5;
+        let s = size(length, depth + OVER);
+        slab(
+            out,
+            Vec3::new(top_at.x, HIGH - TOP * 0.5, top_at.y),
+            Vec3::new(s.x, TOP, s.z),
+            Stuff::Stone,
+            WORKTOP,
+        );
+    }
 }
 
 /// Wall cabinets: a box with its underside at head height, which is the best
@@ -450,50 +494,119 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     );
 }
 
+/// Where along a room's north wall there is no window, and the widest such run.
+///
+/// Anything tall goes here. A cooker hood and a run of wall cabinets both ended
+/// up over glass by being placed at a hand-picked offset, and the fix that does
+/// not need repeating is to ask where the windows are rather than to remember.
+fn clear_of_windows(r: &Room) -> (f32, f32) {
+    let mut spans: Vec<(f32, f32)> = crate::house::window_openings()
+        .into_iter()
+        // Only the ones in this room's north wall.
+        .filter(|(lo, hi)| {
+            let mid = (*lo + *hi) * 0.5;
+            mid.x > r.min.x && mid.x < r.max.x && (mid.z - r.min.y).abs() < 60.0
+        })
+        .map(|(lo, hi)| (lo.x, hi.x))
+        .collect();
+    spans.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    let mut best = (r.min.x + 30.0, r.min.x + 130.0);
+    let mut widest = 0.0;
+    let mut walk = r.min.x + 30.0;
+    for (lo, hi) in spans.iter().chain(std::iter::once(&(r.max.x - 30.0, 0.0))) {
+        let gap = lo - walk;
+        if gap > widest {
+            widest = gap;
+            best = (walk, *lo);
+        }
+        walk = walk.max(*hi);
+    }
+    best
+}
+
 fn kitchen(out: &mut Vec<Solid>, r: &Room) {
     let m = r.middle();
-    // An L of base units along the north and west walls, with cabinets over the
-    // north run.
-    let north = r.min.y + 32.0;
+
+    // The sink run goes under the north windows, and gets NO wall cabinets.
+    //
+    // The first pass ran cabinets the length of that wall and put one straight
+    // over a window, which is the sort of overlap that is invisible in a plan
+    // and unmissable from inside the room. Cabinets live on the east wall
+    // instead, which is the one wall of this kitchen with nothing in it —
+    // which is also why a real kitchen puts them there.
+    let north = r.min.y + 34.0;
+    let (gap_lo, gap_hi) = clear_of_windows(r);
+    let cooker_x = (gap_lo + gap_hi) * 0.5;
     counter_run(
         out,
-        Vec2::new(r.min.x + 20.0, north),
-        Vec2::new(r.max.x - 140.0, north),
+        Vec2::new(r.min.x + 30.0, north),
+        Vec2::new(r.max.x - 150.0, north),
         64.0,
         Vec2::new(0.0, 1.0),
+        // The counter stops for the cooker rather than swallowing it.
+        &[(cooker_x - 40.0, cooker_x + 40.0)],
+    );
+    // The sink goes UNDER a window, which is where every kitchen puts one. Its
+    // rim is below the sill, so it is not an obstruction.
+    let windows = crate::house::window_openings();
+    let sink_x = windows
+        .iter()
+        .map(|(lo, hi)| (lo.x + hi.x) * 0.5)
+        .filter(|x| *x > r.min.x + 60.0 && *x < r.max.x - 60.0)
+        .min_by(|a, b| (a - m.x).abs().partial_cmp(&(b - m.x).abs()).unwrap())
+        .unwrap_or(m.x);
+    slab(
+        out,
+        Vec3::new(sink_x, 88.0, north - 4.0),
+        Vec3::new(84.0, 10.0, 46.0),
+        Stuff::Metal,
+        STEEL,
+    );
+
+    // Tall run down the east wall: counter, and cabinets over it.
+    let east = r.max.x - 36.0;
+    counter_run(
+        out,
+        Vec2::new(east, r.min.y + 90.0),
+        Vec2::new(east, r.min.y + 330.0),
+        66.0,
+        Vec2::new(-1.0, 0.0),
+        &[],
     );
     wall_cabinets(
         out,
-        Vec2::new(r.min.x + 40.0, r.min.y + 18.0),
-        Vec2::new(r.max.x - 200.0, r.min.y + 18.0),
+        Vec2::new(r.max.x - 20.0, r.min.y + 100.0),
+        Vec2::new(r.max.x - 20.0, r.min.y + 320.0),
         36.0,
     );
-    counter_run(
-        out,
-        Vec2::new(r.min.x + 32.0, north + 40.0),
-        Vec2::new(r.min.x + 32.0, north + 260.0),
-        64.0,
-        Vec2::new(1.0, 0.0),
-    );
 
-    // The fridge, standing off the wall. The gap behind it is the point.
+    // The fridge, standing off the north wall with a gap behind it. The gap is
+    // the point: unreachable in flight, trivial on foot, warm and dark.
     appliance(
         out,
-        Vec2::new(r.max.x - 90.0, r.min.y + 52.0),
-        Vec3::new(76.0, 178.0, 70.0),
+        Vec2::new(r.max.x - 100.0, r.min.y + 56.0),
+        Vec3::new(78.0, 178.0, 68.0),
         STEEL,
     );
-    // The cooker, in the run.
+    // The cooker goes in the widest stretch of wall with no window in it, so
+    // its extractor has somewhere to be that is not over glass.
     appliance(
         out,
-        Vec2::new(r.min.x + 200.0, north),
-        Vec3::new(76.0, 90.0, 64.0),
+        Vec2::new(cooker_x, north),
+        Vec3::new(76.0, 90.0, 62.0),
         SLATE,
     );
+    slab(
+        out,
+        Vec3::new(cooker_x, 186.0, north - 6.0),
+        Vec3::new(80.0, 26.0, 54.0),
+        Stuff::Metal,
+        STEEL,
+    );
 
-    // An island with a worktop overhang all round — the best flying obstacle in
-    // the house, and the best perch under it.
-    let island = Vec2::new(m.x + 40.0, m.y + 30.0);
+    // An island with a worktop proud on every side.
+    let island = Vec2::new(m.x + 30.0, m.y + 40.0);
     slab(
         out,
         Vec3::new(island.x, 45.0, island.y),
@@ -508,9 +621,20 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
         Stuff::Stone,
         WORKTOP,
     );
+    // Two stools tucked under the island's overhang.
+    for s in [-1.0f32, 1.0] {
+        let p = island + Vec2::new(s * 52.0, 74.0);
+        slab(
+            out,
+            Vec3::new(p.x, 32.0, p.y),
+            Vec3::new(34.0, 64.0, 34.0),
+            Stuff::Wood,
+            DARK_OAK,
+        );
+    }
 
-    // A table and four chairs at the front of the room.
-    let table = Vec2::new(m.x + 20.0, r.max.y - 150.0);
+    // Table and four chairs at the open end, toward the great room.
+    let table = Vec2::new(m.x, r.max.y - 130.0);
     legged(
         out,
         table,
@@ -524,7 +648,6 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
     for (dx, dz) in [(-95.0, 0.0), (95.0, 0.0), (0.0, -72.0), (0.0, 72.0)] {
         let c = table + Vec2::new(dx, dz);
         legged(out, c, Vec2::new(42.0, 42.0), 45.0, 4.0, 5.0, OAK, DARK_OAK);
-        // Chair back, on whichever side faces the table.
         let away = (c - table).normalize_or_zero();
         let b = c + away * 18.0;
         let across = Vec2::new(away.y.abs(), away.x.abs());
@@ -541,11 +664,11 @@ fn kitchen(out: &mut Vec<Solid>, r: &Room) {
         );
     }
 
-    // The bin. The single strongest fly attractor in a house, and the reason a
+    // The bin. The single strongest fly attractor a house has, and the reason a
     // kitchen is worth flying into at all.
     slab(
         out,
-        Vec3::new(r.min.x + 34.0, 32.0, r.max.y - 60.0),
+        Vec3::new(r.min.x + 40.0, 32.0, r.max.y - 70.0),
         Vec3::new(40.0, 64.0, 40.0),
         Stuff::Metal,
         STEEL,
@@ -609,6 +732,7 @@ fn bathroom(out: &mut Vec<Solid>, r: &Room) {
         Vec2::new(r.min.x + 190.0, r.min.y + 34.0),
         58.0,
         Vec2::new(0.0, 1.0),
+        &[],
     );
     slab(
         out,
@@ -729,6 +853,7 @@ fn garage(out: &mut Vec<Solid>, r: &Room) {
         Vec2::new(r.min.x + 320.0, r.min.y + 40.0),
         70.0,
         Vec2::new(0.0, 1.0),
+        &[],
     );
     // Steel shelving along the east wall, stacked with boxes.
     shelves(
