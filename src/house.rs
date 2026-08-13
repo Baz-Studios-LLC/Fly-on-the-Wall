@@ -788,6 +788,27 @@ fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32
         fascia.roof = true;
         out.push(fascia);
 
+        // A gutter hung on the fascia. It is the last thing missing from an
+        // eave, and at fly scale it is a hundred-and-forty-foot trough with a
+        // lip on it, out of the weather and out of sight.
+        let gutter_c = edge + side * 5.0;
+        let mut gutter = Solid::between(
+            place(ea0, eave - FASCIA_DEEP - 9.0, gutter_c - 7.0).min(place(
+                ea1,
+                eave - FASCIA_DEEP + 3.0,
+                gutter_c + 7.0,
+            )),
+            place(ea0, eave - FASCIA_DEEP - 9.0, gutter_c - 7.0).max(place(
+                ea1,
+                eave - FASCIA_DEEP + 3.0,
+                gutter_c + 7.0,
+            )),
+            Stuff::Metal,
+        );
+        gutter.paint = Some(TRIM);
+        gutter.roof = true;
+        out.push(gutter);
+
         let wall_line = if side < 0.0 { c0 } else { c1 };
         let mut soffit = Solid::between(
             place(ea0, eave - FASCIA_DEEP, edge).min(place(
@@ -878,6 +899,46 @@ fn roof(out: &mut Vec<Solid>) {
         false,
         eave,
     );
+
+    // Downpipes at the outside corners, from the gutter to a shoe at the
+    // ground. Three brackets each, because a pipe drawn as one box reads as a
+    // pipe drawn as one box.
+    let drop = eave - FASCIA_DEEP - 6.0;
+    for (x, z) in [
+        (w - OVERHANG + 8.0, n - OVERHANG + 8.0),
+        (w - OVERHANG + 8.0, so + OVERHANG - 8.0),
+        (house_east - 10.0, so + OVERHANG - 8.0),
+        (e + OVERHANG - 8.0, n - OVERHANG + 8.0),
+        (e + OVERHANG - 8.0, garage_south + OVERHANG - 8.0),
+    ] {
+        let mut pipe = Solid::between(
+            Vec3::new(x - 5.0, -8.0, z - 5.0),
+            Vec3::new(x + 5.0, drop, z + 5.0),
+            Stuff::Metal,
+        );
+        pipe.paint = Some(TRIM);
+        pipe.roof = true;
+        out.push(pipe);
+        for k in 0..3 {
+            let y = 40.0 + k as f32 * (drop - 60.0) / 3.0;
+            let mut band = Solid::between(
+                Vec3::new(x - 7.0, y, z - 7.0),
+                Vec3::new(x + 7.0, y + 4.0, z + 7.0),
+                Stuff::Metal,
+            );
+            band.paint = Some(Color::srgb(0.82, 0.81, 0.78));
+            band.roof = true;
+            out.push(band);
+        }
+        let mut shoe = Solid::between(
+            Vec3::new(x - 7.0, -9.0, z - 7.0),
+            Vec3::new(x + 7.0, 14.0, z + 26.0),
+            Stuff::Metal,
+        );
+        shoe.paint = Some(TRIM);
+        shoe.roof = true;
+        out.push(shoe);
+    }
 }
 
 pub fn build() -> Home {

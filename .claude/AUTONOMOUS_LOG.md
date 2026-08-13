@@ -314,6 +314,15 @@ the session. Do not treat one room or prop as completion.
   A hob with four rings, a control fascia with four knobs, an oven door with a
   glass window and a bar handle. Doors and handles on the wall units.
 
+
+## Pass fifteen: gutters
+
+- A gutter hung on every fascia and five downpipes with brackets and shoes. It
+  is the last thing an eave was missing, and at fly scale a gutter is a
+  forty-metre trough with a lip on it, out of the weather and out of sight —
+  which is exactly the kind of route the quality standard means by "sheltered
+  spaces".
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
