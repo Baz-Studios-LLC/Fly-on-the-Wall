@@ -22,16 +22,17 @@ use bevy::render::mesh::VertexAttributeValues;
 
 use crate::world::{Home, Solid, Stuff};
 
-/// How big a collision cell is, in centimetres. Fine enough that a cushion and
-/// the gap beside it are different places; coarse enough that a couch is a
-/// hundred boxes and not ten thousand.
-const CELL: f32 = 7.0;
+/// How big a lookup cell is, in centimetres. This is only a filing system for
+/// triangles now, not the collision itself — it decides how many triangles a
+/// query has to consider, and nothing about accuracy.
+const CELL: f32 = 12.0;
 
 /// A model whose collision has not been worked out yet.
 #[derive(Component)]
 pub struct NeedsHull {
-    /// The piece the boxes should join, so arrange mode moves them with it.
-    pub piece: u32,
+    /// The solid carrying the model: a perch is stored relative to it, and it
+    /// is what moves when arrange mode moves the piece.
+    pub solid: usize,
 }
 
 pub struct MadePlugin;
@@ -98,19 +99,6 @@ fn fit_collision(
     // exactly the kind of thing that looks right in a log line and is wrong in
     // the room.
     let show = std::env::var("FLY_HULL").is_ok();
-    let (cube, skin) = if show {
-        (
-            Some(meshes.add(Cuboid::from_length(1.0))),
-            Some(materials.add(StandardMaterial {
-                base_color: Color::srgba(0.95, 0.45, 0.25, 0.30),
-                alpha_mode: AlphaMode::Blend,
-                unlit: true,
-                ..default()
-            })),
-        )
-    } else {
-        (None, None)
-    };
     for (root, needs) in &waiting {
         let mut tris = Vec::new();
         triangles(root, &children, &drawn, &meshes, &mut tris);
@@ -119,115 +107,54 @@ fn fit_collision(
             continue;
         }
 
-        let mut lo = Vec3::splat(f32::INFINITY);
-        let mut hi = Vec3::splat(f32::NEG_INFINITY);
-        for t in &tris {
-            for p in t {
-                lo = lo.min(*p);
-                hi = hi.max(*p);
-            }
-        }
+        // The mesh itself is the collision now. A voxel hull was the first
+        // answer and it was a seven-centimetre shell round a couch: proud of
+        // the arms, filling the dip in the seat, bridging the gap between the
+        // cushions. Fine for a person-sized game and hopeless here, where the
+        // thing landing on it is five millimetres long.
+        let count = tris.len();
+        let hull = crate::world::Hull::new(needs.solid, tris, CELL);
 
-        let dims = ((hi - lo) / CELL).ceil().max(Vec3::ONE);
-        let (nx, ny, nz) = (dims.x as usize, dims.y as usize, dims.z as usize);
-        let mut filled = vec![false; nx * ny * nz];
-        let index = |x: usize, y: usize, z: usize| (y * nz + z) * nx + x;
-
-        // Occupancy by sampling each triangle rather than by exact
-        // triangle-box overlap. At seven centimetres a barycentric sweep at
-        // half-cell spacing misses nothing that matters and is a tenth of the
-        // code an exact test would be.
-        for t in &tris {
-            let a = t[1] - t[0];
-            let b = t[2] - t[0];
-            let steps = ((a.length() + b.length()) / (CELL * 0.5)).ceil().max(1.0) as usize;
-            for i in 0..=steps {
-                for j in 0..=(steps - i) {
-                    let u = i as f32 / steps as f32;
-                    let v = j as f32 / steps as f32;
-                    let p = t[0] + a * u + b * v;
-                    let cell = ((p - lo) / CELL).floor();
-                    let (x, y, z) = (cell.x as isize, cell.y as isize, cell.z as isize);
-                    if x < 0 || y < 0 || z < 0 {
-                        continue;
-                    }
-                    let (x, y, z) = (x as usize, y as usize, z as usize);
-                    if x < nx && y < ny && z < nz {
-                        filled[index(x, y, z)] = true;
-                    }
-                }
-            }
-        }
-
-        // Greedy merge: run along x, widen along z, then raise along y. Boxes
-        // rather than cells, because collision walks every solid in the house
-        // on every query and six hundred of them for one couch would be felt.
-        let mut used = vec![false; filled.len()];
-        let mut added = 0usize;
-        for y in 0..ny {
-            for z in 0..nz {
-                for x in 0..nx {
-                    if !filled[index(x, y, z)] || used[index(x, y, z)] {
-                        continue;
-                    }
-                    let mut w = 1;
-                    while x + w < nx && filled[index(x + w, y, z)] && !used[index(x + w, y, z)] {
-                        w += 1;
-                    }
-                    let mut d = 1;
-                    'deeper: while z + d < nz {
-                        for i in 0..w {
-                            if !filled[index(x + i, y, z + d)] || used[index(x + i, y, z + d)] {
-                                break 'deeper;
-                            }
-                        }
-                        d += 1;
-                    }
-                    let mut h = 1;
-                    'taller: while y + h < ny {
-                        for k in 0..d {
-                            for i in 0..w {
-                                if !filled[index(x + i, y + h, z + k)]
-                                    || used[index(x + i, y + h, z + k)]
-                                {
-                                    break 'taller;
-                                }
-                            }
-                        }
-                        h += 1;
-                    }
-                    for k in 0..h {
-                        for j in 0..d {
-                            for i in 0..w {
-                                used[index(x + i, y + k, z + j)] = true;
-                            }
-                        }
-                    }
-
-                    let min = lo + Vec3::new(x as f32, y as f32, z as f32) * CELL;
-                    let max = min + Vec3::new(w as f32, h as f32, d as f32) * CELL;
-                    let mut solid = Solid::between(min, max, Stuff::Fabric);
-                    solid.unseen = true;
-                    solid.piece = needs.piece;
-                    if let (Some(cube), Some(skin)) = (&cube, &skin) {
+        // A grid of probes straight down onto it, drawn as specks. It is the
+        // only way to see collision that has no geometry of its own: each speck
+        // sits exactly where the fly's feet would.
+        if show {
+            let (cube, skin) = (
+                meshes.add(Cuboid::from_length(1.0)),
+                materials.add(StandardMaterial {
+                    base_color: Color::srgb(1.0, 0.35, 0.15),
+                    unlit: true,
+                    ..default()
+                }),
+            );
+            let mut probes = 0;
+            for gx in 0..44 {
+                for gz in 0..70 {
+                    let from = Vec3::new(
+                        hull.bounds().0.x + gx as f32 * 2.5,
+                        hull.bounds().1.y + 20.0,
+                        hull.bounds().0.z + gz as f32 * 2.5,
+                    );
+                    if let Some((d, _)) = hull.raycast(from, Vec3::NEG_Y, 260.0) {
                         commands.spawn((
                             Mesh3d(cube.clone()),
                             MeshMaterial3d(skin.clone()),
-                            Transform::from_translation(solid.center).with_scale(solid.half * 2.0),
+                            Transform::from_translation(from + Vec3::NEG_Y * d)
+                                .with_scale(Vec3::splat(0.9)),
                             bevy::light::NotShadowCaster,
                         ));
+                        probes += 1;
                     }
-                    home.solids.push(solid);
-                    added += 1;
                 }
             }
+            info!("made model: {probes} probes landed on the mesh");
         }
 
         info!(
-            "made model: {} triangles -> {} collision boxes at {CELL:.0} cm",
-            tris.len(),
-            added
+            "made model: {count} triangles as collision, in {} cm cells",
+            CELL
         );
+        home.hulls.push(hull);
         commands.entity(root).remove::<NeedsHull>();
     }
 }

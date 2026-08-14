@@ -1639,6 +1639,7 @@ pub fn build() -> Home {
 
     let great = room("great room");
     Home {
+        hulls: Vec::new(),
         solids: s,
         door: None,
         spawn: Vec3::new(great.middle().x, top - 8.0, great.middle().y),

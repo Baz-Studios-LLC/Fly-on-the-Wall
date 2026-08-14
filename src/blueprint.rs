@@ -218,6 +218,7 @@ pub fn load(named: &str) -> Result<Imported, String> {
     }
 
     let mut home = Home {
+        hulls: Vec::new(),
         solids,
         door: None,
         spawn: Vec3::ZERO,

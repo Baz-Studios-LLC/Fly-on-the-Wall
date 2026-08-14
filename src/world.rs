@@ -155,6 +155,198 @@ pub struct Near {
     pub distance: f32,
 }
 
+/// A made model's own triangles, as collision.
+///
+/// Boxes are exact for the generated house — a wall *is* a box, so nothing is
+/// being approximated there — but a model is not a box, and the voxel hull that
+/// stood in for one was a seven-centimetre shell: proud of the arms, filling
+/// the dip in the seat, bridging the gap between the cushions. At the scale of
+/// a five-millimetre fly that is a fourteen-body-length invisible wall.
+///
+/// So a model collides against its own triangles. The mesh you can see is the
+/// surface you land on, to the millimetre.
+///
+/// Bucketed on a grid because ten thousand triangles cannot be walked per
+/// query, and every triangle is stored in every cell its bounds touch — a
+/// triangle is small next to a cell here, so the duplication is slight.
+pub struct Hull {
+    /// The solid carrying the model, which is what a perch is stored relative
+    /// to: it has the transform, and it moves when arrange mode moves it.
+    pub solid: usize,
+    pub tris: Vec<[Vec3; 3]>,
+    grid: std::collections::HashMap<(i32, i32, i32), Vec<u32>>,
+    cell: f32,
+    lo: Vec3,
+    hi: Vec3,
+}
+
+/// Closest point on a triangle to `p` — Ericson's method, and the only part of
+/// this that is not obvious on sight.
+fn closest_on_triangle(p: Vec3, t: &[Vec3; 3]) -> Vec3 {
+    let (a, b, c) = (t[0], t[1], t[2]);
+    let ab = b - a;
+    let ac = c - a;
+    let ap = p - a;
+    let d1 = ab.dot(ap);
+    let d2 = ac.dot(ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return a;
+    }
+    let bp = p - b;
+    let d3 = ab.dot(bp);
+    let d4 = ac.dot(bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return b;
+    }
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        return a + ab * (d1 / (d1 - d3));
+    }
+    let cp = p - c;
+    let d5 = ab.dot(cp);
+    let d6 = ac.dot(cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return c;
+    }
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        return a + ac * (d2 / (d2 - d6));
+    }
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+    }
+    let denom = 1.0 / (va + vb + vc);
+    a + ab * (vb * denom) + ac * (vc * denom)
+}
+
+impl Hull {
+    pub fn new(solid: usize, tris: Vec<[Vec3; 3]>, cell: f32) -> Self {
+        let mut lo = Vec3::splat(f32::INFINITY);
+        let mut hi = Vec3::splat(f32::NEG_INFINITY);
+        for t in &tris {
+            for p in t {
+                lo = lo.min(*p);
+                hi = hi.max(*p);
+            }
+        }
+        let mut grid: std::collections::HashMap<(i32, i32, i32), Vec<u32>> = Default::default();
+        for (i, t) in tris.iter().enumerate() {
+            let tlo = t[0].min(t[1]).min(t[2]);
+            let thi = t[0].max(t[1]).max(t[2]);
+            let a = ((tlo - lo) / cell).floor();
+            let b = ((thi - lo) / cell).floor();
+            for x in a.x as i32..=b.x as i32 {
+                for y in a.y as i32..=b.y as i32 {
+                    for z in a.z as i32..=b.z as i32 {
+                        grid.entry((x, y, z)).or_default().push(i as u32);
+                    }
+                }
+            }
+        }
+        Hull {
+            solid,
+            tris,
+            grid,
+            cell,
+            lo,
+            hi,
+        }
+    }
+
+    fn cells_between(&self, lo: Vec3, hi: Vec3) -> impl Iterator<Item = (i32, i32, i32)> + use<> {
+        let a = ((lo - self.lo) / self.cell).floor();
+        let b = ((hi - self.lo) / self.cell).floor();
+        let (a, b) = (a.min(b), a.max(b));
+        let (ax, ay, az) = (a.x as i32, a.y as i32, a.z as i32);
+        let (bx, by, bz) = (b.x as i32, b.y as i32, b.z as i32);
+        (ax..=bx).flat_map(move |x| (ay..=by).flat_map(move |y| (az..=bz).map(move |z| (x, y, z))))
+    }
+
+    /// Möller-Trumbore, front and back faces both — a fly inside a cushion
+    /// still has to be pushed out of it.
+    pub fn raycast(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<(f32, Vec3)> {
+        let end = origin + dir * max;
+        let mut best: Option<(f32, Vec3)> = None;
+        let mut seen = std::collections::HashSet::new();
+        for cell in self.cells_between(origin.min(end), origin.max(end)) {
+            for &i in self.grid.get(&cell).into_iter().flatten() {
+                if !seen.insert(i) {
+                    continue;
+                }
+                let t = &self.tris[i as usize];
+                let e1 = t[1] - t[0];
+                let e2 = t[2] - t[0];
+                let h = dir.cross(e2);
+                let a = e1.dot(h);
+                if a.abs() < 1e-9 {
+                    continue;
+                }
+                let f = 1.0 / a;
+                let s = origin - t[0];
+                let u = f * s.dot(h);
+                if !(0.0..=1.0).contains(&u) {
+                    continue;
+                }
+                let q = s.cross(e1);
+                let v = f * dir.dot(q);
+                if v < 0.0 || u + v > 1.0 {
+                    continue;
+                }
+                let hit = f * e2.dot(q);
+                if hit > 1e-4 && hit < max && best.is_none_or(|(d, _)| hit < d) {
+                    let mut n = e1.cross(e2).normalize_or_zero();
+                    if n.dot(dir) > 0.0 {
+                        n = -n;
+                    }
+                    best = Some((hit, n));
+                }
+            }
+        }
+        best
+    }
+
+    pub fn bounds(&self) -> (Vec3, Vec3) {
+        (self.lo, self.hi)
+    }
+
+    pub fn nearest(&self, p: Vec3, within: f32) -> Option<Near> {
+        if p.x < self.lo.x - within
+            || p.y < self.lo.y - within
+            || p.z < self.lo.z - within
+            || p.x > self.hi.x + within
+            || p.y > self.hi.y + within
+            || p.z > self.hi.z + within
+        {
+            return None;
+        }
+        let mut best: Option<Near> = None;
+        let mut seen = std::collections::HashSet::new();
+        for cell in self.cells_between(p - Vec3::splat(within), p + Vec3::splat(within)) {
+            for &i in self.grid.get(&cell).into_iter().flatten() {
+                if !seen.insert(i) {
+                    continue;
+                }
+                let t = &self.tris[i as usize];
+                let point = closest_on_triangle(p, t);
+                let distance = point.distance(p);
+                if distance < within && best.is_none_or(|b| distance < b.distance) {
+                    let mut normal = (t[1] - t[0]).cross(t[2] - t[0]).normalize_or_zero();
+                    if normal.dot(p - point) < 0.0 {
+                        normal = -normal;
+                    }
+                    best = Some(Near {
+                        point,
+                        normal,
+                        distance,
+                    });
+                }
+            }
+        }
+        best
+    }
+}
+
 /// A ray hit.
 #[derive(Clone, Copy, Debug)]
 pub struct Hit {
@@ -312,6 +504,8 @@ pub enum Origin {
 #[derive(Resource)]
 pub struct Home {
     pub solids: Vec<Solid>,
+    /// Triangle collision for made models, filled in once their meshes load.
+    pub hulls: Vec<Hull>,
     /// Index into `solids` of the swinging door panel, when there is one. Kept
     /// so the door can be rebuilt in place each tick without a search, and so a
     /// perch can tell it is riding it.
@@ -331,6 +525,14 @@ impl Home {
     /// `within`. Linear over ~30 boxes, which at 64 Hz is nothing; when the house
     /// grows past a few hundred this wants a grid, and not before.
     pub fn nearest(&self, p: Vec3, within: f32) -> Option<(usize, Near)> {
+        let mut from_hull: Option<(usize, Near)> = None;
+        for hull in &self.hulls {
+            if let Some(near) = hull.nearest(p, within)
+                && from_hull.is_none_or(|(_, b)| near.distance < b.distance)
+            {
+                from_hull = Some((hull.solid, near));
+            }
+        }
         let mut best: Option<(usize, Near)> = None;
         for (i, solid) in self.solids.iter().enumerate() {
             let near = solid.nearest(p);
@@ -341,11 +543,28 @@ impl Home {
                 best = Some((i, near));
             }
         }
-        best
+        match (best, from_hull) {
+            (Some(b), Some(h)) if h.1.distance < b.1.distance => Some(h),
+            (None, hull) => hull,
+            (boxes, _) => boxes,
+        }
     }
 
     pub fn raycast(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<Hit> {
         let mut best: Option<Hit> = None;
+        // Made models, against their own triangles.
+        for hull in &self.hulls {
+            if let Some((distance, normal)) = hull.raycast(origin, dir, max)
+                && best.is_none_or(|b| distance < b.distance)
+            {
+                best = Some(Hit {
+                    solid: hull.solid,
+                    distance,
+                    point: origin + dir * distance,
+                    normal,
+                });
+            }
+        }
         for (i, solid) in self.solids.iter().enumerate() {
             let Some((distance, normal)) = solid.raycast(origin, dir, max) else {
                 continue;
@@ -702,6 +921,7 @@ fn build_home() -> Home {
     s.push(Door::default().panel());
 
     Home {
+        hulls: Vec::new(),
         solids: s,
         door: Some(door),
         spawn: SPAWN,
@@ -889,7 +1109,7 @@ fn dress_the_set(
                 // Its collision is worked out from the mesh once the scene has
                 // loaded, so a model brings its own and nobody hand-authors a
                 // proxy for it.
-                crate::made::NeedsHull { piece: solid.piece },
+                crate::made::NeedsHull { solid: i },
                 WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path))),
                 Transform::from_translation(solid.center)
                     .with_rotation(solid.rot)

@@ -896,6 +896,48 @@ few boxes as will cover them. **10,695 triangles to 140 boxes.**
 
 Any model dropped in from here gets its own collision with no hand-authoring.
 
+
+## Pass forty-five: the collision was way off, and it was
+
+Brett said so and he is right. The voxel hull was a seven-centimetre shell round
+the couch — proud of the arms, filling the dip in the seat, bridging the gap
+between the cushions. My own comment in that file argued that coarse was fine
+because "the upholstery does not need to be accurate to a quarter of a
+centimetre", which is exactly the wrong reasoning for this game: seven
+centimetres is fourteen body lengths to the thing landing on it.
+
+**Made models now collide against their own triangles.** Möller-Trumbore for
+rays, Ericson's closest-point for contact, both bucketed on a twelve-centimetre
+grid that is only a filing system and has nothing to do with accuracy. The mesh
+you can see is the surface you land on. `FLY_HULL=1` fires a grid of downward
+probes and draws a speck where each one stops: they sit on the piping and follow
+the roll of the arm.
+
+**What I did not do, and why.** The advice Brett brought suggested Rapier or
+Avian with trimesh colliders, CCD, and surface-constrained crawling. Three of
+those are already true here and one is a bad trade:
+
+- The world is in **centimetres**, not metres. A fly's body radius is 0.26
+  units. The floating-point tolerance worry does not apply.
+- **Swept collision already exists** — the flight model raycasts from the
+  previous position, because at 200 cm/s the fly covers 3.1 cm a tick and the
+  thinnest solid is a 2 cm pane. Tunnelling was solved months ago.
+- **Surface-constrained crawling already exists** — `walk_about` re-seats onto
+  whatever is underfoot every step and orients to its normal, which is why it
+  goes floor to wall to ceiling. It now does that on the couch's actual
+  triangles for free, because it re-seats with a raycast.
+- The generated house's **boxes are exact**: a wall *is* a box. Nothing there is
+  being approximated, so a physics engine would replace a working, tuned system
+  and the approved flight model to fix a problem that only ever existed for
+  imported meshes.
+
+One thing genuinely worth watching: at a seam between two triangles the contact
+normal is whichever face wins the closest-point test, which can flip across an
+edge. That is the "ghost collision" the advice mentions. It has not bitten yet
+and the fix if it does is to blend normals near an edge, not to add an engine.
+
+Cost: 103 fps uncapped, unchanged.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
