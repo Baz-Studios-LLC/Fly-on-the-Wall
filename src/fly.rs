@@ -362,14 +362,32 @@ impl Plugin for FlyPlugin {
                 (grab_the_cursor, gather_intent, look_around)
                     .chain()
                     // Nothing the player does reaches the fly until the dive
-                    // has landed. Reading the menu should not fly the fly.
-                    .run_if(crate::title::playing),
+                    // has landed, and nothing does while the menu is up.
+                    // Reading either should not fly the fly.
+                    .run_if(crate::title::playing)
+                    .run_if(not(crate::pause::paused)),
             )
-            .add_systems(FixedUpdate, step_the_fly.run_if(crate::title::playing));
+            .add_systems(
+                FixedUpdate,
+                step_the_fly
+                    .run_if(crate::title::playing)
+                    // A fly left hovering must not sink into the floor while
+                    // somebody reads the menu.
+                    .run_if(not(crate::pause::paused)),
+            );
     }
 }
 
 fn hatch(mut commands: Commands, home: Res<Home>) {
+    commands.spawn((Name::new("Fly"), at_spawn(&home), Intent::default()));
+}
+
+/// A fly hung from the ceiling at the house's spawn.
+///
+/// Split out of `hatch` so that going back to the title can put the fly back
+/// where a new game starts it. "New Game" that drops you wherever you happened
+/// to be standing is not a new game, and the dive is written to arrive here.
+pub fn at_spawn(home: &Home) -> Fly {
     let mut fly = Fly::default();
 
     // Inspection mode stands the fly on the living room floor instead, out in
@@ -405,22 +423,18 @@ fn hatch(mut commands: Commands, home: Res<Home>) {
             .rotation;
         fly.prev_body = fly.body;
     }
-
-    commands.spawn((Name::new("Fly"), fly, Intent::default()));
+    fly
 }
 
 fn grab_the_cursor(
     mut cursors: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mouse: Res<ButtonInput<MouseButton>>,
-    keys: Res<ButtonInput<KeyCode>>,
 ) {
     let Ok(mut cursor) = cursors.single_mut() else {
         return;
     };
-    if keys.just_pressed(KeyCode::Escape) {
-        cursor.grab_mode = CursorGrabMode::None;
-        cursor.visible = true;
-    } else if mouse.just_pressed(MouseButton::Left) && cursor.grab_mode == CursorGrabMode::None {
+    // Escape opens the menu now, and the menu releases the cursor itself.
+    if mouse.just_pressed(MouseButton::Left) && cursor.grab_mode == CursorGrabMode::None {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;
     }

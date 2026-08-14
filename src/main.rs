@@ -32,7 +32,7 @@
 //! | `R` | keep the room upright ↔ keep the fly upright |
 //! | `F3` | the readout |
 //! | `F12` | save a screenshot |
-//! | `Esc` | release the mouse |
+//! | `Esc` | the menu: resume, title screen, exit |
 //! | `F11` | full screen ↔ window |
 //! | `Tab` or `F4` | arrange mode: move the furniture yourself (`Ctrl`+`S` saves) |
 //!
@@ -50,6 +50,7 @@
 //! | `FLY_ARRANGE=1` | open straight into arrange mode |
 //! | `FLY_FOLK=<deg>` | stand in front of a person and look at them |
 //! | `FLY_HULL=1` | draw the collision worked out for made models |
+//! | `FLY_PAUSE=1` | open the menu straight away, so it can be captured |
 //! | `FLY_OUTSIDE=<deg>` | stand outdoors and look at the whole house — 0 south, 90 east |
 
 mod arrange;
@@ -64,6 +65,7 @@ mod furniture;
 mod house;
 mod lamps;
 mod made;
+mod pause;
 mod rooms;
 mod title;
 mod wingbeat;
@@ -126,6 +128,7 @@ fn main() {
             arrange::ArrangePlugin,
             folk::FolkPlugin,
             made::MadePlugin,
+            pause::PausePlugin,
         ))
         .add_systems(Startup, light_the_house)
         .add_systems(Update, toggle_fullscreen)

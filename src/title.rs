@@ -44,6 +44,16 @@ struct TitleUi;
 #[derive(Component)]
 struct StartButton;
 
+/// Part of the sign, and therefore something the dive fades out.
+///
+/// The fade used to take `Query<&mut TextColor>` unfiltered — every piece of
+/// text in the game, including the F3 readout and the arrange HUD. It ends the
+/// dive at zero alpha and never puts it back, so after one dive the readout was
+/// invisible for the rest of the session and nobody noticed because every
+/// capture switch skips the title.
+#[derive(Component)]
+struct TitleFade;
+
 pub struct TitlePlugin;
 
 impl Plugin for TitlePlugin {
@@ -64,12 +74,22 @@ impl Plugin for TitlePlugin {
         };
         app.insert_resource(start)
             .add_systems(Startup, raise_the_sign)
-            .add_systems(Update, (start_the_game, dive).chain());
+            .add_systems(Update, (raise_the_sign, start_the_game, dive).chain());
     }
 }
 
-fn raise_the_sign(mut commands: Commands, assets: Res<AssetServer>, stage: Res<Stage>) {
-    if stage.playing() {
+/// Put the sign up, and put it back up.
+///
+/// Runs every frame rather than once at startup, because the pause menu can
+/// send the game back to the title and the sign has to be there when it
+/// arrives. The guard is the existing sign: one is enough.
+fn raise_the_sign(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    stage: Res<Stage>,
+    already: Query<(), With<TitleUi>>,
+) {
+    if !matches!(*stage, Stage::Title) || !already.is_empty() {
         return;
     }
     commands
@@ -91,6 +111,7 @@ fn raise_the_sign(mut commands: Commands, assets: Res<AssetServer>, stage: Res<S
         ))
         .with_children(|screen| {
             screen.spawn((
+                TitleFade,
                 ImageNode::new(assets.load("concepts/fly-on-the-wall-logo-transparent.png")),
                 Node {
                     width: Val::Vw(52.0),
@@ -100,6 +121,7 @@ fn raise_the_sign(mut commands: Commands, assets: Res<AssetServer>, stage: Res<S
             screen
                 .spawn((
                     StartButton,
+                    TitleFade,
                     Button,
                     Node {
                         padding: UiRect::axes(Val::Vw(2.4), Val::Vh(1.4)),
@@ -110,6 +132,7 @@ fn raise_the_sign(mut commands: Commands, assets: Res<AssetServer>, stage: Res<S
                     BackgroundColor(Color::srgba(0.05, 0.05, 0.06, 0.55)),
                 ))
                 .with_child((
+                    TitleFade,
                     Text::new("New Game"),
                     TextFont {
                         font_size: FontSize::Px(30.0),
@@ -118,6 +141,7 @@ fn raise_the_sign(mut commands: Commands, assets: Res<AssetServer>, stage: Res<S
                     TextColor(Color::srgb(0.92, 0.90, 0.84)),
                 ));
             screen.spawn((
+                TitleFade,
                 // Plain ASCII: the default font carries a mono subset and a
                 // middot renders as a tofu box in it.
                 Text::new("hold right mouse to land   -   Q first person   -   Esc release mouse"),
@@ -159,9 +183,9 @@ fn dive(
     mut stage: ResMut<Stage>,
     time: Res<Time>,
     mut ui: Query<(Entity, &mut Node), With<TitleUi>>,
-    mut images: Query<&mut ImageNode>,
-    mut texts: Query<&mut TextColor>,
-    mut borders: Query<&mut BorderColor>,
+    mut images: Query<&mut ImageNode, With<TitleFade>>,
+    mut texts: Query<&mut TextColor, With<TitleFade>>,
+    mut borders: Query<&mut BorderColor, With<TitleFade>>,
     mut cursors: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Stage::Diving(t) = *stage else {

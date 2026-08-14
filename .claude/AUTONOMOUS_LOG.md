@@ -938,6 +938,34 @@ and the fix if it does is to blend normals near an edge, not to add an engine.
 
 Cost: 103 fps uncapped, unchanged.
 
+
+## Pass forty-six: the Esc menu
+
+Resume, Title Screen, Exit Game, and nothing else. A pause menu is the answer to
+"how do I stop", and every extra line on it is a line between somebody and the
+door.
+
+- **Pausing actually stops the fly.** Input and the fixed-step simulation are
+  both gated on it, so a fly left hovering does not sink into the floor while
+  somebody reads the menu.
+- Escape used to release the cursor; the menu does that itself now.
+- **Title Screen puts the fly back on the ceiling.** A "New Game" that drops you
+  wherever you happened to be standing is not a new game, and the dive is
+  written to arrive at the spawn. `hatch` split into `at_spawn` for it.
+- `raise_the_sign` runs every frame now instead of once at startup, guarded on
+  there not already being a sign, because the menu can send the game back to the
+  title and the sign has to be there when it arrives.
+
+**A bug found on the way, older than any of this.** The dive's fade took
+`Query<&mut TextColor>` — *every* piece of text in the game, not just the sign's
+— and ends at zero alpha without putting it back. So after one dive the F3
+readout and the arrange HUD were invisible for the rest of the session. Nobody
+had seen it because every capture switch skips the title, so no screenshot I
+have ever taken went through a dive. Scoped to a `TitleFade` marker.
+
+`FLY_PAUSE=1` opens the menu on the first frame, because a keypress cannot be
+captured and every other screen in this game can be.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
