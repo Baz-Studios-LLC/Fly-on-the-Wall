@@ -10,9 +10,11 @@
 //! Three things are doing most of the work of looking better than the
 //! reference, and none of them cost the blocky read:
 //!
-//! 1. **Taper.** Every limb segment is three boxes, each a shade narrower than
+//! 1. **Taper.** Every limb segment is five boxes, each a shade narrower than
 //!    the last. A thigh is thick at the hip and thin at the knee, which is
-//!    almost all of what makes a leg look like a leg.
+//!    almost all of what makes a leg look like a leg. Three was the first try
+//!    and it was worse than none: three ledges down a forearm read as three
+//!    loose blocks rather than one arm.
 //! 2. **Joints that exist.** A small box at each elbow and knee, slightly
 //!    proud, so the corner has something in it when the limb bends instead of
 //!    two prisms passing through one another.

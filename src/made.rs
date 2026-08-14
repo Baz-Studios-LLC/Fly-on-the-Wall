@@ -1,26 +1,33 @@
 //! Collision for made models.
 //!
-//! A model arrives as ten thousand triangles and this game's collision is
-//! oriented boxes — a slab raycast and a closest-point clamp, which the whole
-//! flight model is built on and which is not worth replacing to seat one couch.
-//! So the triangles are turned into boxes: the mesh is voxelised on a coarse
-//! grid and the occupied cells are merged back into as few boxes as will cover
-//! them.
+//! A model arrives as ten thousand triangles and the rest of this house
+//! collides as oriented boxes. That is exact where it is used — a wall *is* a
+//! box, so nothing is being approximated — but a couch is not a box, and the
+//! first version of this file turned one into a voxel hull and argued that
+//! coarse was fine because "the upholstery does not need to be accurate to a
+//! quarter of a centimetre".
 //!
-//! That gives collision that follows the actual shape — you can land on the arm
-//! of the couch and not on the gap under it — without a second collision system
-//! to keep working, and without anyone hand-authoring a proxy per model. Drop a
-//! model in and it gets its own.
+//! That reasoning is wrong for this game and the note is kept here because it
+//! is the kind of wrong that sounds sensible. Seven centimetres is nothing in a
+//! game about a person and **fourteen body lengths** to the thing landing on it
+//! here. The hull stood proud of the arms, filled the dip in the seat, and
+//! bridged the gap between the cushions.
 //!
-//! The grid is deliberately coarse. A fly is a quarter of a centimetre and the
-//! upholstery it lands on does not need to be accurate to that: what matters is
-//! that the seat is where the seat looks, and that the space under the couch is
-//! open, because that is exactly the kind of place a fly goes.
+//! So a model collides against its own triangles: the mesh you can see is the
+//! surface you land on. The grid below is a filing system for those triangles —
+//! it decides how many a query has to consider and nothing whatever about
+//! accuracy.
+//!
+//! Everything downstream already worked at this scale and needed no changes.
+//! Flight sweeps from the previous position, so nothing tunnels; walking
+//! re-seats onto whatever is underfoot every step, so it crawls the real
+//! cushions and takes their normals. Both go through `Home`, and `Home` now
+//! asks the hulls as well as the boxes.
 
 use bevy::prelude::*;
 use bevy::render::mesh::VertexAttributeValues;
 
-use crate::world::{Home, Solid, Stuff};
+use crate::world::Home;
 
 /// How big a lookup cell is, in centimetres. This is only a filing system for
 /// triangles now, not the collision itself — it decides how many triangles a
