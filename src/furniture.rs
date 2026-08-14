@@ -2555,7 +2555,15 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     // A chair, a table and a lamp turn a walkway into somewhere to be — and a
     // bookshelf nobody can read at is just storage.
     let read = Vec2::new(r.min.x + 108.0, r.min.y + 250.0);
+    let chair_mark = out.len();
     sofa(out, read, Vec2::new(92.0, 96.0), Vec2::new(-1.0, 0.0));
+    use_model(
+        out,
+        chair_mark,
+        "models/armchair.glb",
+        Vec3::new(read.x, 0.0, read.y),
+        0.0,
+    );
     legged(
         out,
         read + Vec2::new(18.0, 84.0),

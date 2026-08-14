@@ -185,10 +185,13 @@ fn raise_the_father(
 
     // Standing in the great room, off to one side, facing across it.
     let room = crate::house::room("great room");
+    // Clear of everything, which now has to include the made furniture: the
+    // armchair came in at a hundred and sixteen centimetres where the
+    // generated one was ninety-two, and he was standing in it.
     let stand = Vec3::new(
-        room.min.x + room.wide() * 0.26,
+        room.min.x + room.wide() * 0.62,
         0.0,
-        room.min.y + room.deep() * 0.30,
+        room.min.y + room.deep() * 0.22,
     );
 
     // The root is the pelvis. Everything above it hangs off the waist and

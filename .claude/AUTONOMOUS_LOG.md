@@ -966,6 +966,25 @@ have ever taken went through a dive. Scoped to a `TitleFade` marker.
 `FLY_PAUSE=1` opens the menu on the first frame, because a keypress cannot be
 captured and every other screen in this game can be.
 
+
+## Pass forty-seven: the armchair
+
+Second of Brett's models, into the reading corner, and the pipeline held: two
+lines in `living`, collision from its own 11,000 triangles, no proxy authored.
+
+Two things worth keeping:
+
+- **The first export had no `opificium-fit` node** and came in centred on its
+  own origin, so half the chair was under the floor. Brett fixed it at the
+  source rather than in the game, which is the right end of the pipe: the fit
+  node carries both the real-world size and the base-at-zero, and without it
+  the game is guessing at both.
+- **The made chair is a hundred and sixteen centimetres wide where the
+  generated one was ninety-two**, and the father was standing in it. Swapping a
+  generated piece for a model changes its footprint, so anything positioned
+  near it by hand has to be looked at again. That will keep happening as models
+  land.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are
