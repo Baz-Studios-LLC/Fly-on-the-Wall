@@ -1631,9 +1631,22 @@ six inverse bind matrices are appended; the mesh, the materials, the wing bones
 and the existing skeleton are untouched. The original file is left alone and
 `assets/characters/fly/fly-legs.glb` is written beside it.
 
+Each leg gets **two** bones, a thigh and a shin, because one is a stick: a leg
+that swings in one piece reads as a twitch rather than a step. Weight hands over
+from thigh to shin *across* the knee rather than at it, so the mesh bends
+instead of creasing.
+
 `walk_the_model_legs` then runs an alternating tripod off them — phase advanced
 by distance travelled, not by time, the same rule the built legs and the
-father's walk follow.
+father's walk follow. The thigh sweeps and lifts; the shin folds through the
+return and straightens to plant.
+
+**The bug worth remembering:** the tool built its parent map before appending
+the new nodes, so `world()` walked a tree that did not contain them. A shin's
+inverse bind matrix came out without its own thigh in it and the legs splayed
+flat. The one-bone version had the same fault and looked fine, because the only
+thing missing from it was the skeleton root's own six millimetres — a bug that
+is invisible until the day it is not.
 
 Re-run the tool if Brett re-exports the fly.
 

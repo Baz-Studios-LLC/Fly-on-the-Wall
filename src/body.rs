@@ -565,6 +565,9 @@ struct ModelLeg {
     /// 0.0 or 0.5. Insects walk an alternating tripod — front and rear on one
     /// side with the middle of the other — so three feet are always down.
     phase: f32,
+    /// The shin, rather than the thigh. It folds through the return instead of
+    /// swinging, which is the difference between a step and a twitch.
+    shin: bool,
 }
 
 /// Find the six leg bones added by `tools/rig-the-legs.py`.
@@ -602,9 +605,22 @@ fn find_the_model_legs(
         let Ok(name) = names.get(entity) else {
             continue;
         };
-        let phase = match name.as_str() {
-            "leg_front_left" | "leg_middle_right" | "leg_rear_left" => 0.0,
-            "leg_front_right" | "leg_middle_left" | "leg_rear_right" => 0.5,
+        let Some(leg) = name
+            .as_str()
+            .strip_prefix("leg_")
+            .and_then(|rest| rest.rsplit_once('_'))
+        else {
+            continue;
+        };
+        let (which, part) = leg;
+        let phase = match which {
+            "front_left" | "middle_right" | "rear_left" => 0.0,
+            "front_right" | "middle_left" | "rear_right" => 0.5,
+            _ => continue,
+        };
+        let shin = match part {
+            "upper" => false,
+            "lower" => true,
             _ => continue,
         };
         let Ok(rest) = poses.get(entity) else {
@@ -613,12 +629,13 @@ fn find_the_model_legs(
         commands.entity(entity).insert(ModelLeg {
             rest: rest.rotation,
             phase,
+            shin,
         });
         found += 1;
     }
-    if found == 6 {
+    if found == 12 {
         *looked = true;
-        info!("the rigged fly walks on six legs of its own");
+        info!("the rigged fly walks on six legs of its own, knees and all");
     }
 }
 
@@ -645,10 +662,12 @@ fn walk_the_model_legs(
     let Ok(fly) = flies.single() else {
         return;
     };
-    /// How far a leg swings fore and aft, radians.
+    /// How far a thigh swings fore and aft, radians.
     const SWING: f32 = 0.26;
     /// How far it lifts on the way through.
     const LIFT: f32 = 0.13;
+    /// How far the knee folds at the top of the return.
+    const FOLD: f32 = 0.42;
     /// Body travel for one full stride, in centimetres.
     const STRIDE: f32 = 0.36;
 
@@ -692,17 +711,25 @@ fn walk_the_model_legs(
         let forward = turn.inverse() * along;
 
         let t = (*gait + leg.phase).fract();
-        let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
-        // Up only while the foot is coming back, which is the half of the
-        // cycle that is not carrying any weight.
-        let lift = if t > 0.5 {
-            ((t - 0.5) * std::f32::consts::TAU).sin() * LIFT * *stepping
+        // The second half of the cycle is the return: no weight on that foot,
+        // so it is the half that lifts and folds.
+        let swinging = if t > 0.5 {
+            ((t - 0.5) * std::f32::consts::PI).sin()
         } else {
             0.0
         };
-        pose.rotation = Quat::from_axis_angle(sideways, sweep)
-            * Quat::from_axis_angle(forward, lift)
-            * leg.rest;
+
+        pose.rotation = if leg.shin {
+            // The knee folds through the return and straightens to plant. It
+            // never goes fully straight: a leg at full stretch has no plane to
+            // bend in and snaps between solutions.
+            let fold = FOLD * swinging * *stepping;
+            Quat::from_axis_angle(sideways, fold) * leg.rest
+        } else {
+            let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
+            let lift = swinging * LIFT * *stepping;
+            Quat::from_axis_angle(sideways, sweep) * Quat::from_axis_angle(forward, lift) * leg.rest
+        };
     }
 }
 
