@@ -1436,3 +1436,29 @@ the trade Brett asked for and the constant to raise if he wants it back.
 no longer coast in a direction it is not pointing. Immediate, as asked, but the
 third failure mode after float and ratcheting is weightlessness, and 0.6–0.8 is
 the dial for that.
+
+## The floating couch: my fix, my bug
+
+Brett: "not sure why but the couch is floating now. I could fix it, but I
+thought it not saving correctly might be a bug". It was.
+
+Making saves cumulative, I seeded the move record at load time by *measuring*
+where each piece stood. `bounds` warns about this in its own comment: at load
+time a made model's hull does not exist yet, so it reports the four-centimetre
+stub standing at floor level rather than the couch. The save then measured the
+couch's real centre against a floor-level point and wrote the difference as
+though somebody had lifted it — and it compounded on every cycle. The sofa's
+saved height went `-3.89` → `+42` → `+88.33`.
+
+The record holds **totals** now — how far a piece has been shifted, turned and
+resized from where the generator put it — accumulated as it is dragged and
+copied straight out of the file on load. The file holds offsets, so holding
+offsets in memory makes the round trip a copy rather than an arithmetic
+reconstruction through a measurement that cannot be trusted at that moment.
+
+Repaired Brett's file: the two made pieces had their `y` zeroed, because under
+the corrected scheme a piece that was scaled but never lifted needs no
+translation at all — `shift` already resizes about floor level so a shrinking
+couch stays on the floor. The old `-3.89` was itself an artefact of measuring
+centres. The unscaled pieces were unaffected and were left alone, including a
+genuine 54 cm lift on 3731. A copy of the file as found is in the scratchpad.

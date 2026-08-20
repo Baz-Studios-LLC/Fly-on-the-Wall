@@ -51,9 +51,23 @@ pub struct Arranging {
     looking_at: Option<u32>,
     /// The piece being carried, and how far in front of the fly it was taken.
     held: Option<(u32, f32)>,
-    /// Where every moved piece started, so it can all be put back. The Vec3
-    /// carries height as well as plan position: half the point of arranging is
-    /// getting something off the floor and onto a shelf.
+    /// How far every moved piece has been shifted, turned and resized from
+    /// where the generator put it. The Vec3 carries height as well as plan
+    /// position: half the point of arranging is getting something off the floor
+    /// and onto a shelf.
+    ///
+    /// A *total*, accumulated as the piece is dragged, rather than a memory of
+    /// where it started. Storing the starting position instead meant a save had
+    /// to recover the offset by measuring the piece now and subtracting — and a
+    /// measurement is exactly what cannot be trusted here. At load time a
+    /// model's hull does not exist yet, so `bounds` reports the four-centimetre
+    /// stub sitting at floor level rather than the couch. The subtraction then
+    /// produced the couch's own half-height as though somebody had lifted it,
+    /// and it compounded on every save: the sofa rose forty-two centimetres,
+    /// then eighty-eight, and floated over the rug.
+    ///
+    /// The file holds offsets. Holding offsets here too means the round trip is
+    /// a copy rather than an arithmetic reconstruction.
     moved: std::collections::HashMap<u32, (Vec3, f32, f32)>,
 }
 
@@ -338,12 +352,10 @@ fn carry(
                     .unwrap_or(120.0);
                 // Remember where it started the first time it is picked up, so
                 // Backspace can put the whole room back.
-                if let Some((lo, hi)) = bounds(&home, piece) {
-                    arranging
-                        .moved
-                        .entry(piece)
-                        .or_insert(((lo + hi) * 0.5, 0.0, 1.0));
-                }
+                arranging
+                    .moved
+                    .entry(piece)
+                    .or_insert((Vec3::ZERO, 0.0, 1.0));
                 (piece, held_at.clamp(60.0, REACH))
             }),
         };
@@ -398,6 +410,7 @@ fn carry(
     if by.length_squared() > 0.01 || turn != 0.0 || factor != 1.0 {
         shift(&mut home, &mut parts, piece, by, turn, factor);
         if let Some(record) = arranging.moved.get_mut(&piece) {
+            record.0 += by;
             record.1 += turn;
             record.2 *= factor;
         }
@@ -422,14 +435,13 @@ fn written(home: &Home, moved: &std::collections::HashMap<u32, (Vec3, f32, f32)>
         if !seen.insert(piece) {
             continue;
         }
-        let (Some((lo, hi)), Some(was)) = (bounds(home, piece), moved.get(&piece)) else {
+        let Some(&(by, turn, grew)) = moved.get(&piece) else {
             continue;
         };
-        let by = (lo + hi) * 0.5 - was.0;
-        if by.length() > 0.5 || was.1.abs() > 0.001 || (was.2 - 1.0).abs() > 0.001 {
+        if by.length() > 0.5 || turn.abs() > 0.001 || (grew - 1.0).abs() > 0.001 {
             text.push_str(&format!(
-                "{piece} {:.2} {:.2} {:.2} {:.4} {:.4}\n",
-                by.x, by.y, by.z, was.1, was.2
+                "{piece} {:.2} {:.2} {:.2} {turn:.4} {grew:.4}\n",
+                by.x, by.y, by.z
             ));
         }
     }
@@ -456,7 +468,7 @@ fn check_the_round_trip(home: Res<Home>, arranging: Res<Arranging>) {
 }
 
 fn save_or_reset(
-    arranging: Res<Arranging>,
+    mut arranging: ResMut<Arranging>,
     mut home: ResMut<Home>,
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -500,18 +512,10 @@ fn save_or_reset(
             .iter()
             .map(|(p, (was, turn, grew))| (*p, *was, *turn, *grew))
             .collect();
-        for (piece, was, turn, grew) in moves {
-            if let Some((lo, hi)) = bounds(&home, piece) {
-                shift(
-                    &mut home,
-                    &mut parts,
-                    piece,
-                    was - (lo + hi) * 0.5,
-                    -turn,
-                    1.0 / grew,
-                );
-            }
+        for (piece, by, turn, grew) in moves {
+            shift(&mut home, &mut parts, piece, -by, -turn, 1.0 / grew);
         }
+        arranging.moved.clear();
         info!("everything back where the generator had it");
     }
 }
@@ -597,15 +601,11 @@ fn load_arrangement(
             .next()
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(1.0);
-        // Where it stood before this file touched it. Measured rather than
-        // derived from the offset, because a piece that has been scaled does
-        // not move by the offset it was written with.
-        let Some((lo, hi)) = bounds(&home, p) else {
-            warn!("arrangement: no piece {p} in this house any more");
-            continue;
-        };
-        shift(&mut home, &mut parts, p, Vec3::new(x, y, z), yaw, grew);
-        arranging.moved.insert(p, ((lo + hi) * 0.5, yaw, grew));
+        let by = Vec3::new(x, y, z);
+        shift(&mut home, &mut parts, p, by, yaw, grew);
+        // Copied, not measured. This is the whole reason the record holds a
+        // total rather than a starting place.
+        arranging.moved.insert(p, (by, yaw, grew));
         moved += 1;
     }
     if moved > 0 {
