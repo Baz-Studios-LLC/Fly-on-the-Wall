@@ -89,7 +89,7 @@ struct StudioLight;
 fn clear_the_set(
     folk: Query<Entity, With<Person>>,
     children: Query<&Children>,
-    mut drawn: Query<(Entity, &mut Visibility), With<Mesh3d>>,
+    mut drawn: Query<(Entity, &mut Visibility), (With<Mesh3d>, Without<crate::made::Probe>)>,
 ) {
     let mut keep = bevy::platform::collections::HashSet::new();
     for person in &folk {

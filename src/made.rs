@@ -125,39 +125,8 @@ fn fit_collision(
         let count = tris.len();
         let hull = crate::world::Hull::new(needs.solid, tris, CELL);
 
-        // A grid of probes straight down onto it, drawn as specks. It is the
-        // only way to see collision that has no geometry of its own: each speck
-        // sits exactly where the fly's feet would.
         if show {
-            let (cube, skin) = (
-                meshes.add(Cuboid::from_length(1.0)),
-                materials.add(StandardMaterial {
-                    base_color: Color::srgb(1.0, 0.35, 0.15),
-                    unlit: true,
-                    ..default()
-                }),
-            );
-            let mut probes = 0;
-            for gx in 0..44 {
-                for gz in 0..70 {
-                    let from = Vec3::new(
-                        hull.bounds().0.x + gx as f32 * 2.5,
-                        hull.bounds().1.y + 20.0,
-                        hull.bounds().0.z + gz as f32 * 2.5,
-                    );
-                    if let Some((d, _)) = hull.raycast(from, Vec3::NEG_Y, 260.0) {
-                        commands.spawn((
-                            Mesh3d(cube.clone()),
-                            MeshMaterial3d(skin.clone()),
-                            Transform::from_translation(from + Vec3::NEG_Y * d)
-                                .with_scale(Vec3::splat(0.9)),
-                            bevy::light::NotShadowCaster,
-                        ));
-                        probes += 1;
-                    }
-                }
-            }
-            info!("made model: {probes} probes landed on the mesh");
+            probe(&mut commands, &hull, &mut meshes, &mut materials);
         }
 
         info!(
@@ -167,4 +136,63 @@ fn fit_collision(
         home.hulls.push(hull);
         commands.entity(root).remove::<NeedsHull>();
     }
+}
+
+/// A drawn collision speck. Marked so the turntable keeps it: the studio hides
+/// everything that is not a person, and hiding the collision would defeat the
+/// only diagnostic there is for it.
+#[derive(Component)]
+pub struct Probe;
+
+/// Draw what the fly will actually hit, as a grid of specks dropped onto it.
+///
+/// Collision that cannot be seen is collision nobody can check, and a hull
+/// derived from a mesh is exactly the kind of thing that looks right in a log
+/// line and is wrong in the room. Each speck sits where the fly's feet would.
+///
+/// The grid is sized from the hull's own bounds, so it works for a couch, an
+/// armchair or a man without anybody choosing a number for each.
+pub fn probe(
+    commands: &mut Commands,
+    hull: &crate::world::Hull,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+) {
+    const STEP: f32 = 2.5;
+    let (low, high) = hull.bounds();
+    let (cube, skin) = (
+        meshes.add(Cuboid::from_length(1.0)),
+        materials.add(StandardMaterial {
+            base_color: Color::srgb(1.0, 0.35, 0.15),
+            unlit: true,
+            ..default()
+        }),
+    );
+    let span = high - low;
+    let (across, along) = (
+        (span.x / STEP).ceil() as i32 + 1,
+        (span.z / STEP).ceil() as i32 + 1,
+    );
+    let mut landed = 0;
+    for gx in 0..across {
+        for gz in 0..along {
+            let from = Vec3::new(
+                low.x + gx as f32 * STEP,
+                high.y + 20.0,
+                low.z + gz as f32 * STEP,
+            );
+            if let Some((d, _)) = hull.raycast(from, Vec3::NEG_Y, span.y + 60.0) {
+                commands.spawn((
+                    Probe,
+                    Mesh3d(cube.clone()),
+                    MeshMaterial3d(skin.clone()),
+                    Transform::from_translation(from + Vec3::NEG_Y * d)
+                        .with_scale(Vec3::splat(0.9)),
+                    bevy::light::NotShadowCaster,
+                ));
+                landed += 1;
+            }
+        }
+    }
+    info!("hull probe: {landed} of {} landed", across * along);
 }

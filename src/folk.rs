@@ -79,6 +79,50 @@ const AT_EASE: &[(&str, [f32; 3])] = &[
     ("NeckTwist01", [0.02, -0.10, 0.0]),
 ];
 
+/// A slow movement laid over the resting pose: bone, axis scaled to the
+/// amplitude in radians, cycles per second, and phase in turns.
+///
+/// Nobody stands still. A body that does is the single loudest thing in a room
+/// — more than a blank face, more than a bad texture — because stillness is the
+/// one property no living thing has. None of these amplitudes is meant to be
+/// noticed on its own; a hundredth of a radian at the spine is a millimetre at
+/// the shoulder. What is noticed is their absence.
+///
+/// Rates are deliberately coprime-ish so the whole thing does not visibly loop.
+/// Breathing runs at about fourteen a minute, the weight shift at four, and the
+/// head drifts slower still.
+const IDLE: &[(&str, [f32; 3], f32, f32)] = &[
+    // Breathing: the chest rises and the neck takes it back out, so his head
+    // does not nod along with his lungs.
+    ("Spine01", [0.010, 0.0, 0.0], 0.235, 0.0),
+    ("Spine02", [0.008, 0.0, 0.0], 0.235, 0.02),
+    ("NeckTwist02", [-0.011, 0.0, 0.0], 0.235, 0.05),
+    // Weight shifting from one foot to the other.
+    ("Hip", [0.0, 0.0, 0.019], 0.061, 0.0),
+    ("Waist", [0.0, 0.0, -0.011], 0.061, 0.04),
+    // Looking about the room, slowly.
+    ("Head", [0.015, 0.105, 0.0], 0.037, 0.31),
+    // Arms hanging, not pinned. Deliberately smaller than they want to be:
+    // his collision is built once, from the pose he settles into, and a
+    // hundredth of a radian at the shoulder is already most of a centimetre at
+    // the hand. That is two body lengths to the thing landing on it. Until the
+    // collision follows the bones, the amplitude here is bounded by how far the
+    // hand may drift from the surface the fly can feel.
+    ("L_Upperarm", [0.008, 0.0, 0.013], 0.083, 0.0),
+    ("R_Upperarm", [0.008, 0.0, -0.013], 0.083, 0.5),
+    ("L_Forearm", [0.0, 0.011, 0.0], 0.083, 0.12),
+    ("R_Forearm", [0.0, -0.011, 0.0], 0.083, 0.62),
+];
+
+/// A bone that moves, and the pose it moves around.
+#[derive(Component)]
+struct Idling {
+    rest: Quat,
+    turn: Vec3,
+    rate: f32,
+    phase: f32,
+}
+
 /// A rig that has not been posed yet.
 #[derive(Component)]
 struct NeedsPose;
@@ -88,7 +132,7 @@ pub struct FolkPlugin;
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, raise_the_father)
-            .add_systems(Update, pose_him)
+            .add_systems(Update, (pose_him, breathe).chain())
             // After the transforms have propagated, not merely after the pose
             // has been *set*. Posing writes local rotations; the world
             // positions those imply are worked out later in the frame, and a
@@ -134,10 +178,44 @@ fn pose_him(
                 found += 1;
             }
         }
-        if found > 0 {
-            info!("a person is posed: {found} of {} bones set", AT_EASE.len());
-            commands.entity(person).remove::<NeedsPose>();
+        if found == 0 {
+            continue;
         }
+
+        // The idle hangs off whatever pose the bone ended on, so the resting
+        // rotation has to be read *after* the pose, not before it.
+        let mut moving = 0;
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+            let Ok(name) = names.get(entity) else {
+                continue;
+            };
+            let Some((_, turn, rate, phase)) =
+                IDLE.iter().find(|(bone, ..)| *bone == name.as_str())
+            else {
+                continue;
+            };
+            let Ok(bone) = bones.get(entity) else {
+                continue;
+            };
+            commands.entity(entity).insert(Idling {
+                rest: bone.rotation,
+                turn: Vec3::from_array(*turn),
+                rate: *rate,
+                phase: *phase,
+            });
+            moving += 1;
+        }
+
+        info!(
+            "a person is posed: {found} of {} bones set, {moving} of {} breathing",
+            AT_EASE.len(),
+            IDLE.len()
+        );
+        commands.entity(person).remove::<NeedsPose>();
     }
 }
 
@@ -199,6 +277,20 @@ fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: Res<
     ));
 }
 
+/// Move the moving bones.
+///
+/// Sine waves on top of a stored rest rotation, the way the fly's wings and
+/// legs are driven. No animation clips: the file ships none, and a table of
+/// numbers in this file can be tuned by editing a number, which is the same
+/// argument the rest of this game makes for building things in code.
+fn breathe(clock: Res<Time>, mut bones: Query<(&Idling, &mut Transform)>) {
+    let now = clock.elapsed_secs();
+    for (idle, mut bone) in &mut bones {
+        let a = std::f32::consts::TAU * (idle.rate * now + idle.phase);
+        bone.rotation = idle.rest * Quat::from_scaled_axis(idle.turn * a.sin());
+    }
+}
+
 /// Hand his own triangles to the collision, in the pose he is standing in.
 ///
 /// He was scenery: you flew straight through him. The made furniture solved
@@ -224,8 +316,9 @@ fn make_him_solid(
     children: Query<&Children>,
     skinned: Query<(&Mesh3d, &bevy::mesh::skinning::SkinnedMesh)>,
     placed: Query<&GlobalTransform>,
-    meshes: Res<Assets<Mesh>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     bindposes: Res<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     use bevy::render::mesh::VertexAttributeValues as Values;
 
@@ -326,6 +419,11 @@ fn make_him_solid(
             high.y - low.y,
             (high.xz() - low.xz()).max_element()
         );
+        // `FLY_HULL=1` draws it, because a person's collision is the one kind
+        // with no geometry of its own to check against.
+        if std::env::var("FLY_HULL").is_ok() {
+            crate::made::probe(&mut commands, &hull, &mut meshes, &mut materials);
+        }
         home.hulls.push(hull);
         commands.entity(person).remove::<NeedsBody>();
     }

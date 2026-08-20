@@ -1128,7 +1128,44 @@ simply could not be seen from in there.
   and collision derived from what is drawn means a bulky coat gets bulky
   collision for free.
 
-### Next
+### Poses and the idle
 
-- Author `AnimationClip`s in Rust (the file ships none) for idle sway and a walk.
-- A moving body needs bone capsules for collision, not a re-skinned trimesh.
+Both are authored in `folk.rs` as tables of numbers, not clips. The file ships
+no animation, and a table can be tuned by editing a number — the same argument
+this game makes everywhere else for building things in code.
+
+`AT_EASE` is thirteen bone rotations composed **onto** the bind rotation. A bind
+pose already carries each bone's own orientation and replacing it snaps every
+limb onto the armature's axes. The first attempt had the sign wrong and he stood
+with both arms straight up.
+
+`IDLE` is ten bones on sine waves over the resting pose, driven by `breathe` the
+way the fly's wings are: breathing at fourteen a minute with the neck taking it
+back out so his head does not nod along with his lungs, a weight shift at four a
+minute, and the head drifting slower still. Rates are near-coprime so it does
+not visibly loop. Nothing here is meant to be noticed — stillness is the one
+property no living thing has, and its absence is what reads.
+
+The arm amplitudes are smaller than they want to be, and that is a collision
+constraint, not a taste one — see below.
+
+### `FLY_HULL=1` now draws every hull
+
+The probe grid was hardcoded to the couch's bounds inside `fit_collision`. It is
+`made::probe` now, sized from whatever hull it is given, and folk call it too.
+Probes are marked so the turntable does not hide them. Confirmed the father's
+collision: specks land on his shoulders, chest, forearm and shoes.
+
+### Next: collision that follows the bones
+
+His hull is built once, from the pose he settles into. That bounds how much the
+idle may move: a hundredth of a radian at the shoulder is most of a centimetre
+at the hand, which is two body lengths to the fly.
+
+Worse, `Perch` is stored relative to a *solid*, and his solid never moves — so a
+fly landed on a sleeve stays put while the sleeve does not. Rebuilding the whole
+trimesh is the wrong answer (a few milliseconds, and it does not fix the perch).
+
+The answer is per-bone collision: a capsule or a small hull per bone, posed with
+it, and perches stored relative to the bone rather than the body. That is what a
+walk cycle needs before it can exist.
