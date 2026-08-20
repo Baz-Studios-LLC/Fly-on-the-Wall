@@ -565,9 +565,18 @@ struct ModelLeg {
     /// 0.0 or 0.5. Insects walk an alternating tripod — front and rear on one
     /// side with the middle of the other — so three feet are always down.
     phase: f32,
-    /// The shin, rather than the thigh. It folds through the return instead of
-    /// swinging, which is the difference between a step and a twitch.
-    shin: bool,
+    /// Which of the three segments this is. A fly's leg is femur, tibia and
+    /// tarsus, and they do different jobs: the femur swings the leg, the tibia
+    /// folds it out of the way, and the tarsus keeps the foot pointing at the
+    /// floor while the other two move.
+    segment: Segment,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Segment {
+    Femur,
+    Tibia,
+    Tarsus,
 }
 
 /// Find the six leg bones added by `tools/rig-the-legs.py`.
@@ -618,9 +627,10 @@ fn find_the_model_legs(
             "front_right" | "middle_left" | "rear_right" => 0.5,
             _ => continue,
         };
-        let shin = match part {
-            "upper" => false,
-            "lower" => true,
+        let segment = match part {
+            "femur" => Segment::Femur,
+            "tibia" => Segment::Tibia,
+            "tarsus" => Segment::Tarsus,
             _ => continue,
         };
         let Ok(rest) = poses.get(entity) else {
@@ -629,13 +639,13 @@ fn find_the_model_legs(
         commands.entity(entity).insert(ModelLeg {
             rest: rest.rotation,
             phase,
-            shin,
+            segment,
         });
         found += 1;
     }
-    if found == 12 {
+    if found == 18 {
         *looked = true;
-        info!("the rigged fly walks on six legs of its own, knees and all");
+        info!("the rigged fly walks on six legs of its own: femur, tibia, tarsus");
     }
 }
 
@@ -671,8 +681,11 @@ fn walk_the_model_legs(
     const SWING: f32 = 0.44;
     /// How far it lifts on the way through.
     const LIFT: f32 = 0.20;
-    /// How far the knee folds at the top of the return.
-    const FOLD: f32 = 0.55;
+    /// How far the tibia folds at the top of the return, and how much of that
+    /// the tarsus takes back so the foot still meets the floor flat rather
+    /// than curling under the leg.
+    const FOLD: f32 = 0.52;
+    const FLATTEN: f32 = 0.30;
     /// Body travel for one full stride, in centimetres.
     ///
     /// **Chosen so the gait can be drawn, not from anatomy.** A fly's real
@@ -756,16 +769,25 @@ fn walk_the_model_legs(
             0.0
         };
 
-        pose.rotation = if leg.shin {
-            // The knee folds through the return and straightens to plant. It
+        pose.rotation = match leg.segment {
+            Segment::Femur => {
+                let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
+                let lift = swinging * LIFT * *stepping;
+                Quat::from_axis_angle(sideways, sweep)
+                    * Quat::from_axis_angle(forward, lift)
+                    * leg.rest
+            }
+            // The tibia folds through the return and straightens to plant. It
             // never goes fully straight: a leg at full stretch has no plane to
             // bend in and snaps between solutions.
-            let fold = FOLD * swinging * *stepping;
-            Quat::from_axis_angle(sideways, fold) * leg.rest
-        } else {
-            let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
-            let lift = swinging * LIFT * *stepping;
-            Quat::from_axis_angle(sideways, sweep) * Quat::from_axis_angle(forward, lift) * leg.rest
+            Segment::Tibia => {
+                Quat::from_axis_angle(sideways, FOLD * swinging * *stepping) * leg.rest
+            }
+            // And the tarsus gives some of that back, so the foot arrives flat
+            // instead of tucked under the leg it hangs from.
+            Segment::Tarsus => {
+                Quat::from_axis_angle(sideways, -FLATTEN * swinging * *stepping) * leg.rest
+            }
         };
     }
 }

@@ -1700,3 +1700,41 @@ at `POSE_RATE` is no shiver at all — with the two wings running a half beat
 apart, because a pair in perfect step reads as one object. Aliasing a small
 amplitude is what a blur looks like; aliasing a large one is a slow flap, which
 is what twelve beats a second looked like.
+
+## Three segments, and why the top one never moved
+
+Brett: "you do know that the fly leg has three segments right?" Femur, tibia,
+tarsus. Two bones was under-building it, and the missing third is also why the
+top of the leg looked dead.
+
+Two separate faults, both in the weighting, both now impossible to miss because
+**the tool prints where the weight landed and complains when a bone is starved**:
+
+**The hip feather was an absolute distance.** 0.085 units, against legs 0.17 to
+0.23 long — so it covered the whole top segment and handed it to the body. The
+femur ended up with seven per cent of its own leg. It is a fraction of the leg's
+length now.
+
+**The leg was parameterised by projection onto a straight chord.** A fly's leg is
+bent, so more than half the vertices projected past the last joint: femur 7–20%,
+tarsus 53–72%. Measuring from the root instead followed the bend and got it to
+12–25% / 50–66% — better and still wrong, because the mesh is denser at the foot
+than along the femur. The *distance* was fair and the *vertex count* was not.
+
+Ranking the vertices by distance and banding by rank fixes it: every leg now
+reads femur 30%, tibia 36%, tarsus 26%, body 8%. Equal shares of the geometry is
+what decides whether a bone can be *seen* to move, which is the only thing that
+matters here.
+
+The joints are placed on the centroid of the vertices at that depth, so the chain
+follows the leg round its bend instead of cutting the corner.
+
+Driving them: the femur swings and lifts, the tibia folds through the return, and
+the tarsus gives some of the fold back so the foot arrives flat rather than
+tucked under the leg it hangs from.
+
+**Process note.** Three string-replace patches in a row silently missed because
+the file's text differed from what I assumed by a couple of words — "does not
+tear" against "does not tear open" — and one of them left the build broken in a
+way that looked like a logic error. Anchor on a unique fragment and scan for the
+block's end; do not hard-code line numbers or trust remembered prose.

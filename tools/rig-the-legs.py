@@ -7,17 +7,18 @@ and the front-right is 99% weighted to `tripo::0_Left_Limb_6`, which also holds
 most of the other five. Rotating any of it swings half the animal.
 
 So the legs are re-skinned. The six are found geometrically — everything below
-the body mass, clustered by proximity — and each gets two bones of its own — a
-thigh planted where the leg meets the thorax and a shin below the knee, because
-a leg that swings in one piece reads as a twitch rather than a step.
+the body mass, clustered by proximity — and each gets the three bones a fly's
+leg actually has — femur, tibia, tarsus — planted along it in that order, so it
+folds at two joints like an insect's rather than swinging as one stick.
 
-Weight hands over from thigh to shin across the knee rather than at it, so the
-mesh bends instead of creasing, and feathers into the body at the top so the hip
-does not tear open.
+Weight hands over between segments *across* each joint rather than at it, so the
+mesh bends instead of creasing, and feathers into the body over the top of the
+femur so the hip does not tear open. Four influences a vertex: body, femur,
+tibia, tarsus, which is exactly the four glTF allows.
 
 Nothing else is touched: same mesh, same materials, same wing bones, same
-existing skeleton. Twelve nodes are appended and twelve columns of inverse bind
-matrices with them.
+existing skeleton. Eighteen nodes are appended and eighteen columns of inverse
+bind matrices with them.
 
     python3 tools/rig-the-legs.py in.glb out.glb
 """
@@ -34,13 +35,21 @@ LEG_TOP = 0.18
 SAME_LEG = 0.059
 # A cluster smaller than this is a toe or a stray shell, not a leg.
 LEAST = 120
-# Weight feathers from the root outward over this distance, so the top of the
-# leg still moves with the body and the joint does not tear open.
-FEATHER = 0.085
-# Where along the leg the knee goes, as a fraction of root-to-foot.
-KNEE = 0.42
-# How much of the leg's length the handover from thigh to shin is spread over.
-BLEND = 0.30
+# Weight feathers into the body over this fraction of the leg's length, so the
+# hip does not tear open when the femur swings.
+#
+# A fraction, not a distance. It was 0.085 in absolute units against legs only
+# 0.17 to 0.23 long, so the feather covered the whole top segment and handed it
+# all to the body: the lower leg animated and the upper sat perfectly still.
+# The tool prints where the weight landed now, which is the check that catches
+# it without anybody having to notice by eye.
+HIP = 0.16
+# Where the two joints sit, as fractions of root-to-foot: femur/tibia, then
+# tibia/tarsus. A fly's leg has three segments and the tarsus is the short
+# jointed foot on the end of it.
+JOINTS = (0.38, 0.74)
+# How much of the leg's length each handover is spread over.
+BLEND = 0.20
 
 
 def load(path):
@@ -180,79 +189,111 @@ def main(src, dst):
         by_height = sorted(group, key=lambda k: -pos[k][1])
         take = max(6, len(group) // 10)
         root = [sum(pos[k][d] for k in by_height[:take]) / take for d in range(3)]
-        foot = [sum(pos[k][d] for k in by_height[-take:]) / take for d in range(3)]
-        span = [foot[d] - root[d] for d in range(3)]
-        length = sum(v * v for v in span) ** 0.5 or 1.0
-        knee = [root[d] + span[d] * KNEE for d in range(3)]
+
+        # How far down the leg each vertex is, measured *from the root* rather
+        # than projected onto a straight line to the foot.
+        #
+        # A fly's leg is bent. Projected onto the chord, more than half the
+        # vertices land past the last joint and the femur ends up with seven
+        # per cent of the weight — which is exactly what happened, and it looks
+        # like a leg whose top segment does not move. Distance from the root
+        # follows the bend.
+        far = {k: sum((pos[k][d] - root[d]) ** 2 for d in range(3)) ** 0.5 for k in group}
+        # Ranked, not scaled. Scaling by the furthest vertex still gave the
+        # tarsus half the weight, because the mesh is denser at the foot than
+        # along the femur — the *distance* was fair and the *vertex count* was
+        # not. Ranking makes the bands equal shares of the leg's geometry,
+        # which is what decides whether a bone can be seen to move.
+        order = sorted(group, key=lambda k: far[k])
+        down = {k: i / max(1, len(order) - 1) for i, k in enumerate(order)}
 
         row = "front middle rear".split()[i // 2]
         side = "left" if root[2] < 0 else "right"
+        stem = f"leg_{row}_{side}"
 
-        # Two bones, because one is a stick. A leg that swings from the body
-        # with no bend in it reads as a spider's twitch; the knee is what makes
-        # a foot look placed rather than dragged.
-        nodes.append({"name": f"leg_{row}_{side}_upper", "translation": apply(to_local, root)})
-        upper = len(nodes) - 1
-        nodes[anchor].setdefault("children", []).append(upper)
-        skin["joints"].append(upper)
-        # The parent map has to grow with the tree. It did not, and `world()`
-        # then computed a shin's bind matrix without its own thigh in it — the
-        # legs came out splayed flat, and the one-bone version before it was
-        # quietly wrong by the skeleton root's own six millimetres.
-        parent[upper] = anchor
+        # Each joint goes on the centroid of the vertices that sit at that
+        # depth, so the chain follows the leg round its bend instead of cutting
+        # the corner.
+        def joint_at(depth):
+            band = [k for k in group if abs(down[k] - depth) < 0.07]
+            if not band:
+                band = sorted(group, key=lambda k: abs(down[k] - depth))[:8]
+            return [sum(pos[k][d] for k in band) / len(band) for d in range(3)]
 
-        upper_world = mul(anchor_world, trs(nodes[upper]))
-        nodes.append(
-            {"name": f"leg_{row}_{side}_lower", "translation": apply(invert(upper_world), knee)}
-        )
-        lower = len(nodes) - 1
-        nodes[upper]["children"] = [lower]
-        skin["joints"].append(lower)
-        parent[lower] = upper
+        chain = []
+        parent_index = anchor
+        parent_world = anchor_world
+        for part, at in (("femur", 0.0), ("tibia", JOINTS[0]), ("tarsus", JOINTS[1])):
+            here = root if at == 0.0 else joint_at(at)
+            nodes.append(
+                {"name": f"{stem}_{part}", "translation": apply(invert(parent_world), here)}
+            )
+            index = len(nodes) - 1
+            nodes[parent_index].setdefault("children", []).append(index)
+            skin["joints"].append(index)
+            # The parent map has to grow with the tree. It did not, and `world()`
+            # then computed a segment's bind matrix without its own parents in
+            # it — the legs came out splayed flat on the floor.
+            parent[index] = parent_index
+            parent_world = mul(parent_world, trs(nodes[index]))
+            parent_index = index
+            chain.append(index)
 
-        added.append((f"leg_{row}_{side}", upper, lower, root, span, length, group))
+        added.append((stem, chain, down, group))
 
     # -- re-skin -------------------------------------------------------------
     body_slot = skin["joints"].index(body)
     moved = 0
-    for name, upper, lower, root, span, length, group in added:
-        up_slot = skin["joints"].index(upper)
-        low_slot = skin["joints"].index(lower)
+    for stem, chain, depth, group in added:
+        slots = [skin["joints"].index(b) for b in chain]
+        share = [0.0, 0.0, 0.0, 0.0]
         for k in group:
-            p = pos[k]
-            offset = [p[d] - root[d] for d in range(3)]
-            far = sum(v * v for v in offset) ** 0.5
-            # How far down the leg this vertex sits, as a fraction.
-            down = sum(offset[d] * span[d] for d in range(3)) / (length * length)
-            down = min(1.0, max(0.0, down))
+            down = depth[k]
 
-            # Hand over to the shin across the knee rather than at it, or the
-            # mesh creases into a hinge.
-            t = min(1.0, max(0.0, (down - KNEE + BLEND * 0.5) / BLEND))
-            shin = t * t * (3 - 2 * t)
-            # And feather the very top into the body so the hip does not tear.
-            hold = min(1.0, max(0.0, far / FEATHER))
+            def ramp(at, down=down):
+                t = min(1.0, max(0.0, (down - at + BLEND * 0.5) / BLEND))
+                return t * t * (3 - 2 * t)
+
+            below_knee = ramp(JOINTS[0])
+            below_ankle = ramp(JOINTS[1])
+            # Three segments, summing to one, with the handovers spread across
+            # each joint rather than falling on it.
+            parts = [
+                1.0 - below_knee,
+                below_knee * (1.0 - below_ankle),
+                below_knee * below_ankle,
+            ]
+            hold = min(1.0, max(0.0, down / HIP))
             hold = hold * hold * (3 - 2 * hold)
 
-            w_low = shin * hold
-            w_up = (1.0 - shin) * hold
+            w = [v * hold for v in parts]
             w_body = 1.0 - hold
             _, at_j, fj, nj = joints[k]
             _, at_w, fw, nw = weights[k]
-            struct.pack_into("<" + fj * nj, bn, at_j, up_slot, low_slot, body_slot, 0)
-            struct.pack_into("<" + fw * nw, bn, at_w, w_up, w_low, w_body, 0.0)
+            struct.pack_into("<" + fj * nj, bn, at_j, slots[0], slots[1], slots[2], body_slot)
+            struct.pack_into("<" + fw * nw, bn, at_w, w[0], w[1], w[2], w_body)
+            for d in range(3):
+                share[d] += w[d]
+            share[3] += w_body
             moved += 1
+        total = sum(share) or 1.0
         print(
-            f"  {name:18s} root ({root[0]:+.2f},{root[1]:+.2f},{root[2]:+.2f})"
-            f"  length {length:.2f}  {len(group)} vertices"
+            f"  {stem:18s} {len(group):4d} verts"
+            f"   femur {100 * share[0] / total:4.0f}%"
+            f"  tibia {100 * share[1] / total:4.0f}%"
+            f"  tarsus {100 * share[2] / total:4.0f}%"
+            f"  body {100 * share[3] / total:4.0f}%"
         )
+        for name, part in zip(("femur", "tibia", "tarsus"), share[:3]):
+            if part / total < 0.08:
+                print(f"      ^ the {name} has almost no weight: it will not appear to move")
 
     # -- inverse bind matrices for the new bones -----------------------------
     old = accessor(js, bn, skin["inverseBindMatrices"])
     mats = [list(v[0]) for v in old]
-    for _, upper, lower, _, _, _, _ in added:
-        mats.append(invert(world(upper)))
-        mats.append(invert(world(lower)))
+    for _, chain, _, _ in added:
+        for bone in chain:
+            mats.append(invert(world(bone)))
 
     payload = b"".join(struct.pack("<16f", *m) for m in mats)
     while len(bn) % 4:
@@ -280,7 +321,7 @@ def main(src, dst):
     out += struct.pack("<II", len(blob), 0x4E4F534A) + blob
     out += struct.pack("<II", len(bn), 0x004E4942) + bytes(bn)
     open(dst, "wb").write(out)
-    print(f"wrote {dst}: {2 * len(added)} new leg bones, {moved} vertices re-skinned")
+    print(f"wrote {dst}: {3 * len(added)} new leg bones, {moved} vertices re-skinned")
     return 0
 
 
