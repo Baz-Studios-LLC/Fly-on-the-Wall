@@ -1331,3 +1331,42 @@ compass they stand inside a wall.
   openings as waypoints.
 - The hull is still the pose it was built in. A perch on a swinging arm is
   wrong by up to a hand's width.
+
+## Two bugs Brett found
+
+### The twisted elbow
+
+Both clips put the forearms in a bad roll: palms turned to face forward and a
+pinch at each elbow. Measured against this rig's own bind pose, the deviation is
+**69 degrees on the right and 159 on the left**, both about the forearm's own
+length axis. Asymmetric by ninety degrees is not something an animator does on
+purpose — it is the preset being retargeted from another skeleton.
+
+Proving it was the clip and not the mesh needed a way to see the model with
+nothing playing, because a clip drives every bone it has a channel for and hides
+whatever is underneath. `FLY_MOVE=none` does that, and the bind pose turned out
+to be perfect: arms hanging, palms to the thighs, no pinch.
+
+The fix takes out the roll and nothing else. A rotation splits cleanly into a
+swing and a twist about a chosen axis; dropping the twist leaves every bend the
+animator wrote and removes only the spin the retarget added. The axis is read
+from the rig rather than assumed — a bone's own length is where its longest
+child sits, which is `(0, 0.14, 0)` for a forearm here.
+
+### Saving the furniture threw the furniture away
+
+Brett moved the sofa, saved, played, opened arrange mode again, pressed the same
+keys, and got the generator's sofa back.
+
+The save was written from the pieces moved *in this session*. Loading a file and
+then saving without touching anything therefore wrote an empty file — and his
+was exactly that: a header and nothing else. The second save is what destroyed
+the first one.
+
+`load_arrangement` now records where each piece stood *before* the file was
+applied, so a saved offset is always measured from where the generator put the
+thing rather than from where this session found it. Saves are cumulative.
+
+`FLY_SAVE=1` writes the arrangement on startup and compares it with what was
+read, so the round trip can be exercised without a keyboard. It reports "reads
+back exactly as written", which the old code could not have done.

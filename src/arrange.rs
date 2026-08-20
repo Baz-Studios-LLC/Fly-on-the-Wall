@@ -98,7 +98,9 @@ impl Plugin for ArrangePlugin {
         // looking for a piece that does not exist yet.
         .add_systems(
             PostStartup,
-            load_arrangement.after(crate::folk::raise_the_father),
+            (load_arrangement, check_the_round_trip)
+                .chain()
+                .after(crate::folk::raise_the_father),
         )
         .add_systems(Update, (toggle, aim, carry, save_or_reset, show).chain());
     }
@@ -402,6 +404,57 @@ fn carry(
     }
 }
 
+/// The arrangement file's contents: every piece that stands somewhere other
+/// than where the generator put it.
+///
+/// Pulled out of the save so the round trip can be exercised without a
+/// keyboard — `FLY_SAVE=1` writes it on startup, straight after the file has
+/// been read, and the two should agree to the last decimal.
+fn written(home: &Home, moved: &std::collections::HashMap<u32, (Vec3, f32, f32)>) -> String {
+    let mut text = String::from("# piece  x  y  z  yaw  scale — written by arrange mode\n");
+    let mut seen = std::collections::HashSet::new();
+    for piece in home
+        .solids
+        .iter()
+        .map(|s| s.piece)
+        .filter(|p| *p != u32::MAX)
+    {
+        if !seen.insert(piece) {
+            continue;
+        }
+        let (Some((lo, hi)), Some(was)) = (bounds(home, piece), moved.get(&piece)) else {
+            continue;
+        };
+        let by = (lo + hi) * 0.5 - was.0;
+        if by.length() > 0.5 || was.1.abs() > 0.001 || (was.2 - 1.0).abs() > 0.001 {
+            text.push_str(&format!(
+                "{piece} {:.2} {:.2} {:.2} {:.4} {:.4}\n",
+                by.x, by.y, by.z, was.1, was.2
+            ));
+        }
+    }
+    text
+}
+
+/// `FLY_SAVE=1` writes the arrangement out on startup, without touching
+/// anything. What comes out should be what went in; anything else means a
+/// save has quietly lost somebody's afternoon.
+fn check_the_round_trip(home: Res<Home>, arranging: Res<Arranging>) {
+    if std::env::var("FLY_SAVE").as_deref() != Ok("1") {
+        return;
+    }
+    let text = written(&home, &arranging.moved);
+    let was = load_paths()
+        .into_iter()
+        .find_map(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default();
+    if text.trim() == was.trim() {
+        info!("arrangement: reads back exactly as written");
+    } else {
+        warn!("arrangement: would be written differently\n--- was ---\n{was}--- now ---\n{text}");
+    }
+}
+
 fn save_or_reset(
     arranging: Res<Arranging>,
     mut home: ResMut<Home>,
@@ -415,28 +468,7 @@ fn save_or_reset(
     }
     let holding = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::SuperLeft);
     if holding && keys.just_pressed(KeyCode::KeyS) {
-        let mut text = String::from("# piece  x  y  z  yaw  scale — written by arrange mode\n");
-        let mut seen = std::collections::HashSet::new();
-        for piece in home
-            .solids
-            .iter()
-            .map(|s| s.piece)
-            .filter(|p| *p != u32::MAX)
-        {
-            if !seen.insert(piece) {
-                continue;
-            }
-            if let (Some((lo, hi)), Some(was)) = (bounds(&home, piece), arranging.moved.get(&piece))
-            {
-                let by = (lo + hi) * 0.5 - was.0;
-                if by.length() > 0.5 || was.1.abs() > 0.001 || (was.2 - 1.0).abs() > 0.001 {
-                    text.push_str(&format!(
-                        "{piece} {:.2} {:.2} {:.2} {:.4} {:.4}\n",
-                        by.x, by.y, by.z, was.1, was.2
-                    ));
-                }
-            }
-        }
+        let text = written(&home, &arranging.moved);
         let path = save_path();
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
@@ -511,8 +543,22 @@ fn load_paths() -> Vec<std::path::PathBuf> {
     paths
 }
 
+/// Put the furniture back where it was left, and remember that it was left
+/// there.
+///
+/// The remembering is the part that was missing. A save is written from the
+/// pieces moved *in this session*, so loading a file and then saving without
+/// touching anything wrote an empty file and threw the whole arrangement away.
+/// Brett moved the sofa, saved, played, opened arrange mode again, pressed the
+/// same keys, and got the generator's sofa back.
+///
+/// Seeding the record with where each piece started before the file was applied
+/// makes a save cumulative: the offset written out is always measured from
+/// where the generator put the thing, whether it was moved a minute ago or a
+/// week ago.
 fn load_arrangement(
     mut home: ResMut<Home>,
+    mut arranging: ResMut<Arranging>,
     mut parts: Query<(&Part, &mut Transform), Without<Marker>>,
 ) {
     let Some(text) = load_paths()
@@ -551,7 +597,15 @@ fn load_arrangement(
             .next()
             .and_then(|v| v.parse::<f32>().ok())
             .unwrap_or(1.0);
+        // Where it stood before this file touched it. Measured rather than
+        // derived from the offset, because a piece that has been scaled does
+        // not move by the offset it was written with.
+        let Some((lo, hi)) = bounds(&home, p) else {
+            warn!("arrangement: no piece {p} in this house any more");
+            continue;
+        };
         shift(&mut home, &mut parts, p, Vec3::new(x, y, z), yaw, grew);
+        arranging.moved.insert(p, ((lo + hi) * 0.5, yaw, grew));
         moved += 1;
     }
     if moved > 0 {

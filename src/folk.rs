@@ -275,6 +275,43 @@ fn movements(model: &str) -> Vec<(String, String)> {
     found
 }
 
+/// Bones whose roll a clip gets wrong, and which way their own length runs.
+///
+/// The presets Brett's rigging tool writes are retargeted from another
+/// skeleton, and the retarget puts a large constant roll on both forearms:
+/// measured against this rig's own bind pose it is 69 degrees on the right and
+/// **159** on the left, both about the forearm's own length. Asymmetric by
+/// ninety degrees is not something an animator did on purpose.
+///
+/// What it looks like in the room is palms turned to face forward and a pinch
+/// at each elbow, and it is in the walk as well as the idle — the same bad
+/// baseline under both. The bind pose the model arrived in is correct, which is
+/// how it can be told apart from a badly built mesh: `FLY_MOVE=none` shows arms
+/// hanging properly with the palms to the thighs.
+///
+/// So the roll is taken out and nothing else is. A rotation splits cleanly into
+/// a swing and a twist about a chosen axis; dropping the twist leaves every
+/// bend the animator wrote and removes only the spin the retarget added.
+const UNROLL: &[&str] = &["L_Forearm", "R_Forearm"];
+
+/// A bone that should not roll, the pose it rests in, and its own length axis.
+#[derive(Component)]
+struct Steady {
+    bones: Vec<(Entity, Quat, Vec3)>,
+}
+
+/// Split off the spin about `axis` and return what is left.
+fn without_twist(turn: Quat, axis: Vec3) -> Quat {
+    let along = axis * turn.xyz().dot(axis);
+    let twist = Quat::from_xyzw(along.x, along.y, along.z, turn.w);
+    // A half turn exactly across the axis has no twist to speak of and
+    // normalising it would be dividing by nothing.
+    if twist.length_squared() < 1e-8 {
+        return turn;
+    }
+    turn * twist.normalize().inverse()
+}
+
 /// The entity holding a person's `AnimationPlayer`, which the glTF loader puts
 /// on whichever node roots the animated hierarchy rather than on the person.
 #[derive(Component)]
@@ -317,7 +354,10 @@ impl Plugin for FolkPlugin {
             // centimetres across the shoulders to find out.
             .add_systems(
                 PostUpdate,
-                make_him_solid.after(TransformSystems::Propagate),
+                (
+                    hold_the_roll.after(bevy::app::AnimationSystems),
+                    make_him_solid.after(TransformSystems::Propagate),
+                ),
             );
     }
 }
@@ -341,6 +381,8 @@ fn play_what_he_has(
     mut graphs: ResMut<Assets<AnimationGraph>>,
     folk: Query<(Entity, &CameFrom, &NeedsPose), Without<Animated>>,
     children: Query<&Children>,
+    names: Query<&Name>,
+    local: Query<&Transform>,
     mut players: Query<&mut AnimationPlayer>,
     idling: Query<Entity, With<Idling>>,
 ) {
@@ -405,7 +447,20 @@ fn play_what_he_has(
         // asks for. There is no other way to look at a movement: a person does
         // what the room needs, and checking that a walk cycle came out of the
         // exporter intact should not require making him walk somewhere first.
+        // `FLY_MOVE=none` plays nothing, which is the only way to see what a
+        // model actually arrived as. A clip drives every bone it has a channel
+        // for, so anything wrong with the bind pose is invisible the moment one
+        // starts — and anything wrong with the clip looks exactly like a
+        // badly built mesh until you can see the two apart.
         let asked = std::env::var("FLY_MOVE").ok();
+        if asked.as_deref() == Some("none") {
+            info!("a person is left in the pose the model arrived in");
+            commands
+                .entity(person)
+                .insert(Animated)
+                .remove::<NeedsPose>();
+            continue;
+        }
         let wants = asked.as_deref().or(wanted.0.clip).unwrap_or("idle");
         let chosen = repertoire
             .iter()
@@ -443,6 +498,43 @@ fn play_what_he_has(
             "a person is animated: playing {playing:?} of {:?}",
             clips.iter().map(|(n, _)| n).collect::<Vec<_>>()
         );
+        // Read the rest pose *now*, before the graph is inserted and a clip
+        // has ever written to these bones. One frame later it is gone.
+        let mut steady = Vec::new();
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            let kids: Vec<Entity> = children
+                .get(entity)
+                .map(|k| k.iter().collect())
+                .unwrap_or_default();
+            stack.extend(kids.iter().copied());
+            if !names
+                .get(entity)
+                .is_ok_and(|n| UNROLL.contains(&n.as_str()))
+            {
+                continue;
+            }
+            let Ok(rest) = local.get(entity) else {
+                continue;
+            };
+            // Which way the bone runs is where its longest child sits. On this
+            // rig a forearm's hand is at (0, 0.14, 0), so the axis is its own
+            // local y — and reading it rather than assuming it is what lets a
+            // differently built rig through unharmed.
+            let along = kids
+                .iter()
+                .filter_map(|kid| local.get(*kid).ok())
+                .map(|t| t.translation)
+                .max_by(|a, b| a.length_squared().total_cmp(&b.length_squared()))
+                .unwrap_or(Vec3::Y)
+                .normalize_or(Vec3::Y);
+            steady.push((entity, rest.rotation, along));
+        }
+        if !steady.is_empty() {
+            info!("a person's roll is held on {} bones", steady.len());
+            commands.entity(person).insert(Steady { bones: steady });
+        }
+
         commands
             .entity(person)
             .insert((Animated, Plays(root), Repertoire(repertoire)))
@@ -699,6 +791,20 @@ fn breathe(clock: Res<Time>, mut bones: Query<(&Idling, &mut Transform)>) {
     for (idle, mut bone) in &mut bones {
         let a = std::f32::consts::TAU * (idle.rate * now + idle.phase);
         bone.rotation = idle.rest * Quat::from_scaled_axis(idle.turn * a.sin());
+    }
+}
+
+/// Take the retarget's roll back out of the arms, every frame, after the clip
+/// has had its say.
+fn hold_the_roll(steady: Query<&Steady>, mut bones: Query<&mut Transform>) {
+    for holding in &steady {
+        for &(bone, rest, along) in &holding.bones {
+            let Ok(mut turn) = bones.get_mut(bone) else {
+                continue;
+            };
+            let strayed = rest.inverse() * turn.rotation;
+            turn.rotation = rest * without_twist(strayed, along);
+        }
     }
 }
 
