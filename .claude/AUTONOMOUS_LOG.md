@@ -1410,3 +1410,29 @@ carried its own copy of the title's cream — and had simply forgotten
 until the dive ended. It snapshots the real colours on the first frame of the
 dive and multiplies, so nothing can be forgotten or contradicted again. The
 scrim fades with it now too.
+
+## The dead zone had to go entirely
+
+Brett, after the first pass: "now when you mouse look to turn the fly azimuth
+clicks through positions instead of smoothly aiming".
+
+That is the quantisation, felt rather than seen. The committed course holds,
+snaps, holds, snaps — and since the velocity now comes round with each snap, the
+steps are felt in where the fly actually goes. Twelve degrees read as float; four
+read as ratcheting. A dead zone cannot be neither: either the control lags the
+hand or the hand feels the steps.
+
+So `SACCADE_ARC` is zero. The quantisation comes out of the control and stays in
+the body — `SACCADE` still snaps the drawn heading, which is the half anybody
+can see, and the camera has always looked along the aim rather than the body.
+
+**The cost, stated plainly:** the polyline path is gone. The course follows the
+aim continuously, so a turn traces a curve rather than a sequence of straight
+segments, and because the body's target is now continuous its 14-degree snap
+only trips on fast flicks. The insect character is thinner than it was. That is
+the trade Brett asked for and the constant to raise if he wants it back.
+
+`CARRY` at one also means velocity direction is locked to the aim: the fly can
+no longer coast in a direction it is not pointing. Immediate, as asked, but the
+third failure mode after float and ratcheting is weightlessness, and 0.6–0.8 is
+the dial for that.

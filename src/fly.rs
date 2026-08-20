@@ -187,28 +187,29 @@ const PITCH_LIMIT: f32 = 88.0_f32.to_radians();
 /// Mouse sensitivity, degrees of turn per unit of mouse motion.
 const SENSITIVITY: f32 = 0.09;
 
-/// The heading error that trips a saccade, radians.
+/// The heading error that trips a saccade, radians. **Zero: the course follows
+/// the aim.**
 ///
-/// **This is the most fly-like thing in the file.** A housefly does not turn —
-/// it flies a straight segment, changes direction in a burst of about fifty
-/// milliseconds, and flies another straight segment. Plotted, a fly's path is a
-/// polyline; almost every flying thing in a game draws a smooth curve instead,
-/// and that difference is most of why game insects look like small aircraft.
+/// A housefly does not turn — it flies a straight segment, changes direction in
+/// a burst of about fifty milliseconds, and flies another straight segment.
+/// Plotted, its path is a polyline. That was modelled here by holding a
+/// *committed course* separate from where the player is aiming and only letting
+/// it snap across once the two had diverged by this arc.
 ///
-/// So the fly keeps a *committed course* separate from where the player is
-/// aiming. Thrust goes along the course. The course does not follow the aim
-/// continuously: it holds until the error passes this arc, then snaps across at
-/// [`SACCADE_RATE`] and commits again.
+/// It does not survive contact with a mouse. At twelve degrees it reads as
+/// float: the crosshair is exactly where you point and the fly carries on where
+/// it was going. At four it reads as ratcheting — hold, snap, hold, snap — and
+/// the snaps are felt rather than seen, because the velocity comes round with
+/// them. A dead zone cannot be neither. Either the control lags the hand or the
+/// hand feels the steps.
 ///
-/// Twelve degrees was not small enough. It reads as float: the aim is exactly
-/// where the mouse points, the fly keeps going where it was going, and the gap
-/// between the two is the whole complaint. Four degrees resolves in a single
-/// tick at [`SACCADE_RATE`], so the course is never more than a mouse-flick
-/// behind the crosshair while still moving in steps rather than a curve.
+/// So the quantisation comes out of the *control* and stays in the *body*:
+/// [`SACCADE`] still snaps the drawn heading in discrete jumps, which is the
+/// half of it anybody can actually see. Aiming is now exactly the mouse.
 ///
-/// **Set it to 0 and flight goes back to a continuous curve**, which is the
-/// honest way to compare the two.
-const SACCADE_ARC: f32 = 4.0_f32.to_radians();
+/// Raise it to put the polyline back — twelve was the original, four the
+/// halfway house — and be clear which of the two complaints is being chosen.
+const SACCADE_ARC: f32 = 0.0;
 
 /// How much of the fly's momentum comes round with a saccade, 0..1.
 ///
