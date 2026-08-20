@@ -17,9 +17,22 @@ behavior and documented decisions as the source of truth.
   house change exposes a concrete collision or traversal bug.
 - Rendering geometry and collision geometry must agree. A visible solid should
   behave as solid, and deliberate fly-sized openings must remain traversable.
-- The house, fixtures, furniture, and clutter are generated in this game with
-  Rust, Bevy primitives, meshes, and mathematics. Do not use Opificium or edit
-  imported Opificium blueprints for this work.
+- The **architecture** is generated in this game with Rust, Bevy primitives,
+  meshes, and mathematics: walls, floors, ceilings, doors, windows, trim, stairs
+  and roof. Two reasons, and both are load-bearing. A wall *is* a box, so its
+  oriented-box collision is exact rather than an approximation — a modelled wall
+  would need a triangle hull, and the house would go from about four thousand
+  exact boxes to several hundred thousand collision triangles. And `house::audit`
+  can only refuse to build what it can measure: room minimums, ceiling heights,
+  the envelope, the traversal flood-fill, a picture with no wall behind it. A
+  hand-modelled house has no such check, and every mistake in it becomes
+  something a person has to happen to notice.
+- The **contents** may be made models: furniture, upholstery, people, plants,
+  clutter. Boxes are wrong for anything without flat faces, which is exactly
+  what these are. **Blender is the tool for making them** — Opificium is in
+  alpha and not ready for this project. Anything from 3daistudio arrives centred
+  in a unit box and wants `use_raw_model` with its real length; anything
+  normalised at source wants plain `use_model`.
 - Build reusable procedural constructors for repeated forms, but do not hide
   useful artistic control behind a prematurely generic generation framework.
 - Preserve existing diagnostic controls such as `FLY_PLAN`, `FLY_CAPTURE`, and
@@ -141,7 +154,8 @@ Do not:
 
 - change the approved flight feel as part of an aesthetic pass
 - invent unrelated game mechanics, characters, objectives, HUD, or progression
-- use Opificium for the procedural house goal
+- model the architecture by hand, for the two reasons under Project Laws
+- use Opificium: it is in alpha and not ready for this project
 - replace working systems merely because another architecture looks cleaner
 - make large rewrites when a focused extension will support continued work
 - remove working features without strong justification

@@ -1978,3 +1978,29 @@ told me; without it I would have gone looking at weights again.
 That is the fourth time this session an edit has silently missed because I
 matched on remembered prose. Anchor on something unique and short, or edit by
 line, and *check the change landed* before reasoning about its effect.
+
+## Decision: Blender for models, Rust for architecture
+
+Brett: "I am okay using blender instead of Opificium", and "Opificium is in alpha
+too. Maybe its just not ready for a project like this".
+
+`CLAUDE.md` is updated, deliberately rather than by drift, because the old law
+named Opificium specifically and said the house was generated in Rust. The line
+that replaces it splits on a boundary that had been emerging on its own anyway:
+
+**Architecture stays generated.** Two load-bearing reasons. A wall *is* a box, so
+its oriented-box collision is exact rather than an approximation — the couch needs
+10,695 triangles to describe a shape a box cannot, and modelling the house would
+take it from about four thousand exact boxes to several hundred thousand collision
+triangles, landing that cost directly on the pixel-perfect-walking problem. And
+`house::audit` can only refuse to build what it can measure: room minimums,
+ceiling heights, the envelope, the traversal flood-fill, a picture with no wall
+behind it. Those laws caught the shelf standing a metre outside the east wall.
+A hand-modelled house has no such check.
+
+**Contents become models.** Boxes are wrong for anything without flat faces, and
+that is exactly furniture, upholstery, people, plants and clutter. Straight lines
+and right angles are *correct* for a building and wrong for a sofa.
+
+Blender is live and confirmed working: 5.2.0 LTS, code execution, PolyHaven
+enabled (strongest on textures and HDRIs rather than models).
