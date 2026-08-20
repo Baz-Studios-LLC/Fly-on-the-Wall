@@ -198,6 +198,14 @@ struct CameFrom(Vec<(String, Handle<Gltf>)>);
 
 /// Which clip is which, once they are all in one graph, so a person can be
 /// told to do something else later without reloading anything.
+///
+/// Kept rather than recomputed because the graph is built once, out of a
+/// folder scan and every file in it: recovering this map later would mean
+/// doing all of that again.
+#[allow(
+    dead_code,
+    reason = "the handle a state machine will change poses with"
+)]
 #[derive(Component)]
 pub struct Repertoire(pub std::collections::HashMap<String, AnimationNodeIndex>);
 
@@ -273,7 +281,12 @@ struct Animated;
 
 /// Somebody who wants to sit on the named model and has not found it yet.
 #[derive(Component)]
-struct NeedsSeat(&'static str);
+struct NeedsSeat {
+    /// The model to sit on.
+    on: &'static str,
+    /// What to do instead if there is nothing there to sit on.
+    otherwise: &'static Posture,
+}
 
 /// A rig that has not been posed yet, and the posture it is waiting for.
 #[derive(Component)]
@@ -380,7 +393,12 @@ fn play_what_he_has(
             repertoire.insert(name.clone(), graph.add_clip(clip.clone(), 1.0, blend));
         }
 
-        let wants = wanted.0.clip.unwrap_or("idle");
+        // `FLY_MOVE=<name>` plays a named clip instead of the one the posture
+        // asks for. There is no other way to look at a movement: a person does
+        // what the room needs, and checking that a walk cycle came out of the
+        // exporter intact should not require making him walk somewhere first.
+        let asked = std::env::var("FLY_MOVE").ok();
+        let wants = asked.as_deref().or(wanted.0.clip).unwrap_or("idle");
         let chosen = repertoire
             .iter()
             .find(|(name, _)| name.contains(wants))
@@ -439,9 +457,18 @@ fn take_a_seat(
     mut folk: Query<(Entity, &NeedsSeat, &mut Transform)>,
 ) {
     for (person, wanted, mut standing) in &mut folk {
-        let Some(furniture) = home.solids.iter().position(|s| s.model == Some(wanted.0)) else {
-            warn!("nobody can sit on {}: no such model in the house", wanted.0);
-            commands.entity(person).remove::<NeedsSeat>();
+        let Some(furniture) = home.solids.iter().position(|s| s.model == Some(wanted.on)) else {
+            // No sofa, so he stands where he is rather than sitting on the
+            // floor in the shape of a chair. Furniture can be removed from the
+            // house and a person should not be the thing that breaks.
+            warn!(
+                "nobody can sit on {}: no such model in the house",
+                wanted.on
+            );
+            commands
+                .entity(person)
+                .insert(NeedsPose(wanted.otherwise))
+                .remove::<NeedsSeat>();
             continue;
         };
         let Some(seat) = home
@@ -614,7 +641,10 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
                 .collect(),
         ),
         NeedsPose(posture),
-        NeedsSeat("models/couch.glb"),
+        NeedsSeat {
+            on: "models/couch.glb",
+            otherwise: &STANDING,
+        },
         NeedsBody { solid: index },
         crate::world::Part { solid: index },
         Name::new("Father"),
