@@ -64,11 +64,25 @@ impl Side {
 #[derive(Component)]
 pub struct Person;
 
+/// One box of a body, and how big it is.
+///
+/// Kept on the entity because the collision is read back out of the finished
+/// hierarchy rather than worked out while building it: a knee's world position
+/// is the product of six local transforms, and re-deriving that by hand is how
+/// the collision and the drawing come apart.
+#[derive(Component)]
+struct Slab(Vec3);
+
+/// A person whose boxes have not been handed to the collision yet.
+#[derive(Component)]
+struct NeedsBody;
+
 pub struct FolkPlugin;
 
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, raise_the_father);
+        app.add_systems(PostStartup, raise_the_father)
+            .add_systems(Update, make_him_solid);
     }
 }
 
@@ -99,6 +113,7 @@ fn block(
     commands
         .spawn((
             ChildOf(parent),
+            Slab(size * 0.5),
             Mesh3d(mesh),
             MeshMaterial3d(paint.clone()),
             Transform::from_translation(at),
@@ -201,6 +216,7 @@ fn raise_the_father(
     let root = commands
         .spawn((
             Person,
+            NeedsBody,
             Name::new("Father"),
             Transform::from_translation(stand + Vec3::new(0.0, hip_height, 0.0))
                 .with_rotation(Quat::from_rotation_y(-0.7)),
@@ -569,5 +585,58 @@ fn raise_the_father(
             Vec3::new(3.0, 5.5, 4.0),
             &skin,
         );
+    }
+}
+
+/// Hand a person's boxes to the collision.
+///
+/// He was scenery: you flew straight through him. His body is boxes and the
+/// house collides as boxes, so this is exact — no hull, no approximation, the
+/// same treatment a wall gets. It costs about fifty solids.
+///
+/// Read out of the built hierarchy rather than computed while building it. A
+/// knee's position in the room is six local transforms multiplied together, and
+/// the moment anyone re-derives that by hand the collision and the drawing
+/// start to disagree. So: wait for the transforms to propagate, then ask them.
+///
+/// He gets no piece, so arrange mode leaves him alone. He is not furniture, and
+/// dragging him would move the boxes and leave the man standing there.
+fn make_him_solid(
+    mut commands: Commands,
+    mut home: ResMut<crate::world::Home>,
+    folk: Query<(Entity, &GlobalTransform), (With<Person>, With<NeedsBody>)>,
+    children: Query<&Children>,
+    parts: Query<(&Slab, &GlobalTransform)>,
+) {
+    for (person, placed) in &folk {
+        // Propagation happens after this schedule on the first frame, so an
+        // unmoved root means the hierarchy is not ready to be measured yet.
+        if placed.translation().length_squared() < 1.0 {
+            continue;
+        }
+        let mut added = 0;
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+            let Ok((slab, at)) = parts.get(entity) else {
+                continue;
+            };
+            let (scale, rotation, translation) = at.to_scale_rotation_translation();
+            let mut solid = crate::world::Solid::between(
+                -slab.0 * scale,
+                slab.0 * scale,
+                crate::world::Stuff::Fabric,
+            );
+            solid.center = translation;
+            solid.rot = rotation;
+            // Drawn by his own entities; these are only what the fly hits.
+            solid.unseen = true;
+            home.solids.push(solid);
+            added += 1;
+        }
+        info!("a person is solid: {added} boxes");
+        commands.entity(person).remove::<NeedsBody>();
     }
 }
