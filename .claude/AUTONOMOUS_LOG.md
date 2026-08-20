@@ -1775,3 +1775,40 @@ downstream of "is the bone turning, and can turning it move anything".
 One more thing the log showed: under a capture `travelled` is 0.0000 cm a frame,
 because nothing presses a key. `stepping` only reaches one because `FLY_GAIT`
 forces it. Captures can prove the pose is wired; only play proves the gait runs.
+
+## The axis was wrong, and a picture with circles on it said so
+
+Brett circled the parts that were not moving: on each leg, a short stub at the
+body and the long femur beyond it. Everything distal to that moved.
+
+**Which way a limb has to turn depends on which way it points.** A fly's legs
+splay *outward*, not down. Sweeping them about the body's lateral axis — which is
+right for an arm hanging beside a torso — lifts a laterally-reaching leg instead
+of swinging it, and lifting is nearly invisible from above. The tibia and tarsus
+*do* point downward, so that same rotation swung them properly, which is exactly
+why they alone appeared animated. A leg that reaches sideways protracts about the
+**vertical**.
+
+Folding likewise happens in the leg's own plane, which for a leg reaching out and
+down is about the fore-and-aft axis, not the lateral one.
+
+The short stub at the body was the hip feather: every vertex inside it is one the
+body owns and the leg cannot move. Sixteen per cent of each leg was pinned there;
+it is nine now.
+
+### What this problem cost, and what it bought
+
+Five rounds, four wrong explanations, and every wrong one was a guess about the
+cause made from looking at a render. What actually resolved it, in order:
+
+1. printing where the skin weight landed → caught two real weighting bugs
+2. printing the femur's driven angle → proved the bone was turning all along
+3. Brett's annotated screenshot → localised it to *which segments*, which is
+   what finally identified the axis
+
+The general rule earned here: **when a report and a capture disagree, measure the
+signal between them.** And when a diagnostic viewpoint cannot show the thing being
+judged, that is a fault in the tooling, not a reason to squint. `FLY_INSPECT` now
+takes an elevation — `FLY_INSPECT=35:42` — because a fore-and-aft swing is
+invisible from the side of the swing, exactly as a twenty-degree stoop was
+invisible head-on.

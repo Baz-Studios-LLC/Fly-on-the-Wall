@@ -85,8 +85,17 @@ const ROLL_RATE: f32 = 5.0;
 /// seven-millimetre silhouette from the chase camera is hopeless — the first
 /// attempt at this fly read as facing backwards and no in-game screenshot was
 /// ever going to show why.
-pub fn inspect_azimuth() -> Option<f32> {
-    std::env::var("FLY_INSPECT").ok()?.parse::<f32>().ok()
+pub fn inspect_azimuth() -> Option<(f32, f32)> {
+    let raw = std::env::var("FLY_INSPECT").ok()?;
+    let (round, up) = match raw.split_once(':') {
+        Some((a, b)) => (a, b.trim().parse().ok()?),
+        // Near level by default. An elevation is worth asking for because a
+        // fault can hide entirely at one: twenty degrees of forward lean is
+        // invisible head-on, and a leg swinging fore and aft is invisible from
+        // the side of the swing.
+        None => (raw.as_str(), 8.0f32),
+    };
+    Some((round.trim().parse().ok()?, up))
 }
 
 /// How far the inspection camera sits from the fly, in centimetres.
@@ -526,9 +535,10 @@ fn place_the_eye(
 
     // Inspection overrides everything: fixed offset, no smoothing, looking
     // straight at the fly.
-    if let Some(azimuth) = inspect_azimuth() {
-        let offset =
-            Quat::from_rotation_y(azimuth.to_radians()) * Vec3::new(0.0, 0.14, 1.0).normalize();
+    if let Some((azimuth, elevation)) = inspect_azimuth() {
+        let up = elevation.to_radians().clamp(-1.5, 1.5);
+        let offset = Quat::from_rotation_y(azimuth.to_radians())
+            * Vec3::new(0.0, up.sin(), up.cos()).normalize();
         transform.translation = position + offset * INSPECT_DISTANCE;
         transform.look_at(position, Vec3::Y);
         if let Projection::Perspective(perspective) = &mut *projection {

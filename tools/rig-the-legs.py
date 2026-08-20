@@ -38,12 +38,15 @@ LEAST = 120
 # Weight feathers into the body over this fraction of the leg's length, so the
 # hip does not tear open when the femur swings.
 #
+# Kept small: every vertex inside it is one the body owns and the leg cannot
+# move, and the stub left pinned at the top of each leg is visible.
+#
 # A fraction, not a distance. It was 0.085 in absolute units against legs only
 # 0.17 to 0.23 long, so the feather covered the whole top segment and handed it
 # all to the body: the lower leg animated and the upper sat perfectly still.
 # The tool prints where the weight landed now, which is the check that catches
 # it without anybody having to notice by eye.
-HIP = 0.16
+HIP = 0.09
 # Where the two joints sit, as fractions of root-to-foot: femur/tibia, then
 # tibia/tarsus. A fly's leg has three segments and the tarsus is the short
 # jointed foot on the end of it.

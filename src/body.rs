@@ -748,8 +748,17 @@ fn walk_the_model_legs(
     };
     *stepping += (want - *stepping) * blend;
 
+    // Which way a leg has to turn depends on which way it points, and a fly's
+    // legs splay outward, not down.
+    //
+    // The sweep was about the body's lateral axis, which is right for a limb
+    // hanging below a body and wrong for one sticking out beside it: it lifted
+    // the femur instead of swinging it, and lifting is invisible from above.
+    // The tibia and tarsus *do* point downward, which is why they alone looked
+    // animated — the same rotation swung them properly. A leg that reaches
+    // sideways protracts about the vertical.
     let along = fly.body * Vec3::NEG_Z;
-    let lateral = fly.body * Vec3::X;
+    let upright = fly.body * Vec3::Y;
     for (entity, leg, mut pose) in &mut legs {
         let Some(frame) = parents
             .get(entity)
@@ -759,7 +768,7 @@ fn walk_the_model_legs(
             continue;
         };
         let (_, turn, _) = frame.to_scale_rotation_translation();
-        let sideways = turn.inverse() * lateral;
+        let vertical = turn.inverse() * upright;
         let forward = turn.inverse() * along;
 
         let t = (*gait + leg.phase).fract();
@@ -783,20 +792,22 @@ fn walk_the_model_legs(
                         t
                     );
                 }
-                Quat::from_axis_angle(sideways, sweep)
+                Quat::from_axis_angle(vertical, sweep)
                     * Quat::from_axis_angle(forward, lift)
                     * leg.rest
             }
             // The tibia folds through the return and straightens to plant. It
             // never goes fully straight: a leg at full stretch has no plane to
             // bend in and snaps between solutions.
+            // Folding happens in the leg's own plane, which for a leg reaching
+            // outward and down is the plane about the fore-and-aft axis.
             Segment::Tibia => {
-                Quat::from_axis_angle(sideways, FOLD * swinging * *stepping) * leg.rest
+                Quat::from_axis_angle(forward, FOLD * swinging * *stepping) * leg.rest
             }
             // And the tarsus gives some of that back, so the foot arrives flat
             // instead of tucked under the leg it hangs from.
             Segment::Tarsus => {
-                Quat::from_axis_angle(sideways, -FLATTEN * swinging * *stepping) * leg.rest
+                Quat::from_axis_angle(forward, -FLATTEN * swinging * *stepping) * leg.rest
             }
         };
     }
