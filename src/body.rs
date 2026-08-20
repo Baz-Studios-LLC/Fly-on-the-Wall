@@ -203,6 +203,8 @@ impl Plugin for BodyPlugin {
                 beat_the_model_wings,
                 find_the_model_legs,
                 walk_the_model_legs,
+                find_the_model_head,
+                turn_the_model_head,
             )
                 .chain(),
         );
@@ -875,6 +877,130 @@ fn walk_the_model_legs(
                 Quat::from_axis_angle(forward, fold * leg.side) * leg.rest
             }
         };
+    }
+}
+
+/// The fly's head, and the pose it sits in at rest.
+#[derive(Component)]
+struct ModelHead {
+    rest: Quat,
+}
+
+/// Find the head bone added by `tools/rig-the-fly.py`.
+///
+/// The rig's own `tripo::Head_0` is not it: that owns eight per cent of the
+/// head's geometry in a patch that stops at the centreline, while seventy-eight
+/// per cent of the head belongs to `bone_7`, which is the body. Turning the one
+/// the rig provides turns a lopsided scrap.
+fn find_the_model_head(
+    mut commands: Commands,
+    flies: Query<Entity, With<Fly>>,
+    children: Query<&Children>,
+    names: Query<&Name>,
+    poses: Query<&Transform>,
+    mut looked: Local<bool>,
+) {
+    if worn() != Worn::Rigged || *looked {
+        return;
+    }
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+    let mut stack = vec![fly];
+    while let Some(entity) = stack.pop() {
+        if let Ok(kids) = children.get(entity) {
+            stack.extend(kids.iter());
+        }
+        if !names.get(entity).is_ok_and(|n| n.as_str() == "head") {
+            continue;
+        }
+        let Ok(rest) = poses.get(entity) else {
+            continue;
+        };
+        commands.entity(entity).insert(ModelHead {
+            rest: rest.rotation,
+        });
+        *looked = true;
+        info!("the rigged fly can turn its head");
+        return;
+    }
+}
+
+/// Look where you are going.
+///
+/// A fly's head is not bolted to its thorax. It leads: through a turn the head
+/// arrives at the new heading before the body has finished swinging to it, and
+/// in a drift or a sideslip it points along the *travel* rather than along the
+/// body. That lead is most of what makes the saccade read as an animal deciding
+/// something rather than a model being rotated.
+///
+/// Only a lead, though, and a clamped one. The head is turned a fraction of the
+/// way toward the course and no further than a real neck goes — a head that
+/// swivels to look straight down its own flank is a bird.
+fn turn_the_model_head(
+    time: Res<Time>,
+    flies: Query<&Fly>,
+    parents: Query<&ChildOf>,
+    placed: Query<&GlobalTransform>,
+    mut heads: Query<(Entity, &ModelHead, &mut Transform)>,
+    mut ticks: Local<u32>,
+) {
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+    /// How much of the way to the course the head goes.
+    const LEAD: f32 = 0.55;
+    /// And the furthest a neck bends, radians.
+    const NECK: f32 = 0.46;
+    /// How quickly it gets there. Fast: heads snap.
+    const RATE: f32 = 16.0;
+
+    let forward = fly.body * Vec3::NEG_Z;
+    // Where the fly is actually going, which is not always where it points.
+    let travel = fly.vel.normalize_or_zero();
+    let look = if fly.vel.length() > 6.0 {
+        travel
+    } else {
+        fly.course
+    };
+    let mut look = look.normalize_or(forward);
+
+    // `FLY_LOOK=<degrees>` swings the look direction off the body's own, since
+    // a perched fly is going nowhere and a head with nothing to look at cannot
+    // be judged. The same reason `FLY_GAIT` and `FLY_BEAT` exist.
+    if let Ok(forced) = std::env::var("FLY_LOOK")
+        && let Ok(degrees) = forced.parse::<f32>()
+    {
+        look = Quat::from_rotation_y(degrees.to_radians()) * forward;
+    }
+
+    let swing = Quat::from_rotation_arc(forward, look);
+    let (axis, angle) = swing.to_axis_angle();
+    let angle = (angle * LEAD).clamp(-NECK, NECK);
+
+    if std::env::var("FLY_STEP").is_ok() {
+        *ticks += 1;
+        if *ticks % 40 == 0 {
+            info!(
+                "head: looking {:.0} deg off the body, {} heads wired",
+                angle.to_degrees(),
+                heads.iter().count()
+            );
+        }
+    }
+
+    let blend = 1.0 - (-RATE * time.delta_secs()).exp();
+    for (entity, head, mut pose) in &mut heads {
+        let Some(frame) = parents
+            .get(entity)
+            .ok()
+            .and_then(|c| placed.get(c.parent()).ok())
+        else {
+            continue;
+        };
+        let (_, turn, _) = frame.to_scale_rotation_translation();
+        let want = Quat::from_axis_angle(turn.inverse() * axis, angle) * head.rest;
+        pose.rotation = pose.rotation.slerp(want, blend);
     }
 }
 

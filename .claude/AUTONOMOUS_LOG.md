@@ -1939,3 +1939,42 @@ her for free, because they are keyed on bone names and she has his bones.
 - She wanders her bedroom and he wanders the great room. Neither can leave the
   room they are in, because a straight line is the only path either can test.
 - The turntable picks whichever person it finds first, which is now arbitrary.
+
+## The fly's head, and looking where you are going
+
+Brett asked whether the head was rigged. Measured: not usefully. Seventy-eight
+per cent of the head's geometry belongs to `bone_7`, which is the body, and the
+`tripo::Head_0` the rig does supply owns eight per cent of it — seventy-five
+vertices in a patch whose z range stops dead at the centreline. Turning that
+turns a lopsided scrap.
+
+So the tool grew a head, and is now `tools/rig-the-fly.py` rather than
+`rig-the-legs.py`. **Where the neck is was measured, not guessed**: sliced across
+the body, the vertex count collapses to 71 at x≈0.17 and climbs back to 547 at
+the eyes. That trough is the neck; everything forward of it is head, and the
+pivot goes *at* the neck rather than in the middle of the head, or turning it
+swings the head sideways instead of rotating it.
+
+It leads rather than follows, which is the fly-like part: through a turn the head
+arrives at the new heading before the body has finished swinging to it, and in a
+drift it points along the *travel* rather than along the body. Fifty-five per cent
+of the way, capped at twenty-six degrees — a head that swivels to look down its
+own flank is a bird.
+
+### Two bugs, and the same lesson twice
+
+**The head swallowed both front legs — a hundred per cent of them.** The exclusion
+test asked each vertex for its dominant bone, and read the weights *as they were
+before the leg pass rewrote them*, so no leg vertex looked like a leg vertex. The
+leg pass now records what it claimed in a set, which is the only version that
+cannot go stale.
+
+**`FLY_LOOK` was never in the build.** A string replacement missed — the file said
+`let look` where I had written `let mut look` — so the switch silently did
+nothing, and the first capture pair was identical for a completely different
+reason than the one I was investigating. The log said `0 deg` and that is what
+told me; without it I would have gone looking at weights again.
+
+That is the fourth time this session an edit has silently missed because I
+matched on remembered prose. Anchor on something unique and short, or edit by
+line, and *check the change landed* before reasoning about its effect.

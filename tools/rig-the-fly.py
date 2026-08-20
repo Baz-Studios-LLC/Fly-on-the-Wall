@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Give the fly six legs it can actually move.
+"""Give the fly six legs and a head it can actually move.
 
 The supplied rig cannot drive them. Weighing every vertex against every bone
 says why: the front-left leg is 59% weighted to `bone_7`, which is the *body*,
@@ -20,7 +20,16 @@ Nothing else is touched: same mesh, same materials, same wing bones, same
 existing skeleton. Eighteen nodes are appended and eighteen columns of inverse
 bind matrices with them.
 
-    python3 tools/rig-the-legs.py in.glb out.glb
+The head is the same story: 78% of the head's geometry is weighted to `bone_7`,
+which is the body, and the `tripo::Head_0` the rig does provide owns 8% of it —
+75 vertices in a patch that stops dead at the centreline. Turning that turns a
+lopsided scrap.
+
+Where the neck is gets measured rather than guessed. Sliced across the body, the
+vertex count collapses to 71 at x≈0.17 and climbs to 547 at the eyes: that trough
+is the neck, and everything forward of it is head.
+
+    python3 tools/rig-the-fly.py in.glb out.glb
 """
 
 import json
@@ -53,6 +62,13 @@ HIP = 0.09
 JOINTS = (0.38, 0.74)
 # How much of the leg's length each handover is spread over.
 BLEND = 0.20
+# Where the head is cut from the body, along the model's own length. Measured:
+# the body's vertex count per slice bottoms out here and doubles again at the
+# eyes, which is what a neck looks like from the inside.
+NECK = 0.20
+# And how far the handover to the body is spread, so the neck bends rather than
+# hinging.
+NECK_BLEND = 0.09
 # How far *inboard of the leg* the femur's pivot is planted, as a fraction of
 # the leg's length.
 #
@@ -272,6 +288,14 @@ def main(src, dst):
     # -- re-skin -------------------------------------------------------------
     body_slot = skin["joints"].index(body)
     moved = 0
+    # What the leg pass has claimed, so the head pass cannot claim it again.
+    #
+    # This was worked out by re-reading each vertex's dominant bone, and that
+    # read the weights as they were *before* the legs were re-skinned — so no
+    # leg vertex looked like a leg vertex, and the head swallowed both front
+    # legs whole: a hundred per cent of them. Keeping the set is the only
+    # version of this that cannot go stale.
+    claimed = set()
     for stem, chain, depth, group in added:
         slots = [skin["joints"].index(b) for b in chain]
         share = [0.0, 0.0, 0.0, 0.0]
@@ -303,6 +327,7 @@ def main(src, dst):
             for d in range(3):
                 share[d] += w[d]
             share[3] += w_body
+            claimed.add(k)
             moved += 1
         total = sum(share) or 1.0
         print(
@@ -316,12 +341,58 @@ def main(src, dst):
             if part / total < 0.08:
                 print(f"      ^ the {name} has almost no weight: it will not appear to move")
 
+    # -- the head ------------------------------------------------------------
+    #
+    # Everything forward of the neck that is not a leg or a wing. The pivot goes
+    # *at* the neck, not in the middle of the head, or turning it would swing
+    # the head sideways instead of rotating it on its own axis.
+    wings = {skin["joints"].index(names[n]) for n in ("bone_12", "bone_14") if n in names}
+    head = []
+    for k in range(len(pos)):
+        if k in claimed:
+            continue
+        if any(joints[k][0][c] in wings and weights[k][0][c] > 0.2 for c in range(4)):
+            continue
+        if pos[k][0] > NECK - NECK_BLEND:
+            head.append(k)
+    if head:
+        band = [k for k in head if abs(pos[k][0] - NECK) < 0.03]
+        if not band:
+            band = sorted(head, key=lambda k: abs(pos[k][0] - NECK))[:12]
+        neck = [sum(pos[k][d] for k in band) / len(band) for d in range(3)]
+        nodes.append({"name": "head", "translation": apply(to_local, neck)})
+        head_node = len(nodes) - 1
+        nodes[anchor].setdefault("children", []).append(head_node)
+        skin["joints"].append(head_node)
+        parent[head_node] = anchor
+        head_slot = skin["joints"].index(head_node)
+
+        share = [0.0, 0.0]
+        for k in head:
+            t = min(1.0, max(0.0, (pos[k][0] - (NECK - NECK_BLEND)) / NECK_BLEND))
+            w = t * t * (3 - 2 * t)
+            _, at_j, fj, nj = joints[k]
+            _, at_w, fw, nw = weights[k]
+            struct.pack_into("<" + fj * nj, bn, at_j, head_slot, body_slot, 0, 0)
+            struct.pack_into("<" + fw * nw, bn, at_w, w, 1.0 - w, 0.0, 0.0)
+            share[0] += w
+            share[1] += 1.0 - w
+            moved += 1
+        total = sum(share) or 1.0
+        print(
+            f"  {'head':18s} {len(head):4d} verts at"
+            f" ({neck[0]:+.2f},{neck[1]:+.2f},{neck[2]:+.2f})"
+            f"   head {100 * share[0] / total:4.0f}%  body {100 * share[1] / total:4.0f}%"
+        )
+
     # -- inverse bind matrices for the new bones -----------------------------
     old = accessor(js, bn, skin["inverseBindMatrices"])
     mats = [list(v[0]) for v in old]
     for _, chain, _, _ in added:
         for bone in chain:
             mats.append(invert(world(bone)))
+    if head:
+        mats.append(invert(world(head_node)))
 
     payload = b"".join(struct.pack("<16f", *m) for m in mats)
     while len(bn) % 4:
@@ -349,7 +420,7 @@ def main(src, dst):
     out += struct.pack("<II", len(blob), 0x4E4F534A) + blob
     out += struct.pack("<II", len(bn), 0x004E4942) + bytes(bn)
     open(dst, "wb").write(out)
-    print(f"wrote {dst}: {3 * len(added)} new leg bones, {moved} vertices re-skinned")
+    print(f"wrote {dst}: {3 * len(added)} leg bones and a head, {moved} vertices re-skinned")
     return 0
 
 
