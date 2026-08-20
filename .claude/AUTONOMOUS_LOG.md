@@ -1370,3 +1370,43 @@ thing rather than from where this session found it. Saves are cumulative.
 `FLY_SAVE=1` writes the arrangement on startup and compares it with what was
 read, so the round trip can be exercised without a keyboard. It reports "reads
 back exactly as written", which the old code could not have done.
+
+## Aiming stopped feeling floaty
+
+Brett: "the mouse aim when flying feels floaty and should be mouse perfect,
+flies change direction immediately".
+
+The aim itself was already exact — `look_around` writes yaw and pitch straight
+from the mouse with no smoothing, and the chase camera does not smooth its look
+target either. The float was downstream, in two places:
+
+**The dead zone.** Thrust goes along a *committed course* that only snaps to the
+aim once the error passes `SACCADE_ARC`, which was twelve degrees. The crosshair
+is exactly where you point and the fly keeps going where it was going, and that
+gap is the whole complaint. Four degrees now, which resolves in a single tick at
+1600°/s, so the course is never more than a flick behind the crosshair and still
+moves in steps rather than a curve.
+
+**Momentum left behind.** A saccade turned the course and nothing else, so the
+new direction only took effect as fast as thrust could build along it and drag
+could bleed the old one off. That is an aircraft banking. A fly redirects its
+thrust and keeps its speed. The same rotation that turns the course now turns
+the velocity with it, at `CARRY`, which is one.
+
+The polyline character is untouched — the course still holds and snaps, and
+setting `SACCADE_ARC` to zero still gives the honest continuous-curve
+comparison. Feel is Brett's call; both constants are named and adjacent.
+
+## `FLY_DIVE` was capturing a dive with no title in it
+
+`raise_the_sign` only spawned while `Stage::Title`, and `FLY_DIVE` starts part
+way through `Stage::Diving` — so every capture of the dive came back with no
+title screen in it at all. Which meant a fade fix looked verified when the thing
+being checked had merely gone missing. It spawns during the dive too now.
+
+The fade itself was re-specifying each colour as a literal — the border's fade
+carried its own copy of the title's cream — and had simply forgotten
+`BackgroundColor`, so the New Game button left a dark rectangle over the kitchen
+until the dive ended. It snapshots the real colours on the first frame of the
+dive and multiplies, so nothing can be forgotten or contradicted again. The
+scrim fades with it now too.

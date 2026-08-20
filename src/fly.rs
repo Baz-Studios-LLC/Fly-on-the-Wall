@@ -200,10 +200,29 @@ const SENSITIVITY: f32 = 0.09;
 /// continuously: it holds until the error passes this arc, then snaps across at
 /// [`SACCADE_RATE`] and commits again.
 ///
-/// Twelve degrees is small enough that it reads as responsive rather than
-/// laggy. **Set it to 0 and flight goes back to a continuous curve**, which is
-/// the honest way to compare the two.
-const SACCADE_ARC: f32 = 12.0_f32.to_radians();
+/// Twelve degrees was not small enough. It reads as float: the aim is exactly
+/// where the mouse points, the fly keeps going where it was going, and the gap
+/// between the two is the whole complaint. Four degrees resolves in a single
+/// tick at [`SACCADE_RATE`], so the course is never more than a mouse-flick
+/// behind the crosshair while still moving in steps rather than a curve.
+///
+/// **Set it to 0 and flight goes back to a continuous curve**, which is the
+/// honest way to compare the two.
+const SACCADE_ARC: f32 = 4.0_f32.to_radians();
+
+/// How much of the fly's momentum comes round with a saccade, 0..1.
+///
+/// A saccade used to turn the *course* and leave the velocity behind, so the
+/// new direction only took effect as fast as thrust could build along it and
+/// drag could bleed the old one off. That is a small aircraft banking, and it
+/// is the other half of why aiming felt floaty.
+///
+/// A fly redirects its thrust and keeps its speed: the body swings round and
+/// the whole animal goes the new way at once. So the same rotation that turns
+/// the course turns the velocity with it. At one it is total, which is what
+/// "flies change direction immediately" asks for; below one it reads as
+/// something heavier.
+const CARRY: f32 = 1.0;
 
 /// How fast a saccade crosses, radians per second.
 ///
@@ -574,12 +593,23 @@ fn steer(fly: &mut Fly, dt: f32) {
     }
     let step = SACCADE_RATE * dt;
     let axis = fly.course.cross(aim);
-    if error <= step || axis.length_squared() < 1e-12 {
-        fly.course = aim;
+    let swing = if error <= step || axis.length_squared() < 1e-12 {
         fly.saccading = false;
-        return;
+        let swing = Quat::from_rotation_arc(fly.course, aim);
+        fly.course = aim;
+        swing
+    } else {
+        let swing = Quat::from_axis_angle(axis.normalize(), step);
+        fly.course = (swing * fly.course).normalize();
+        swing
+    };
+    // The speed comes round with the heading. Without this the turn is only a
+    // change of intent, and the fly carries on across the room while thrust
+    // slowly builds the other way.
+    if CARRY > 0.0 {
+        let carried = Quat::IDENTITY.slerp(swing, CARRY);
+        fly.vel = carried * fly.vel;
     }
-    fly.course = (Quat::from_axis_angle(axis.normalize(), step) * fly.course).normalize();
 }
 
 /// Quake's accelerate: it limits only the *projection* of velocity onto the wish

@@ -54,6 +54,22 @@ struct StartButton;
 #[derive(Component)]
 struct TitleFade;
 
+/// The colours a title element had before the dive started.
+///
+/// Snapshotted rather than written down twice. The fade used to re-specify each
+/// colour as a literal — the border's fade carried its own copy of
+/// `(0.86, 0.84, 0.78)` — which means changing how the title looks changes it
+/// everywhere except during the two seconds anybody is watching it leave. The
+/// button's background was simply forgotten, so a dark rectangle sat over the
+/// kitchen until the dive ended.
+#[derive(Component, Clone, Copy, Default)]
+struct FadesFrom {
+    image: Option<Color>,
+    text: Option<Color>,
+    border: Option<Color>,
+    background: Option<Color>,
+}
+
 pub struct TitlePlugin;
 
 impl Plugin for TitlePlugin {
@@ -90,12 +106,20 @@ fn raise_the_sign(
     stage: Res<Stage>,
     already: Query<(), With<TitleUi>>,
 ) {
-    if !matches!(*stage, Stage::Title) || !already.is_empty() {
+    // During the dive as well as before it, because `FLY_DIVE` starts part way
+    // through one and the sign is the whole reason to capture it. It only ever
+    // spawns once — the despawn happens on the way to `Playing` — and without
+    // this every capture of the dive came back with no title in it, which made
+    // a fade look fixed when it had merely gone missing.
+    if !matches!(*stage, Stage::Title | Stage::Diving(_)) || !already.is_empty() {
         return;
     }
     commands
         .spawn((
             TitleUi,
+            // The scrim fades with everything else. It was left out, and a
+            // curtain that stays up while the sign goes is worse than either.
+            TitleFade,
             Node {
                 width: Val::Percent(100.0),
                 height: Val::Percent(100.0),
@@ -184,9 +208,17 @@ fn dive(
     mut stage: ResMut<Stage>,
     time: Res<Time>,
     mut ui: Query<(Entity, &mut Node), With<TitleUi>>,
-    mut images: Query<&mut ImageNode, With<TitleFade>>,
-    mut texts: Query<&mut TextColor, With<TitleFade>>,
-    mut borders: Query<&mut BorderColor, With<TitleFade>>,
+    mut fading: Query<
+        (
+            Entity,
+            Option<&mut ImageNode>,
+            Option<&mut TextColor>,
+            Option<&mut BorderColor>,
+            Option<&mut BackgroundColor>,
+            Option<&FadesFrom>,
+        ),
+        With<TitleFade>,
+    >,
     mut cursors: Query<&mut CursorOptions, With<PrimaryWindow>>,
 ) {
     let Stage::Diving(t) = *stage else {
@@ -196,14 +228,33 @@ fn dive(
     // The sign goes out over the first half, so it is gone well before the
     // camera arrives and the last second of the move is unobstructed.
     let fade = (1.0 - t / (DIVE * 0.5)).clamp(0.0, 1.0);
-    for mut image in &mut images {
-        image.color = Color::srgba(1.0, 1.0, 1.0, fade);
-    }
-    for mut text in &mut texts {
-        text.0 = text.0.with_alpha(fade * 0.9);
-    }
-    for mut border in &mut borders {
-        *border = BorderColor::all(Color::srgba(0.86, 0.84, 0.78, fade * 0.5));
+    for (entity, image, text, border, background, was) in &mut fading {
+        // First frame of the dive: remember what everything looked like, so the
+        // fade is a multiplication rather than a second opinion about the
+        // title's colours.
+        let base = was.copied().unwrap_or_else(|| {
+            let base = FadesFrom {
+                image: image.as_ref().map(|i| i.color),
+                text: text.as_ref().map(|t| t.0),
+                border: border.as_ref().map(|b| b.top),
+                background: background.as_ref().map(|b| b.0),
+            };
+            commands.entity(entity).insert(base);
+            base
+        });
+        let dimmed = |c: Color| c.with_alpha(c.alpha() * fade);
+        if let (Some(mut image), Some(base)) = (image, base.image) {
+            image.color = dimmed(base);
+        }
+        if let (Some(mut text), Some(base)) = (text, base.text) {
+            text.0 = dimmed(base);
+        }
+        if let (Some(mut border), Some(base)) = (border, base.border) {
+            *border = BorderColor::all(dimmed(base));
+        }
+        if let (Some(mut background), Some(base)) = (background, base.background) {
+            background.0 = dimmed(base);
+        }
     }
 
     if t >= DIVE {
