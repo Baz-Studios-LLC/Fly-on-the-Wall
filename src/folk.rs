@@ -294,10 +294,39 @@ fn movements(model: &str) -> Vec<(String, String)> {
 /// bend the animator wrote and removes only the spin the retarget added.
 const UNROLL: &[&str] = &["L_Forearm", "R_Forearm"];
 
+/// Bones the retarget leaves permanently bent, and the turn that puts them
+/// back, as Euler XYZ in the bone's own frame.
+///
+/// The same fault as [`UNROLL`] and it shows up as a stoop: head hanging, spine
+/// curved, "he looks like he has scoliosis". Measured against the rig's bind
+/// pose, `NeckTwist01` sits 12.7 degrees forward through the whole idle and the
+/// three spine bones add three and a half each — some twenty-three degrees of
+/// lean, and thirty-four in the walk.
+///
+/// What makes it correctable is that it barely moves: the neck's deviation
+/// ranges over four degrees across fifteen seconds and the spine's over one.
+/// It is an offset, not a performance. Subtracting a constant therefore takes
+/// out the stoop and leaves every bit of the animation intact, which is why
+/// this is a fixed turn rather than a pull back toward the bind pose — that
+/// would flatten a sitting clip into standing.
+///
+/// The walk legitimately leans further than the idle, so it is deliberately
+/// under-corrected: what is removed is roughly the idle's offset, which leaves
+/// a walker with the forward lean a walker should have.
+const STRAIGHTEN: &[(&str, [f32; 3])] = &[
+    ("Waist", [0.052, 0.0, 0.0]),
+    ("Spine01", [0.052, 0.0, 0.0]),
+    ("Spine02", [0.052, 0.0, 0.0]),
+    ("NeckTwist01", [0.216, 0.0, 0.0]),
+];
+
 /// A bone that should not roll, the pose it rests in, and its own length axis.
 #[derive(Component)]
 struct Steady {
-    bones: Vec<(Entity, Quat, Vec3)>,
+    /// Bone, its rest pose, and the axis its roll is taken about.
+    rolling: Vec<(Entity, Quat, Vec3)>,
+    /// Bone, its rest pose, and the constant turn added back to it.
+    bent: Vec<(Entity, Quat, Quat)>,
 }
 
 /// Split off the spin about `axis` and return what is left.
@@ -501,6 +530,7 @@ fn play_what_he_has(
         // Read the rest pose *now*, before the graph is inserted and a clip
         // has ever written to these bones. One frame later it is gone.
         let mut steady = Vec::new();
+        let mut bent = Vec::new();
         let mut stack = vec![person];
         while let Some(entity) = stack.pop() {
             let kids: Vec<Entity> = children
@@ -508,15 +538,22 @@ fn play_what_he_has(
                 .map(|k| k.iter().collect())
                 .unwrap_or_default();
             stack.extend(kids.iter().copied());
-            if !names
-                .get(entity)
-                .is_ok_and(|n| UNROLL.contains(&n.as_str()))
-            {
+            let Ok(name) = names.get(entity) else {
                 continue;
-            }
+            };
             let Ok(rest) = local.get(entity) else {
                 continue;
             };
+            if let Some((_, back)) = STRAIGHTEN.iter().find(|(bone, _)| *bone == name.as_str()) {
+                bent.push((
+                    entity,
+                    rest.rotation,
+                    Quat::from_euler(EulerRot::XYZ, back[0], back[1], back[2]),
+                ));
+            }
+            if !UNROLL.contains(&name.as_str()) {
+                continue;
+            }
             // Which way the bone runs is where its longest child sits. On this
             // rig a forearm's hand is at (0, 0.14, 0), so the axis is its own
             // local y — and reading it rather than assuming it is what lets a
@@ -530,9 +567,16 @@ fn play_what_he_has(
                 .normalize_or(Vec3::Y);
             steady.push((entity, rest.rotation, along));
         }
-        if !steady.is_empty() {
-            info!("a person's roll is held on {} bones", steady.len());
-            commands.entity(person).insert(Steady { bones: steady });
+        if !steady.is_empty() || !bent.is_empty() {
+            info!(
+                "a person's retarget is corrected: {} bones unrolled, {} straightened",
+                steady.len(),
+                bent.len()
+            );
+            commands.entity(person).insert(Steady {
+                rolling: steady,
+                bent,
+            });
         }
 
         commands
@@ -798,12 +842,22 @@ fn breathe(clock: Res<Time>, mut bones: Query<(&Idling, &mut Transform)>) {
 /// has had its say.
 fn hold_the_roll(steady: Query<&Steady>, mut bones: Query<&mut Transform>) {
     for holding in &steady {
-        for &(bone, rest, along) in &holding.bones {
+        for &(bone, rest, along) in &holding.rolling {
             let Ok(mut turn) = bones.get_mut(bone) else {
                 continue;
             };
             let strayed = rest.inverse() * turn.rotation;
             turn.rotation = rest * without_twist(strayed, along);
+        }
+        for &(bone, rest, back) in &holding.bent {
+            let Ok(mut turn) = bones.get_mut(bone) else {
+                continue;
+            };
+            // Composed onto the deviation rather than onto the bone, so what is
+            // removed is a constant and everything the clip does around it
+            // survives.
+            let strayed = rest.inverse() * turn.rotation;
+            turn.rotation = rest * (back * strayed);
         }
     }
 }

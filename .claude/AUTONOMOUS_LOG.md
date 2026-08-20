@@ -1462,3 +1462,35 @@ translation at all — `shift` already resizes about floor level so a shrinking
 couch stays on the floor. The old `-3.89` was itself an artefact of measuring
 centres. The unscaled pieces were unaffected and were left alone, including a
 genuine 54 cm lift on 3731. A copy of the file as found is in the scratchpad.
+
+## The stoop
+
+Brett: "the dad looks like he has scoliosis, lol". Head hanging, spine curved.
+
+Same fault as the forearm roll, and the same lesson about viewpoints: the idle
+was checked from the front, where a forward lean is very nearly invisible.
+Twenty degrees of stoop reads as nothing head-on and as a hunchback from the
+side. The turntable's angle is now part of what gets checked, not an
+afterthought.
+
+Measured against the rig's bind pose, `NeckTwist01` sits 12.7 degrees forward
+through the whole idle and the three spine bones add three and a half each —
+about twenty-three degrees, and thirty-four in the walk.
+
+What makes it correctable is that it barely moves. The neck's deviation ranges
+over four degrees across fifteen seconds; the spine's over one. It is an offset,
+not a performance. So a constant is subtracted, composed onto the deviation
+rather than onto the bone, which takes out the stoop and leaves every bit of the
+animation intact.
+
+Deliberately *not* a pull back toward the bind pose. That would work here and
+would flatten a sitting clip into standing the moment one arrives.
+
+Under-corrected on purpose: the walk legitimately leans further than the idle,
+so removing roughly the idle's offset leaves a walker with the forward lean a
+walker should have.
+
+Three retarget faults found in these two files now — forearm roll, spine stoop,
+and the baked travel. All three were constants sitting under the animation, and
+all three were measured against the rig's own bind pose rather than guessed at.
+`FLY_MOVE=none` is the tool that makes that comparison possible.
