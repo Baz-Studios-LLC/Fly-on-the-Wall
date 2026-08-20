@@ -71,15 +71,58 @@ const MODEL_MIDPOINT: f32 = 0.3943;
 /// against: a "fast" fly is only fast relative to how big it looks.
 const FLY_LENGTH: f32 = 0.65;
 
+/// How the rigged model is turned and seated.
+/// Its nose is its own +X. Settled by rendering it and the procedural fly from
+/// the same camera angle: the built one showed its back, the model showed a
+/// profile, so it is a quarter turn out. Measured, not read off a filename.
+fn rigged_facing() -> Quat {
+    Quat::from_rotation_y(FRAC_PI_2)
+}
+const RIGGED_SEAT: f32 = 0.41;
+
 /// Turn the model's −X nose into Bevy's −Z forward.
 fn facing() -> Quat {
     Quat::from_rotation_y(-FRAC_PI_2)
 }
 
-/// The procedural fly is the default while the model is still being worked on.
-/// `FLY_MODEL=glb` swaps in `assets/fly.glb`.
+/// Which body the fly wears.
+///
+/// The rigged model is the default. It is a far better-looking animal than the
+/// boxes below — chitin, compound eyes, translucent wings, six jointed legs —
+/// and it walks off its own clip.
+///
+/// It costs the wingbeat. The procedural body is the only one of the three
+/// whose wings beat, because the beat is driven by systems that look for parts
+/// this file built, and the model brings one clip and it is a walk. A fly in
+/// the air therefore holds its wings still, which is the one place the boxes
+/// are still ahead. Driving the model's own wing bones is the fix and is not
+/// done yet.
+///
+/// `FLY_MODEL=built` goes back to the procedural body, wingbeat and all.
+#[derive(Clone, Copy, PartialEq)]
+enum Worn {
+    /// Boxes and lathes built in this file. Wings and legs both driven.
+    Built,
+    /// `assets/fly.glb`. Tripo output whose rig is not usable — no wing bones,
+    /// four coincident limb roots, two joints driving nothing.
+    Early,
+    /// `assets/characters/fly/fly-walk.glb`. Rigged with thirty-two bones and,
+    /// despite the name, no animation in the file.
+    Rigged,
+}
+
+/// `FLY_MODEL=built` for the one built here, `glb` for the early model,
+/// anything else (or nothing) for the rigged one.
+fn worn() -> Worn {
+    match std::env::var("FLY_MODEL").as_deref() {
+        Ok("built") => Worn::Built,
+        Ok("glb") => Worn::Early,
+        _ => Worn::Rigged,
+    }
+}
+
 fn use_the_model() -> bool {
-    std::env::var("FLY_MODEL").as_deref() == Ok("glb")
+    worn() != Worn::Built
 }
 
 /// Measured nose-to-tail extent of the boxes below, before scaling. Everything
@@ -152,8 +195,15 @@ pub struct BodyPlugin;
 impl Plugin for BodyPlugin {
     fn build(&self, app: &mut App) {
         // `PostStartup` so the fly entity from `fly::hatch` already exists.
-        app.add_systems(PostStartup, grow_the_body)
-            .add_systems(Update, (present_the_fly, work_the_wings, pose_the_legs));
+        app.add_systems(PostStartup, grow_the_body).add_systems(
+            Update,
+            (
+                present_the_fly,
+                work_the_wings,
+                pose_the_legs,
+                walk_the_model,
+            ),
+        );
     }
 }
 
@@ -174,19 +224,39 @@ fn grow_the_body(
         .entity(fly)
         .insert((Transform::default(), Visibility::default()));
 
-    if use_the_model() {
-        commands.spawn((
-            Name::new("Fly model"),
-            ChildOf(fly),
-            WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset("fly.glb"))),
-            {
-                let scale = FLY_LENGTH / MODEL_LENGTH;
-                Transform::from_rotation(facing())
-                    .with_scale(Vec3::splat(scale))
-                    .with_translation(Vec3::new(0.0, -MODEL_MIDPOINT * scale, 0.0))
-            },
-        ));
-        return;
+    match worn() {
+        Worn::Early => {
+            commands.spawn((
+                Name::new("Fly model"),
+                ChildOf(fly),
+                WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset("fly.glb"))),
+                {
+                    let scale = FLY_LENGTH / MODEL_LENGTH;
+                    Transform::from_rotation(facing())
+                        .with_scale(Vec3::splat(scale))
+                        .with_translation(Vec3::new(0.0, -MODEL_MIDPOINT * scale, 0.0))
+                },
+            ));
+            return;
+        }
+        Worn::Rigged => {
+            // Normalised to a unit across, so the scale is the fly's length.
+            // Facing and seat height are unknown until it has been looked at;
+            // both are settled below once there is a capture to settle them
+            // against, rather than guessed at from the file.
+            commands.spawn((
+                Name::new("Fly model"),
+                ChildOf(fly),
+                WorldAssetRoot(
+                    assets.load(GltfAssetLabel::Scene(0).from_asset("characters/fly/fly-walk.glb")),
+                ),
+                Transform::from_rotation(rigged_facing())
+                    .with_scale(Vec3::splat(FLY_LENGTH))
+                    .with_translation(Vec3::new(0.0, -RIGGED_SEAT * FLY_LENGTH, 0.0)),
+            ));
+            return;
+        }
+        Worn::Built => {}
     }
 
     let chitin = materials.add(StandardMaterial {
@@ -483,6 +553,76 @@ fn reach(anchor: Vec3, foot: Vec3, femur: f32, tibia: f32, pole: Vec3) -> (Vec3,
     let femur_dir = (n * alpha.cos() + across * alpha.sin()).normalize();
     let knee = anchor + femur_dir * femur;
     (femur_dir, (foot - knee).normalize_or_zero())
+}
+
+/// Drive the rigged model's own walk clip from how fast the fly is actually
+/// crossing the floor.
+///
+/// The model brings one clip, a hexapod walk, and a fly spends most of its life
+/// off the ground — so the clip is not simply left looping. Its speed is the
+/// fly's ground speed over the pace the clip was authored at, which means the
+/// feet keep up with the floor instead of skating on it, and it stops dead when
+/// the fly does. In the air it is still, because a fly in flight is not walking.
+///
+/// The same argument as the father's walk, and the same trap avoided: picking a
+/// playback rate by eye guarantees the legs and the floor disagree.
+fn walk_the_model(
+    flies: Query<&Fly>,
+    mut players: Query<&mut AnimationPlayer>,
+    mut clip: Local<Option<AnimationNodeIndex>>,
+    mut graphs: ResMut<Assets<AnimationGraph>>,
+    files: Res<Assets<Gltf>>,
+    assets: Res<AssetServer>,
+    mut handle: Local<Option<Handle<Gltf>>>,
+    mut commands: Commands,
+    roots: Query<Entity, (With<AnimationPlayer>, Without<AnimationGraphHandle>)>,
+) {
+    if worn() != Worn::Rigged {
+        return;
+    }
+    let file = handle
+        .get_or_insert_with(|| assets.load("characters/fly/fly-walk.glb"))
+        .clone();
+
+    // Start it once the skeleton and the file are both here.
+    if clip.is_none()
+        && let Some(loaded) = files.get(&file)
+        && let Some(first) = loaded.animations.first()
+        && let Some(root) = roots.iter().next()
+    {
+        let (graph, node) = AnimationGraph::from_clip(first.clone());
+        commands
+            .entity(root)
+            .insert(AnimationGraphHandle(graphs.add(graph)));
+        if let Ok(mut player) = players.get_mut(root) {
+            player.play(node).repeat();
+        }
+        *clip = Some(node);
+        info!(
+            "the fly wears a rigged body: {} clips",
+            loaded.animations.len()
+        );
+    }
+    let Some(node) = *clip else {
+        return;
+    };
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+
+    /// How fast the fly crosses the floor when the clip runs at its authored
+    /// speed, in centimetres a second. Tuned against the model's own stride.
+    const PACE: f32 = 2.6;
+    let ground = if fly.stance.perch().is_some() {
+        (fly.pos - fly.prev_pos).with_y(0.0).length() * crate::fly::TICK_RATE as f32
+    } else {
+        0.0
+    };
+    for mut player in &mut players {
+        if let Some(playing) = player.animation_mut(node) {
+            playing.set_speed((ground / PACE).clamp(0.0, 4.0));
+        }
+    }
 }
 
 fn pose_the_legs(

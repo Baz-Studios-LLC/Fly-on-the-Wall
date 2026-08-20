@@ -1530,3 +1530,35 @@ as a man with his arms tied.
 the bug. Verifying this meant packaging the `.app` and running it from `/tmp`
 with `CARGO_MANIFEST_DIR` unset — which is now the check for anything that
 touches asset paths, and is two commands.
+
+## A rigged fly
+
+`assets/characters/fly/fly-walk.glb` — 32 bones, one clip, `preset:hexapod:walk`.
+It is a far better animal than the boxes in `body.rs`: chitin, compound eyes,
+translucent wings, six jointed legs.
+
+`FLY_MODEL` now picks between three bodies — `built`, `glb` (the early Tripo
+model whose rig was unusable) and the rigged one, which is the default.
+`FLY_MODEL=built` goes back.
+
+**Facing was measured, not guessed.** Rendering the built fly and the model from
+the same camera angle settles it in one comparison: the built one showed its
+back, the model showed a profile, so the model's nose is its own +X and it wants
+a quarter turn. Reading a facing off a filename is how the last model ended up
+with its feet on backwards.
+
+**The clip runs at the fly's ground speed**, not on a loop. `speed = ground /
+PACE`, zero in the air, so the feet keep up with the floorboards instead of
+skating and it stops dead when the fly does. The same argument as the father's
+walk.
+
+### What it costs
+
+The wingbeat. `work_the_wings` drives parts this file builds, and the model
+brings one clip and it is a walk — so a fly in the air holds its wings still.
+That is the one place the boxes are still ahead, and it matters, because the air
+is where the game is played.
+
+The fix is to drive the model's own wing bones from the same effort signal, and
+the bones are there: 32 of them, mostly named `bone_N`, so they need identifying
+from the geometry rather than the names.
