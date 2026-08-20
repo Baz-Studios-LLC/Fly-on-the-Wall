@@ -985,6 +985,44 @@ Two things worth keeping:
   near it by hand has to be looked at again. That will keep happening as models
   land.
 
+
+## Pass forty-eight: the walk cycle
+
+Brett asked for the legs to animate while walking. They already had a tripod
+gait written for them — and it had never once played.
+
+**`walk_about` zeroes the velocity every tick.** A perched fly is *placed*, not
+integrated, so `vel.length() > 0.35` was false on every frame a fly has ever
+walked. The animation was correct-looking code that no capture and no play
+session had ever run. The gait is driven by the body's own displacement now,
+which is also what makes it immune to how walking is implemented.
+
+What the legs are now:
+
+- **Femur, knee and tibia**, not one stick. The knee is the whole insect
+  silhouette — femur up and out from the thorax, tibia back down to the foot —
+  and a single segment cannot do it, because its foot can only travel on an arc
+  about the anchor.
+- **Posed by the foot, not the joints.** A target is worked out in the body's
+  frame and the two bones are solved to reach it. That is the only way a
+  planted foot stays planted: the body moves, the target does not, the knee
+  takes up the difference.
+- **A real duty cycle.** Sixty-two per cent stance, and the cycle carries the
+  body exactly one stance's worth of foot travel, so a foot on the ground does
+  not slide — by construction rather than by tuning. There are moments with all
+  six feet down, which is what a walking insect has.
+- Swing is eased at both ends so a foot sets down rather than arriving, and the
+  stride eases in and out so nothing freezes mid-swing when you let go.
+- Speed for that ease comes from the last *tick*, not the frame: drawing runs
+  faster than the fixed sixty-four hertz, so a per-frame speed flickers between
+  walking pace and zero.
+
+**Two tool fixes it forced.** `FLY_INSPECT` looked *down* on the fly from above,
+which is the one angle that cannot answer "is that foot on the floor" — it is
+nearly level now. And it had no light on it: the fly stands three metres from
+the nearest window and the model was too dark to judge, which makes an
+inspection view that cannot inspect.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

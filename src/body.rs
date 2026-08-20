@@ -104,23 +104,44 @@ const WING_BLURRED: f32 = 1.85;
 /// How fast the pose catches up, in 1/seconds.
 const POSE_RATE: f32 = 14.0;
 
+/// The two segments of a leg, in centimetres. Together they can reach a little
+/// over three millimetres, which is what a fly of this size has.
+const FEMUR: f32 = 0.15;
+const TIBIA: f32 = 0.16;
+
 #[derive(Component)]
 struct Wing;
 
-/// A leg's pivot, carrying the two poses it interpolates between and which
-/// half of the gait it belongs to.
+/// One leg: where it is hung, where its foot wants to be, and when in the gait
+/// it is allowed to move.
 ///
-/// Flies walk an **alternating tripod**: front and hind on one side move with
+/// Flies walk an **alternating tripod** — front and hind on one side step with
 /// the middle leg of the other, so three feet are always down and the insect
-/// never has to balance. It is the reason a fly can walk up a wall without
-/// falling off, and it is what makes six legs read as walking rather than as
-/// six legs twitching.
+/// never balances. It is why a fly can walk up a wall, and it is what makes six
+/// legs read as walking rather than as six legs twitching.
+///
+/// The leg is posed by its *foot*, not by its joints. A target is worked out in
+/// the body's frame and the femur and tibia are solved to reach it, which is
+/// the only way to keep a planted foot actually planted: the body moves, the
+/// target does not, and the knee bends to take up the difference. Posing the
+/// joints directly and hoping — which is what this did first — swings the foot
+/// on an arc through whatever it is standing on.
 #[derive(Component)]
 struct Leg {
-    planted: Quat,
-    tucked: Quat,
-    /// True for one tripod, false for the other.
-    tripod: bool,
+    /// Where the leg meets the thorax, in the body's frame.
+    anchor: Vec3,
+    /// Where the foot rests when standing still, in the body's frame.
+    home: Vec3,
+    /// Where the foot goes when the legs fold up for flight.
+    folded: Vec3,
+    femur: f32,
+    tibia: f32,
+    /// Which tripod: 0.0 or 0.5 of a cycle.
+    phase: f32,
+    /// Which way the knee breaks — outward, and away from the body.
+    side: f32,
+    /// The tibia's pivot, hung at the far end of the femur.
+    knee: Entity,
 }
 
 #[derive(Resource)]
@@ -302,64 +323,100 @@ fn grow_the_body(
 
     // -- Legs ---------------------------------------------------------------
     //
-    // A pivot per leg with the segment hung off its −Z, so a pose is one
-    // `looking_to` and each leg can be written as the direction it obviously
-    // points. The previous version composed two Euler rotations, which meant the
-    // forward-reaching front legs silently swung *inward* once their pitch took
-    // them past vertical — the kind of bug that is invisible in the code and
-    // obvious the moment you look at the thing.
-    let segment = box_mesh(&mut meshes, 0.020, 0.020, 0.26);
+    // Two segments and a knee. A fly's leg is femur, tibia and a tarsus that is
+    // mostly hairs, and the knee is the whole silhouette: the femur goes up and
+    // out from the thorax and the tibia comes back down to the foot, which is
+    // why an insect standing still looks coiled rather than propped. One
+    // straight stick per leg — which is what this was — cannot do that, and its
+    // foot can only travel on an arc about the anchor.
+    let femur_mesh = box_mesh(&mut meshes, 0.030, 0.028, FEMUR);
+    let tibia_mesh = box_mesh(&mut meshes, 0.018, 0.018, TIBIA);
+    let foot_mesh = box_mesh(&mut meshes, 0.020, 0.010, 0.030);
 
-    // Anchor and planted direction, given for the right side; the left mirrors
-    // in x. Fore legs reach forward, hind legs trail back, as a fly's do.
-    let plan: [(Vec3, Vec3); 3] = [
+    // Anchor, resting foot, and folded foot, given for the right side; the left
+    // mirrors in x. Fore feet plant ahead of the shoulder and hind feet behind,
+    // as a fly's do, and the middle pair reach furthest out — that wide middle
+    // stance is most of what makes the tripod look stable.
+    let plan: [(Vec3, Vec3, Vec3); 3] = [
         (
             Vec3::new(0.10, -0.045, -0.15),
-            Vec3::new(0.62, -0.60, -0.58),
+            Vec3::new(0.20, -0.255, -0.25),
+            Vec3::new(0.12, -0.02, -0.19),
         ),
-        (Vec3::new(0.115, -0.05, -0.02), Vec3::new(0.85, -0.58, 0.08)),
-        (Vec3::new(0.10, -0.05, 0.10), Vec3::new(0.60, -0.55, 0.66)),
+        (
+            Vec3::new(0.115, -0.05, -0.02),
+            Vec3::new(0.27, -0.255, -0.02),
+            Vec3::new(0.14, -0.01, 0.06),
+        ),
+        (
+            Vec3::new(0.10, -0.05, 0.10),
+            Vec3::new(0.21, -0.255, 0.25),
+            Vec3::new(0.13, -0.02, 0.24),
+        ),
     ];
-    // In flight everything folds back along the body.
-    let tucked_dir = Vec3::new(0.30, -0.26, 0.92);
 
     for side in [-1.0f32, 1.0] {
         let mirror = |v: Vec3| Vec3::new(v.x * side, v.y, v.z);
-        for (row, (anchor, planted_dir)) in plan.into_iter().enumerate() {
-            let pose = |d: Vec3| {
-                Transform::default()
-                    .looking_to(mirror(d).normalize(), Vec3::Y)
-                    .rotation
+        for (row, (anchor, home, folded)) in plan.into_iter().enumerate() {
+            // Fore and hind on one side step with the middle of the other.
+            let phase = if (row % 2 == 0) == (side > 0.0) {
+                0.0
+            } else {
+                0.5
             };
-            let planted = pose(planted_dir);
-            let tucked = pose(tucked_dir);
-            // Fore and hind on one side, middle on the other.
-            let tripod = (row % 2 == 0) == (side > 0.0);
+
+            // The knee is spawned first so the leg can hold onto it: posing
+            // needs to write both rotations, and finding a child by walking the
+            // hierarchy every frame for six legs is work for nothing.
+            let knee = commands
+                .spawn((
+                    Transform::from_translation(Vec3::new(0.0, 0.0, -FEMUR)),
+                    Visibility::default(),
+                ))
+                .id();
+            commands.spawn((
+                ChildOf(knee),
+                Mesh3d(tibia_mesh.clone()),
+                MeshMaterial3d(chitin.clone()),
+                Transform::from_translation(Vec3::new(0.0, 0.0, -TIBIA * 0.5)),
+            ));
+            commands.spawn((
+                ChildOf(knee),
+                Mesh3d(foot_mesh.clone()),
+                MeshMaterial3d(chitin.clone()),
+                Transform::from_translation(Vec3::new(0.0, 0.0, -TIBIA)),
+            ));
 
             let pivot = commands
                 .spawn((
                     ChildOf(trunk),
                     Leg {
-                        planted,
-                        tucked,
-                        tripod,
+                        anchor: mirror(anchor),
+                        home: mirror(home),
+                        folded: mirror(folded),
+                        femur: FEMUR,
+                        tibia: TIBIA,
+                        phase,
+                        side,
+                        knee,
                     },
-                    Transform::from_translation(mirror(anchor)).with_rotation(planted),
+                    Transform::from_translation(mirror(anchor)),
                     Visibility::default(),
                 ))
                 .id();
+            commands.entity(knee).insert(ChildOf(pivot));
             commands.spawn((
                 ChildOf(pivot),
-                Mesh3d(segment.clone()),
+                Mesh3d(femur_mesh.clone()),
                 MeshMaterial3d(chitin.clone()),
-                // Hung off −Z, which is where `looking_to` aims.
-                Transform::from_translation(Vec3::new(0.0, 0.0, -0.13)),
+                Transform::from_translation(Vec3::new(0.0, 0.0, -FEMUR * 0.5)),
             ));
         }
     }
 }
 
 /// Copy the interpolated body pose onto the entity every frame.
+
 fn present_the_fly(fixed: Res<Time<Fixed>>, mut flies: Query<(&Fly, &mut Transform)>) {
     let alpha = fixed.overstep_fraction();
     for (fly, mut transform) in &mut flies {
@@ -396,57 +453,154 @@ fn work_the_wings(
     }
 }
 
+/// Two bones to a foot.
+///
+/// Given where the leg is hung and where its foot must be, work out the femur
+/// and tibia directions that put it there. `pole` decides which way the knee
+/// breaks — outward and up, so the leg reads as an insect's rather than a
+/// bird's.
+fn reach(anchor: Vec3, foot: Vec3, femur: f32, tibia: f32, pole: Vec3) -> (Vec3, Vec3) {
+    let v = foot - anchor;
+    let far = v.length();
+    if far < 1e-6 {
+        return (Vec3::NEG_Y, Vec3::NEG_Y);
+    }
+    let n = v / far;
+    // Never quite straight and never folded flat: at full stretch the knee has
+    // no plane to break in and the leg snaps between solutions.
+    let d = far.clamp((femur - tibia).abs() + 0.01, femur + tibia - 0.004);
+    let foot = anchor + n * d;
+
+    let cos_alpha = ((femur * femur + d * d - tibia * tibia) / (2.0 * femur * d)).clamp(-1.0, 1.0);
+    let alpha = cos_alpha.acos();
+    let across = pole - n * pole.dot(n);
+    let across = if across.length_squared() < 1e-8 {
+        n.any_orthonormal_vector()
+    } else {
+        across.normalize()
+    };
+
+    let femur_dir = (n * alpha.cos() + across * alpha.sin()).normalize();
+    let knee = anchor + femur_dir * femur;
+    (femur_dir, (foot - knee).normalize_or_zero())
+}
+
 fn pose_the_legs(
     time: Res<Time>,
     flies: Query<(&Fly, &Intent)>,
-    mut legs: Query<(&Leg, &mut Transform)>,
+    legs: Query<(Entity, &Leg)>,
+    mut poses: Query<&mut Transform>,
+    mut was: Local<Option<Vec3>>,
     mut gait: Local<f32>,
+    mut axis: Local<Vec3>,
+    mut stepping: Local<f32>,
+    mut extend: Local<f32>,
     mut forced: Local<Option<Option<f32>>>,
 ) {
-    /// How far the fly walks per full step cycle, in centimetres. Driving the
-    /// cycle off *distance* rather than time is what stops the feet skating:
-    /// walk slowly and the legs move slowly, by construction.
-    const STRIDE: f32 = 1.6;
-    /// How far a leg swings fore and aft, and how far the foot lifts.
-    const SWING: f32 = 0.34;
-    const LIFT: f32 = 0.22;
+    /// Fraction of the cycle a foot spends on the ground. Insects run about
+    /// six tenths at a walk, and it has to be over a half or the tripods swap
+    /// with nothing down in between.
+    const STANCE: f32 = 0.62;
+    /// Half a stride, in centimetres. Two millimetres a step for a fly this
+    /// size.
+    const AMP: f32 = 0.11;
+    /// How far a foot clears the ground on the way through.
+    const LIFT: f32 = 0.06;
 
     let Ok((fly, intent)) = flies.single() else {
         return;
     };
-    // Reaching counts as planted: asking to land puts the legs out early, which
-    // is the tell that the fly is about to grab something.
-    let perched = matches!(fly.stance, Stance::Perched(_));
-    let planted = perched || intent.land;
-    let blend = 1.0 - (-POSE_RATE * time.delta_secs()).exp();
+    let dt = time.delta_secs();
+    let blend = 1.0 - (-POSE_RATE * dt).exp();
 
-    let speed = fly.vel.length();
-    let walking = perched && speed > 0.35;
-    if walking {
-        *gait += speed * time.delta_secs() / STRIDE * std::f32::consts::TAU;
+    // Distance actually travelled, not speed.
+    //
+    // `walk_about` zeroes the velocity every tick — a perched fly is placed,
+    // not integrated — so the old test of `vel.length() > 0.35` was never once
+    // true and this animation had never played. Measuring the body's own
+    // movement is also what makes the gait immune to how walking is
+    // implemented: the feet keep up with the fly by construction.
+    let here = fly.pos;
+    let moved = was.map(|w| here - w).unwrap_or(Vec3::ZERO);
+    *was = Some(here);
+
+    let walking = matches!(fly.stance, Stance::Perched(_));
+    let travelled = if walking { moved.length() } else { 0.0 };
+
+    // One cycle carries the body exactly one stance's worth of foot travel, so
+    // a planted foot does not slide: over the stance the foot goes back by two
+    // amplitudes while the body goes forward by the same.
+    const CYCLE: f32 = 2.0 * AMP / STANCE;
+    *gait = (*gait + travelled / CYCLE).fract();
+
+    if travelled > 1e-5 {
+        let want = (fly.body.inverse() * (moved / travelled)).with_y(0.0);
+        if want.length_squared() > 1e-6 {
+            *axis = axis.lerp(want.normalize(), blend).normalize_or_zero();
+        }
     }
+    if axis.length_squared() < 0.5 {
+        *axis = Vec3::NEG_Z;
+    }
+
+    // Ease the stride in and out rather than freezing a leg mid-swing the
+    // instant somebody lets go of the key.
+    //
+    // Speed comes from the last *tick*, not from this frame. The simulation
+    // runs at a fixed sixty-four hertz and drawing runs faster, so on most
+    // frames the fly has not moved at all and a per-frame speed flickers
+    // between walking pace and nothing — which would leave the stride damped
+    // to some average of the two and the legs shuffling.
+    let speed = (fly.pos - fly.prev_pos).length() * crate::fly::TICK_RATE as f32;
+    let moving = if speed > 0.6 { 1.0 } else { 0.0 };
+    *stepping += (moving - *stepping) * blend;
+    // Reaching counts as planted: asking to land puts the legs out early, and
+    // that is the tell that the fly is about to grab something.
+    let out = if walking || intent.land { 1.0 } else { 0.0 };
+    *extend += (out - *extend) * blend;
+
     // A capture cannot press a key, so the cycle can be posed from outside.
     // Read once and kept: this runs every frame.
-    let forced =
-        *forced.get_or_insert_with(|| std::env::var("FLY_GAIT").ok().and_then(|v| v.parse().ok()));
-    let phase = forced.map(|p| p * std::f32::consts::TAU).unwrap_or(*gait);
+    let forced = *forced.get_or_insert_with(|| {
+        std::env::var("FLY_GAIT")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+    });
+    let (phase, stride) = match forced {
+        Some(p) => (p, 1.0),
+        None => (*gait, *stepping),
+    };
 
-    for (leg, mut transform) in &mut legs {
-        let mut want = if planted { leg.planted } else { leg.tucked };
-        if walking || forced.is_some() {
-            let a = phase
-                + if leg.tripod {
-                    0.0
-                } else {
-                    std::f32::consts::PI
-                };
-            // Swing about the body's up axis is the step; the lift is only on
-            // the half of the cycle where the foot is off the ground, so the
-            // three legs that are down stay down.
-            let swing = Quat::from_rotation_y(a.sin() * SWING);
-            let lift = Quat::from_rotation_x(a.cos().max(0.0) * LIFT);
-            want = lift * swing * want;
+    for (pivot, leg) in &legs {
+        let t = (phase + leg.phase).fract();
+        let (along, lift) = if t < STANCE {
+            // On the ground, going straight back at the speed the body is
+            // going forward.
+            (AMP - 2.0 * AMP * (t / STANCE), 0.0)
+        } else {
+            // Through the air, eased at both ends so the foot sets down
+            // rather than arriving.
+            let u = (t - STANCE) / (1.0 - STANCE);
+            let eased = u * u * (3.0 - 2.0 * u);
+            (
+                -AMP + 2.0 * AMP * eased,
+                (u * std::f32::consts::PI).sin() * LIFT,
+            )
+        };
+
+        let planted = leg.home + *axis * (along * stride) + Vec3::Y * (lift * stride);
+        let foot = leg.folded.lerp(planted, *extend);
+        let pole = (Vec3::new(leg.side, 0.0, 0.0) * 0.55 + Vec3::Y * 0.85).normalize();
+        let (femur_dir, tibia_dir) = reach(leg.anchor, foot, leg.femur, leg.tibia, pole);
+
+        let hip = Transform::default().looking_to(femur_dir, Vec3::Y).rotation;
+        let shin = Transform::default().looking_to(tibia_dir, Vec3::Y).rotation;
+        if let Ok(mut femur) = poses.get_mut(pivot) {
+            femur.rotation = hip;
         }
-        transform.rotation = transform.rotation.slerp(want, blend);
+        // The knee hangs off the femur, so its rotation is relative to it.
+        if let Ok(mut tibia) = poses.get_mut(leg.knee) {
+            tibia.rotation = hip.inverse() * shin;
+        }
     }
 }

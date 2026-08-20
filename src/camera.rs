@@ -297,6 +297,25 @@ fn spawn_eye(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         },
         Transform::default(),
         bevy::ui::IsDefaultUiCamera,
+        // A lamp on the camera, for the viewpoints whose whole job is looking
+        // closely at something. The fly stands on a floorboard three metres
+        // from the nearest window and the model was too dark to judge — which
+        // makes an inspection view that cannot inspect.
+        children![(
+            PointLight {
+                color: Color::srgb(1.0, 0.97, 0.92),
+                intensity: if inspect_azimuth().is_some() || folk_view().is_some() {
+                    900.0 * crate::world::UNITS_PER_METRE * crate::world::UNITS_PER_METRE
+                } else {
+                    0.0
+                },
+                range: 600.0,
+                radius: 6.0,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(14.0, 18.0, 6.0),
+        )],
         Eye {
             up: Vec3::Y,
             offset: Vec3::ZERO,
@@ -474,7 +493,7 @@ fn place_the_eye(
     // straight at the fly.
     if let Some(azimuth) = inspect_azimuth() {
         let offset =
-            Quat::from_rotation_y(azimuth.to_radians()) * Vec3::new(0.0, 0.42, 1.0).normalize();
+            Quat::from_rotation_y(azimuth.to_radians()) * Vec3::new(0.0, 0.14, 1.0).normalize();
         transform.translation = position + offset * INSPECT_DISTANCE;
         transform.look_at(position, Vec3::Y);
         if let Projection::Perspective(perspective) = &mut *projection {
