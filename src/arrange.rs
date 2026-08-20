@@ -20,6 +20,7 @@
 //! | left mouse or `G` | take hold of it, and let go of it |
 //! | `←` `→` | turn it, twelve degrees a press |
 //! | `↑` `↓` | raise and lower it — how a mug gets onto a shelf |
+//! | wheel | resize it, between half and double |
 //! | `Ctrl` `S` or `Cmd` `S` | save the arrangement |
 //! | `Backspace` | put everything back where the generator had it |
 //!
@@ -53,7 +54,7 @@ pub struct Arranging {
     /// Where every moved piece started, so it can all be put back. The Vec3
     /// carries height as well as plan position: half the point of arranging is
     /// getting something off the floor and onto a shelf.
-    moved: std::collections::HashMap<u32, (Vec3, f32)>,
+    moved: std::collections::HashMap<u32, (Vec3, f32, f32)>,
 }
 
 /// One box of the ghost. There is a pool of them, and a piece borrows as many
@@ -175,13 +176,37 @@ fn toggle(keys: Res<ButtonInput<KeyCode>>, mut arranging: ResMut<Arranging>) {
 }
 
 /// The bounds of a piece, and its middle.
+/// How big a piece is, counting its mesh if it has one.
+///
+/// A made model's solid is a four-centimetre stub carrying an asset path — the
+/// real extent is in its hull. Measuring the stub gives a thumbnail ghost and a
+/// nonsense size in the readout, and picking a couch up by a box the size of a
+/// matchbox is not picking up a couch.
 fn bounds(home: &Home, piece: u32) -> Option<(Vec3, Vec3)> {
     let mut lo = Vec3::splat(f32::INFINITY);
     let mut hi = Vec3::splat(f32::NEG_INFINITY);
     for solid in home.solids.iter().filter(|s| s.piece == piece) {
+        if solid.model.is_some() {
+            // Its stub is a four-centimetre box standing in for a couch, so it
+            // contributes its position and not its size. Skipping it outright —
+            // which is what this did first — makes `bounds` return nothing at
+            // all for a piece that is only a model, and everything downstream
+            // gives up: at load time the hull does not exist yet, so a saved
+            // couch simply refused to move.
+            lo = lo.min(solid.center);
+            hi = hi.max(solid.center);
+            continue;
+        }
         let reach = (solid.rot * solid.half).abs().max(solid.half);
         lo = lo.min(solid.center - reach);
         hi = hi.max(solid.center + reach);
+    }
+    for hull in &home.hulls {
+        if home.solids[hull.solid].piece == piece {
+            let (a, b) = hull.bounds();
+            lo = lo.min(a);
+            hi = hi.max(b);
+        }
     }
     lo.x.is_finite().then_some((lo, hi))
 }
@@ -240,21 +265,42 @@ fn shift(
     piece: u32,
     by: Vec3,
     turn: f32,
+    factor: f32,
 ) {
     let Some((lo, hi)) = bounds(home, piece) else {
         return;
     };
-    let heart = Vec3::new((lo.x + hi.x) * 0.5, 0.0, (lo.z + hi.z) * 0.5);
+    // Turn and resize about the middle of the footprint, at floor level: a
+    // chair scaled about its own centre grows down through the floor.
+    let heart = Vec3::new((lo.x + hi.x) * 0.5, lo.y, (lo.z + hi.z) * 0.5);
     let spin = Quat::from_rotation_y(turn);
     for solid in home.solids.iter_mut().filter(|s| s.piece == piece) {
         let local = solid.center - heart;
-        solid.center = heart + spin * local + by;
+        solid.center = heart + spin * (local * factor) + by;
         solid.rot = spin * solid.rot;
+        if solid.model.is_some() {
+            solid.scale *= factor;
+        } else {
+            solid.half *= factor;
+        }
+    }
+    // The mesh has to come too. Its triangles are world-space, so a model that
+    // moved without this left its collision behind — you could walk through the
+    // couch where it now is and bump into where it used to be.
+    for hull in &mut home.hulls {
+        if home.solids[hull.solid].piece == piece {
+            hull.place(heart, by, spin, factor);
+        }
     }
     for (part, mut transform) in parts.iter_mut() {
-        if home.solids[part.solid].piece == piece {
-            transform.translation = home.solids[part.solid].center;
-            transform.rotation = home.solids[part.solid].rot;
+        let solid = &home.solids[part.solid];
+        if solid.piece == piece {
+            transform.translation = solid.center;
+            transform.rotation = solid.rot;
+            transform.scale = match solid.model {
+                Some(_) => Vec3::splat(crate::world::UNITS_PER_METRE * solid.scale),
+                None => solid.half * 2.0,
+            };
         }
     }
 }
@@ -265,6 +311,7 @@ fn carry(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<ButtonInput<MouseButton>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
     eyes: Query<&GlobalTransform, With<Camera3d>>,
     mut parts: Query<(&Part, &mut Transform), Without<Marker>>,
 ) {
@@ -287,7 +334,7 @@ fn carry(
                     arranging
                         .moved
                         .entry(piece)
-                        .or_insert(((lo + hi) * 0.5, 0.0));
+                        .or_insert(((lo + hi) * 0.5, 0.0, 1.0));
                 }
                 (piece, held_at.clamp(60.0, REACH))
             }),
@@ -329,10 +376,22 @@ fn carry(
         0.0
     };
 
-    if by.length_squared() > 0.01 || turn != 0.0 {
-        shift(&mut home, &mut parts, piece, by, turn);
+    // The wheel resizes. A made model arrives at whatever size its maker gave
+    // it, and being able to say "smaller than that" in the room, against the
+    // furniture standing next to it, is worth more than any number typed into
+    // an exporter.
+    let notches: f32 = wheel.read().map(|w| w.y.clamp(-3.0, 3.0)).sum();
+    let factor = if notches != 0.0 {
+        (1.0 + notches * 0.04).clamp(0.5, 2.0)
+    } else {
+        1.0
+    };
+
+    if by.length_squared() > 0.01 || turn != 0.0 || factor != 1.0 {
+        shift(&mut home, &mut parts, piece, by, turn, factor);
         if let Some(record) = arranging.moved.get_mut(&piece) {
             record.1 += turn;
+            record.2 *= factor;
         }
     }
 }
@@ -350,7 +409,7 @@ fn save_or_reset(
     }
     let holding = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::SuperLeft);
     if holding && keys.just_pressed(KeyCode::KeyS) {
-        let mut text = String::from("# piece  x  y  z  yaw — written by arrange mode\n");
+        let mut text = String::from("# piece  x  y  z  yaw  scale — written by arrange mode\n");
         let mut seen = std::collections::HashSet::new();
         for piece in home
             .solids
@@ -364,10 +423,10 @@ fn save_or_reset(
             if let (Some((lo, hi)), Some(was)) = (bounds(&home, piece), arranging.moved.get(&piece))
             {
                 let by = (lo + hi) * 0.5 - was.0;
-                if by.length() > 0.5 || was.1.abs() > 0.001 {
+                if by.length() > 0.5 || was.1.abs() > 0.001 || (was.2 - 1.0).abs() > 0.001 {
                     text.push_str(&format!(
-                        "{piece} {:.2} {:.2} {:.2} {:.4}\n",
-                        by.x, by.y, by.z, was.1
+                        "{piece} {:.2} {:.2} {:.2} {:.4} {:.4}\n",
+                        by.x, by.y, by.z, was.1, was.2
                     ));
                 }
             }
@@ -401,11 +460,18 @@ fn save_or_reset(
         let moves: Vec<_> = arranging
             .moved
             .iter()
-            .map(|(p, (was, turn))| (*p, *was, *turn))
+            .map(|(p, (was, turn, grew))| (*p, *was, *turn, *grew))
             .collect();
-        for (piece, was, turn) in moves {
+        for (piece, was, turn, grew) in moves {
             if let Some((lo, hi)) = bounds(&home, piece) {
-                shift(&mut home, &mut parts, piece, was - (lo + hi) * 0.5, -turn);
+                shift(
+                    &mut home,
+                    &mut parts,
+                    piece,
+                    was - (lo + hi) * 0.5,
+                    -turn,
+                    1.0 / grew,
+                );
             }
         }
         info!("everything back where the generator had it");
@@ -473,7 +539,13 @@ fn load_arrangement(
         ) else {
             continue;
         };
-        shift(&mut home, &mut parts, p, Vec3::new(x, y, z), yaw);
+        // Scale is the newest column, so a file written before it existed
+        // still loads — it just does not resize anything.
+        let grew = bits
+            .next()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(1.0);
+        shift(&mut home, &mut parts, p, Vec3::new(x, y, z), yaw, grew);
         moved += 1;
     }
     if moved > 0 {
@@ -534,7 +606,7 @@ fn show(
         // are holding something, and a line that says so at all times is a line
         // that gets ignored.
         if arranging.held.is_some() {
-            "left right arrows turn    up down arrows raise lower    click or G to put it down    Ctrl+S save"
+            "arrows turn and raise    wheel resizes    click or G to put it down    Ctrl+S save"
         } else {
             "click or G to pick it up    Backspace put it all back    Tab done"
         }

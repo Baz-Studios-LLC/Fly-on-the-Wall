@@ -158,8 +158,8 @@ fn fit_collision(
         }
 
         info!(
-            "made model: {count} triangles as collision, in {} cm cells",
-            CELL
+            "made model: piece {} — {count} triangles as collision, in {} cm cells",
+            home.solids[needs.solid].piece, CELL
         );
         home.hulls.push(hull);
         commands.entity(root).remove::<NeedsHull>();

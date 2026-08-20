@@ -202,6 +202,7 @@ pub fn load(named: &str) -> Result<Imported, String> {
             half: Vec3::from(b.size) * 0.5 * UNITS_PER_METRE,
             rot: Quat::from_xyzw(b.turn[0], b.turn[1], b.turn[2], b.turn[3]).normalize(),
             unseen: false,
+            scale: 1.0,
             model: None,
             piece: u32::MAX,
             outdoors: false,

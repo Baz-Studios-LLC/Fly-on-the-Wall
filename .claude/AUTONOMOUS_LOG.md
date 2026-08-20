@@ -1023,6 +1023,34 @@ nearly level now. And it had no light on it: the fly stands three metres from
 the nearest window and the model was too dark to judge, which makes an
 inspection view that cannot inspect.
 
+
+## Pass forty-nine: moving and resizing made models
+
+Two asks: move imported models in arrange mode, and resize with the wheel.
+
+**Models could not be moved at all, and the reason was two bugs deep.**
+`bounds` measures a piece from its solids, and a model's solid is a
+four-centimetre stub carrying an asset path — so it skipped them, found nothing,
+returned `None`, and `shift` gave up before doing anything. A model solid now
+contributes its *position* and not its size, and `bounds` counts the hull, so a
+couch is measured by the couch.
+
+**And the collision would have stayed behind.** Hull triangles are held in world
+space — that is what makes the queries cheap — so a couch dragged across the
+room left its collision standing where it was: invisible in a screenshot and
+unmissable the moment you fly into it. `Hull::place` moves, turns and resizes
+them and refiles the grid.
+
+**The wheel resizes**, half to double, about the middle of the footprint at
+floor level — scaling about the centre grows a chair down through the floor.
+Solids scale their halves, models scale their transform, hulls scale their
+triangles, and the size is saved so it survives a reload. The scale column is
+last, so a file written before it existed still loads.
+
+Two tests, because this is geometry and the failure is silent: a hull must
+arrive where its model went, and shrink where its model shrank. Both would have
+failed this morning.
+
 ## Deferred
 
 - Family simulation, needs, danger, death, objectives, progression, and HUD are

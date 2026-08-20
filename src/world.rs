@@ -132,6 +132,9 @@ pub struct Solid {
     /// Collision without a drawing. A box that holds a made model up: the
     /// model is what you see, and this is what the fly lands on.
     pub unseen: bool,
+    /// How much a made model has been resized in arrange mode. Only meaningful
+    /// alongside `model`, and kept on the solid so it survives a save.
+    pub scale: f32,
     /// Draw this asset instead of a box. The path is relative to `assets`, and
     /// the model is taken to be in metres — Opificium's `opificium-fit` node
     /// normalises to real-world size, and this world is in centimetres.
@@ -310,6 +313,22 @@ impl Hull {
         (self.lo, self.hi)
     }
 
+    /// Move, turn and resize the hull about a point.
+    ///
+    /// The triangles are held in world space — that is what makes the queries
+    /// cheap — so moving the couch means moving them, and rebuilding the grid
+    /// they are filed in. Without this the model slides across the room in
+    /// arrange mode and leaves its collision standing where it was.
+    pub fn place(&mut self, about: Vec3, delta: Vec3, spin: Quat, factor: f32) {
+        for tri in &mut self.tris {
+            for point in tri.iter_mut() {
+                *point = about + spin * ((*point - about) * factor) + delta;
+            }
+        }
+        let cell = self.cell;
+        *self = Hull::new(self.solid, std::mem::take(&mut self.tris), cell);
+    }
+
     pub fn nearest(&self, p: Vec3, within: f32) -> Option<Near> {
         if p.x < self.lo.x - within
             || p.y < self.lo.y - within
@@ -372,6 +391,7 @@ impl Solid {
             outdoors: false,
             piece: u32::MAX,
             unseen: false,
+            scale: 1.0,
             model: None,
             stuff,
         }
@@ -677,6 +697,7 @@ impl Door {
             ),
             rot,
             unseen: false,
+            scale: 1.0,
             model: None,
             piece: u32::MAX,
             outdoors: false,
@@ -1113,7 +1134,7 @@ fn dress_the_set(
                 WorldAssetRoot(asset_server.load(GltfAssetLabel::Scene(0).from_asset(path))),
                 Transform::from_translation(solid.center)
                     .with_rotation(solid.rot)
-                    .with_scale(Vec3::splat(UNITS_PER_METRE)),
+                    .with_scale(Vec3::splat(UNITS_PER_METRE * solid.scale)),
             ));
             continue;
         }
@@ -1246,5 +1267,65 @@ fn follow_the_door(home: Res<Home>, mut panels: Query<&mut Transform, With<DoorP
     for mut transform in &mut panels {
         transform.translation = solid.center;
         transform.rotation = solid.rot;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Moving a model must move what the fly hits.
+    ///
+    /// The triangles are held in world space, so this is the one place the two
+    /// can come apart — and they did: a couch dragged across the room left its
+    /// collision standing where it had been, which is invisible in a screenshot
+    /// and unmissable the moment you fly into it.
+    #[test]
+    fn a_hull_moves_with_its_model() {
+        let tri = [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(10.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 10.0),
+        ];
+        let mut hull = Hull::new(0, vec![tri], 12.0);
+
+        // Straight down onto the middle of it.
+        let over = Vec3::new(3.0, 20.0, 3.0);
+        assert!(hull.raycast(over, Vec3::NEG_Y, 40.0).is_some());
+
+        hull.place(Vec3::ZERO, Vec3::new(100.0, 0.0, 0.0), Quat::IDENTITY, 1.0);
+        assert!(
+            hull.raycast(over, Vec3::NEG_Y, 40.0).is_none(),
+            "collision stayed behind when the model moved"
+        );
+        assert!(
+            hull.raycast(over + Vec3::X * 100.0, Vec3::NEG_Y, 40.0)
+                .is_some(),
+            "collision did not arrive where the model went"
+        );
+    }
+
+    /// And resizing has to resize it, about the point it was scaled around.
+    #[test]
+    fn a_hull_scales_with_its_model() {
+        let tri = [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(10.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 10.0),
+        ];
+        let mut hull = Hull::new(0, vec![tri], 12.0);
+        hull.place(Vec3::ZERO, Vec3::ZERO, Quat::IDENTITY, 0.5);
+
+        let (lo, hi) = hull.bounds();
+        assert!((hi.x - lo.x - 5.0).abs() < 1e-3, "half the size across");
+        assert!(
+            hull.raycast(Vec3::new(1.0, 20.0, 1.0), Vec3::NEG_Y, 40.0)
+                .is_some()
+        );
+        assert!(
+            hull.raycast(Vec3::new(8.0, 20.0, 8.0), Vec3::NEG_Y, 40.0)
+                .is_none(),
+            "still colliding out where the big version used to be"
+        );
     }
 }
