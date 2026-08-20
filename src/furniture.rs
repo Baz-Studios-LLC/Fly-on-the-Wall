@@ -393,6 +393,32 @@ fn bed(out: &mut Vec<Solid>, at: Vec2, size: Vec2, facing: Vec2) {
 /// lands on, what arrange mode picks up, and what the house falls back to if
 /// the asset is missing — and the model is simply what gets drawn instead. So
 /// nothing downstream has to know which kind of furniture it is dealing with.
+/// The same, for a model straight out of 3daistudio.
+///
+/// Those arrive centred on their own origin in a unit box: half underground,
+/// and a metre along the longest side whatever they are a model of. So give the
+/// real length of that longest side in centimetres — the one measurement the
+/// file cannot supply — and the rest is worked out. It is scaled to fit and
+/// then stood on the floor by measuring its own collision, rather than by a
+/// lift written down here that the next export would silently invalidate.
+///
+/// Anything that has been through Opificium carries an `opificium-fit` node
+/// that does all of this at source, and wants plain `use_model` instead.
+fn use_raw_model(
+    out: &mut Vec<Solid>,
+    mark: usize,
+    path: &'static str,
+    at: Vec3,
+    turn: f32,
+    longest: f32,
+) {
+    use_model(out, mark, path, at, turn);
+    if let Some(model) = out.get_mut(mark) {
+        model.scale = longest / crate::world::UNITS_PER_METRE;
+        model.settle = true;
+    }
+}
+
 fn use_model(out: &mut Vec<Solid>, mark: usize, path: &'static str, at: Vec3, turn: f32) {
     // Whatever was built for this piece is thrown away rather than kept as an
     // invisible proxy: the model's own mesh is what the collision comes from
@@ -2378,7 +2404,11 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     // built for the generated sofa were positioned against geometry that is no
     // longer drawn — they ended up floating beside the couch.
 
-    // Coffee table on the rug, with the things that live on one.
+    // Coffee table on the rug, with the things that live on one. One of
+    // Brett's models; the clutter that stands on it is still generated, so its
+    // heights are set from the top surface `made` reports for the model rather
+    // than from the table this replaced.
+    let table_mark = out.len();
     legged(
         out,
         table,
@@ -2389,15 +2419,27 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         OAK,
         DARK_OAK,
     );
-    books(out, Vec3::new(table.x - 28.0, 42.0, table.y + 8.0), 3, 1.0);
+    use_raw_model(
+        out,
+        table_mark,
+        "models/coffeeTable.glb",
+        Vec3::new(table.x, 0.0, table.y),
+        0.0,
+        112.0,
+    );
+    // Standing on the model's own top surface, which `made` reports as forty:
+    // the table this replaced was forty-two, and two centimetres of daylight
+    // under a stack of books is exactly the kind of thing that reads as wrong
+    // without anybody being able to say why.
+    books(out, Vec3::new(table.x - 28.0, 40.0, table.y + 8.0), 3, 1.0);
     mug(
         out,
-        Vec3::new(table.x + 22.0, 42.0, table.y - 12.0),
+        Vec3::new(table.x + 22.0, 40.0, table.y - 12.0),
         Color::srgb(0.80, 0.82, 0.84),
     );
     slab(
         out,
-        Vec3::new(table.x + 34.0, 44.0, table.y + 16.0),
+        Vec3::new(table.x + 34.0, 42.0, table.y + 16.0),
         Vec3::new(6.0, 3.0, 20.0),
         Stuff::Metal,
         Color::srgb(0.18, 0.18, 0.19),
@@ -2564,6 +2606,7 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         Vec3::new(read.x, 0.0, read.y),
         0.0,
     );
+    let corner_mark = out.len();
     legged(
         out,
         read + Vec2::new(18.0, 84.0),
@@ -2574,7 +2617,17 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         OAK,
         DARK_OAK,
     );
-    lamp(out, Vec3::new(read.x + 18.0, 54.0, read.y + 84.0));
+    use_raw_model(
+        out,
+        corner_mark,
+        "models/endTable.glb",
+        Vec3::new(read.x + 18.0, 0.0, read.y + 84.0),
+        0.0,
+        54.0,
+    );
+    // Forty-seven is the end table's own top, not the fifty-four of the one it
+    // replaced.
+    lamp(out, Vec3::new(read.x + 18.0, 47.0, read.y + 84.0));
     books(out, Vec3::new(read.x + 26.0, 0.6, read.y - 74.0), 4, 63.0);
 
     // A plant in the corner, and a stack of books beside the sofa.
@@ -2622,6 +2675,7 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
     );
 
     // A side table by the sofa's arm.
+    let arm_mark = out.len();
     legged(
         out,
         Vec2::new(r.min.x + 74.0, m.y - 140.0),
@@ -2631,6 +2685,14 @@ fn living(out: &mut Vec<Solid>, r: &Room) {
         6.0,
         OAK,
         DARK_OAK,
+    );
+    use_raw_model(
+        out,
+        arm_mark,
+        "models/endTable.glb",
+        Vec3::new(r.min.x + 74.0, 0.0, m.y - 140.0),
+        0.0,
+        54.0,
     );
 }
 

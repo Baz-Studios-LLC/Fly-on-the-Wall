@@ -136,6 +136,22 @@ pub struct Solid {
     /// How much a made model has been resized in arrange mode. Only meaningful
     /// alongside `model`, and kept on the solid so it survives a save.
     pub scale: f32,
+    /// Stand this model on the floor once its own extent is known.
+    ///
+    /// Where a model comes from decides whether it needs this. An export that
+    /// has been through Opificium carries an `opificium-fit` node that centres
+    /// the mesh in a unit box and then lifts and scales it to real size, so its
+    /// feet land on nought — the couch and the armchair arrive that way. One
+    /// straight out of 3daistudio does not: it is centred on its own origin in
+    /// a unit box, so it sits half underground and is a metre along its longest
+    /// side whatever it is a model of. The tables came out eighteen and
+    /// forty-four centimetres into the floorboards.
+    ///
+    /// Rather than write the lift down here, where it would be a number
+    /// measured off one afternoon's file and silently wrong after the next
+    /// export, the model is measured and moved. `made` builds the hull anyway;
+    /// the bottom of it is the answer.
+    pub settle: bool,
     /// Draw this asset instead of a box. The path is relative to `assets`, and
     /// the model is taken to be in metres — Opificium's `opificium-fit` node
     /// normalises to real-world size, and this world is in centimetres.
@@ -461,6 +477,7 @@ impl Solid {
             piece: u32::MAX,
             unseen: false,
             scale: 1.0,
+            settle: false,
             model: None,
             stuff,
         }
@@ -767,6 +784,7 @@ impl Door {
             rot,
             unseen: false,
             scale: 1.0,
+            settle: false,
             model: None,
             piece: u32::MAX,
             outdoors: false,

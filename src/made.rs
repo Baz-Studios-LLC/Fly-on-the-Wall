@@ -103,6 +103,7 @@ fn fit_collision(
     drawn: Query<(&Mesh3d, &GlobalTransform)>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut standing: Query<&mut Transform>,
 ) {
     // `FLY_HULL=1` draws what the fly will actually hit. Collision that cannot
     // be seen is collision nobody can check, and a hull derived from a mesh is
@@ -130,6 +131,22 @@ fn fit_collision(
         }
 
         let (low, high) = hull.bounds();
+
+        // Stand it on the floor if it asked to be stood on the floor. One
+        // correction is exact; the loop only exists because the transform has
+        // to propagate before the hull can be rebuilt to match.
+        if home.solids[needs.solid].settle && low.y.abs() > 0.5 {
+            let drop = low.y;
+            home.solids[needs.solid].center.y -= drop;
+            if let Ok(mut standing) = standing.get_mut(root) {
+                standing.translation.y -= drop;
+            }
+            info!(
+                "made model: piece {} stood on the floor, {drop:.1} cm",
+                home.solids[needs.solid].piece
+            );
+            continue;
+        }
         // The height of whatever is on top at the middle of it: a seat, a
         // table top, a shelf. It is the number anybody actually wants when
         // putting something — or somebody — on a model, and reading it off the

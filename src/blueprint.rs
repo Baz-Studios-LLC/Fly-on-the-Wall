@@ -203,6 +203,7 @@ pub fn load(named: &str) -> Result<Imported, String> {
             rot: Quat::from_xyzw(b.turn[0], b.turn[1], b.turn[2], b.turn[3]).normalize(),
             unseen: false,
             scale: 1.0,
+            settle: false,
             model: None,
             piece: u32::MAX,
             outdoors: false,

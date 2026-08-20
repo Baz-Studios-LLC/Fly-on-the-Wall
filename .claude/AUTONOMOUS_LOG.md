@@ -1880,3 +1880,29 @@ above. Two lessons, and the second is the one I keep relearning: a measurement
 tells you what it measured, not what you hoped — reading "largest extent" as
 "the span" was the same shortcut as reading "the bone is turning" as "the leg is
 moving".
+
+## The coffee table and two end tables
+
+Brett's models, straight out of 3daistudio rather than through Opificium — which
+turns out to be the whole difference. An Opificium export carries an
+`opificium-fit` node that centres the mesh in a unit box and then lifts and
+scales it to real size; the couch and armchair arrive that way and just work. A
+raw export does not: it is centred on its own origin in a unit box, so it sits
+half underground and is one metre along its longest side whatever it is a model
+of. The coffee table came in eighteen centimetres into the floorboards and the
+end tables forty-four, all three the size of a wardrobe.
+
+`use_raw_model` takes the one measurement the file cannot supply — the real
+length of the longest side — and works out the rest. Scaling is arithmetic; the
+lift is *measured*, by standing the model on the floor once its own collision
+exists. Writing the lift down here would be a number taken off one afternoon's
+file and silently wrong after the next export, which is the same mistake as the
+sofa coordinates and the anatomically honest stride.
+
+Results: coffee table 112 × 62 × 40 with its top at 40, end tables 54 × 44 × 47
+with tops at 47. The clutter that stands on them was authored against the
+generated tables at 42 and 54 and has been moved to the models' real tops — two
+centimetres of daylight under a stack of books reads as wrong without anybody
+being able to say why.
+
+`Solid::settle` is the general form: any model can ask to be stood on the floor.
