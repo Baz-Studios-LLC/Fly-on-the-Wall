@@ -964,6 +964,7 @@ fn beat_the_model_wings(
     mut wings: Query<(&ModelWing, &mut Transform)>,
     mut rate: Local<Option<f32>>,
     mut depth: Local<Option<f32>>,
+    mut width: Local<Option<f32>>,
 ) {
     let Ok(fly) = flies.single() else {
         return;
@@ -976,9 +977,25 @@ fn beat_the_model_wings(
 
     /// How far the wing sweeps up out of rest at full effort, radians.
     const SWEEP: f32 = 0.40;
-    /// How much wider the membrane reads when it is working. The main cue for
-    /// speed, now that the shiver is deliberately hard to follow.
-    const SMEAR: f32 = 2.8;
+    /// How much wider the membrane reads when it is working. **One by default:
+    /// the wings are not scaled at all.**
+    ///
+    /// The idea was a motion blur — widen the wing across its chord so it reads
+    /// as sweeping rather than sitting. It cannot be done this way. Weighing
+    /// each wing into its bone's frame gives extents of 0.55, 0.42 and 0.26,
+    /// and a fly's wing is nearer three to one than four to three: the membrane
+    /// lies *diagonally* in bone space, so no axis is its span and scaling any
+    /// of them stretches it lengthwise. Which is what it looked like — wings
+    /// twice their proper length in the air.
+    ///
+    /// Doing it properly needs a scale along an arbitrary axis, and a
+    /// `Transform` cannot express one: its scale is axis-aligned and applied
+    /// before its rotation, so `R·S` can never be `R·S·R⁻¹`. It would take a
+    /// second bone or a shader.
+    ///
+    /// So the blur is gone and the motion carries it instead. `FLY_SMEAR=<n>`
+    /// is there to try it, and what it mostly demonstrates is the above.
+    const SMEAR: f32 = 1.0;
     /// The buzz, in beats a second.
     ///
     /// **This cannot simply be raised to look faster, and that is worth
@@ -992,9 +1009,9 @@ fn beat_the_model_wings(
     /// real fly's wings, at two hundred beats a second, look like nothing but
     /// a haze.
     const BUZZ: f32 = 29.0;
-    /// How far it shivers about the smear. Small on purpose: motion you can
-    /// follow with your eye is motion that looks slow.
-    const SHIVER: f32 = 0.11;
+    /// How far it shivers. Larger now that it is doing the work alone, but
+    /// still small: motion you can follow with your eye looks slow.
+    const SHIVER: f32 = 0.17;
     /// How much the whole wing rocks fore and aft across a beat, which is what
     /// stops a smear reading as a stuck decal.
     const ROCK: f32 = 0.045;
@@ -1013,6 +1030,12 @@ fn beat_the_model_wings(
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(SHIVER)
+    });
+    let smear = *width.get_or_insert_with(|| {
+        std::env::var("FLY_SMEAR")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(SMEAR)
     });
 
     let clock = time.elapsed_secs();
@@ -1035,12 +1058,7 @@ fn beat_the_model_wings(
         // length of the animal, which is what one side did while the other
         // looked right. A scale axis on a bone means nothing until you know
         // which way that particular bone runs.
-        let widen = 1.0 + (SMEAR - 1.0) * effort;
-        // Across the chord. Measured, not guessed: weighing each wing's own
-        // vertices into its bone's frame gives extents of x=0.55, y=0.42,
-        // z=0.26 — so the span is local X, the chord is Y, and Z is nothing but
-        // the thickness of a membrane. Both wings agree, which is worth knowing
-        // too, because a great deal of time went on assuming they were mirrored.
+        let widen = 1.0 + (smear - 1.0) * effort;
         let want = Vec3::new(1.0, widen, 1.0);
         pose.scale = pose.scale.lerp(want, blend);
     }

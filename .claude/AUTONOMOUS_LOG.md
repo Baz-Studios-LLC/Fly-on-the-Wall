@@ -1860,3 +1860,23 @@ The "spike" was a wing seen edge-on. Three of the four captures I was reasoning
 from showed nothing of the kind, and I had never once rendered the wings with the
 smear switched off to see what unscaled looked like. Establish the baseline
 before reading a difference.
+
+### And then the smear had to go entirely
+
+Brett: "the wings look like they are double their normal length while flying".
+Right, and the measurement above says why, if it is read properly rather than
+skimmed for a maximum. A fly's wing is nearer three to one than four to three —
+0.55 by 0.42 is not a wing shape at all. **The membrane lies diagonally in bone
+space**, so none of the three axes is its span and scaling any of them stretches
+it lengthwise.
+
+Doing it properly needs a scale along an arbitrary axis, and a `Transform` cannot
+express one: its scale is axis-aligned and applied *before* its rotation, so
+`R·S` can never be `R·S·R⁻¹`. It would take a second bone or a shader.
+
+So there is no blur. The wings stay their true size, sweep out with effort, and
+shiver at twenty-nine a second; `FLY_SMEAR=<n>` exists mainly to demonstrate the
+above. Two lessons, and the second is the one I keep relearning: a measurement
+tells you what it measured, not what you hoped — reading "largest extent" as
+"the span" was the same shortcut as reading "the bone is turning" as "the leg is
+moving".
