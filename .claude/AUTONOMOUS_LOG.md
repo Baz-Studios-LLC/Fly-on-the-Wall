@@ -1596,3 +1596,56 @@ Method worth keeping: **bones were identified by what they hold, not what they
 are called.** This rig names almost everything `bone_N`. Weighted vertex
 centroids told me which two were wings, which one was the body, and that the
 legs were unusable — in one pass, before writing any code against them.
+
+## Fixing the fly's rig rather than working around it
+
+Brett, twice: can you fix the rig? Yes — by re-skinning it, which is a
+different act from every correction made so far and worth being clear about.
+
+The father's faults were **constants** sitting under good animation: a forearm
+roll, a spine stoop, a baked travel. Subtracting a constant fixed each one,
+because the skeleton and the mesh agreed about what a bone *was* and only the
+retarget was wrong.
+
+The fly's rig does not agree with its own mesh. Clustering the six legs
+geometrically and asking which bone owns each:
+
+| leg | owner |
+|---|---|
+| front left | **`bone_7` 59%** — the *body* |
+| front right | `tripo::0_Left_Limb_6` 99% |
+| middle left | `bone_25` 46%, `bone_15` 18%, `bone_24` 17% |
+| middle right | `bone_31` 47%, `0_Left_Limb_6` 21%, `bone_21` 13% |
+| rear right | `bone_30` 63% |
+| rear left | `bone_27` 63% |
+
+Only the rear pair is drivable. Any rotation that moved the front-left leg moved
+the body with it, and `0_Left_Limb_6` holds parts of three legs at once — which
+is exactly what `preset:hexapod:walk` looked like when it played.
+
+No runtime correction fixes that, so `tools/rig-the-legs.py` re-skins it: the
+six legs are found by clustering everything below the body mass, each is bound
+to a new bone planted where that leg meets the thorax, and weight feathers in
+over the first centimetre so the joint bends instead of tearing. Six nodes and
+six inverse bind matrices are appended; the mesh, the materials, the wing bones
+and the existing skeleton are untouched. The original file is left alone and
+`assets/characters/fly/fly-legs.glb` is written beside it.
+
+`walk_the_model_legs` then runs an alternating tripod off them — phase advanced
+by distance travelled, not by time, the same rule the built legs and the
+father's walk follow.
+
+Re-run the tool if Brett re-exports the fly.
+
+### Two process notes
+
+**Bones were identified by what they hold, not what they are called.** This rig
+names almost everything `bone_N`. Weighted vertex clustering answered every
+question about it — which bones were wings, which was the body, which legs were
+drivable — before a line of code was written against it.
+
+**`cargo fmt` reflows `add_systems` tuples, and a string-replace against the
+unformatted text silently misses.** That cost two rounds of "the system does not
+run" on work that was already correct. The compiler said so both times —
+`function is never used` — and it was faster to read that warning than to
+re-derive the bug.

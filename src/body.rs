@@ -106,8 +106,9 @@ enum Worn {
     /// `assets/fly.glb`. Tripo output whose rig is not usable — no wing bones,
     /// four coincident limb roots, two joints driving nothing.
     Early,
-    /// `assets/characters/fly/fly-walk.glb`. Rigged with thirty-two bones and,
-    /// despite the name, no animation in the file.
+    /// `assets/characters/fly/fly-legs.glb` — the supplied rig with six leg
+    /// bones added by `tools/rig-the-legs.py`, because the one it came with
+    /// could not move a leg without moving the body.
     Rigged,
 }
 
@@ -200,6 +201,8 @@ impl Plugin for BodyPlugin {
                 walk_the_model,
                 find_the_model_wings,
                 beat_the_model_wings,
+                find_the_model_legs,
+                walk_the_model_legs,
             )
                 .chain(),
         );
@@ -247,7 +250,7 @@ fn grow_the_body(
                 Name::new("Fly model"),
                 ChildOf(fly),
                 WorldAssetRoot(
-                    assets.load(GltfAssetLabel::Scene(0).from_asset("characters/fly/fly-walk.glb")),
+                    assets.load(GltfAssetLabel::Scene(0).from_asset("characters/fly/fly-legs.glb")),
                 ),
                 Transform::from_rotation(rigged_facing())
                     .with_scale(Vec3::splat(FLY_LENGTH))
@@ -554,6 +557,155 @@ fn reach(anchor: Vec3, foot: Vec3, femur: f32, tibia: f32, pole: Vec3) -> (Vec3,
     (femur_dir, (foot - knee).normalize_or_zero())
 }
 
+/// A leg on the rigged model: the pose it stands in, and where it sits in the
+/// tripod.
+#[derive(Component)]
+struct ModelLeg {
+    rest: Quat,
+    /// 0.0 or 0.5. Insects walk an alternating tripod — front and rear on one
+    /// side with the middle of the other — so three feet are always down.
+    phase: f32,
+}
+
+/// Find the six leg bones added by `tools/rig-the-legs.py`.
+///
+/// They exist because the supplied rig could not drive a leg. Its front-left
+/// was fifty-nine per cent weighted to `bone_7`, which is the *body*, and its
+/// front-right ninety-nine per cent to `tripo::0_Left_Limb_6`, which also holds
+/// most of the other five: any rotation that moved a leg moved half the animal,
+/// which is exactly what `preset:hexapod:walk` looked like.
+///
+/// The fix is a re-skin rather than a correction. The father's faults were
+/// constants sitting under good animation and subtracting a constant fixed
+/// them; this one is the skeleton disagreeing with the mesh about what a leg
+/// is, and nothing at runtime can talk it round.
+fn find_the_model_legs(
+    mut commands: Commands,
+    flies: Query<Entity, With<Fly>>,
+    children: Query<&Children>,
+    names: Query<&Name>,
+    poses: Query<&Transform>,
+    mut looked: Local<bool>,
+) {
+    if worn() != Worn::Rigged || *looked {
+        return;
+    }
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+    let mut found = 0;
+    let mut stack = vec![fly];
+    while let Some(entity) = stack.pop() {
+        if let Ok(kids) = children.get(entity) {
+            stack.extend(kids.iter());
+        }
+        let Ok(name) = names.get(entity) else {
+            continue;
+        };
+        let phase = match name.as_str() {
+            "leg_front_left" | "leg_middle_right" | "leg_rear_left" => 0.0,
+            "leg_front_right" | "leg_middle_left" | "leg_rear_right" => 0.5,
+            _ => continue,
+        };
+        let Ok(rest) = poses.get(entity) else {
+            continue;
+        };
+        commands.entity(entity).insert(ModelLeg {
+            rest: rest.rotation,
+            phase,
+        });
+        found += 1;
+    }
+    if found == 6 {
+        *looked = true;
+        info!("the rigged fly walks on six legs of its own");
+    }
+}
+
+/// Walk the model's legs, driven by how far the body has actually gone.
+///
+/// One rotation per leg, swept fore and aft about the fly's own lateral axis,
+/// with a lift through the return so a foot passes over the floor rather than
+/// through it. No knee: a single bone per leg is what the re-skin gives, and at
+/// the size a fly is drawn the swing is the whole of what reads.
+///
+/// Phase advances with distance travelled, not with time, which is the same
+/// rule the built legs and the father's walk follow — feet keep up with the
+/// floor by construction rather than by a constant somebody tuned.
+fn walk_the_model_legs(
+    time: Res<Time>,
+    flies: Query<&Fly>,
+    parents: Query<&ChildOf>,
+    placed: Query<&GlobalTransform>,
+    mut legs: Query<(Entity, &ModelLeg, &mut Transform)>,
+    mut was: Local<Option<Vec3>>,
+    mut gait: Local<f32>,
+    mut stepping: Local<f32>,
+) {
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+    /// How far a leg swings fore and aft, radians.
+    const SWING: f32 = 0.26;
+    /// How far it lifts on the way through.
+    const LIFT: f32 = 0.13;
+    /// Body travel for one full stride, in centimetres.
+    const STRIDE: f32 = 0.36;
+
+    let here = fly.pos;
+    let moved = was.map(|w| here - w).unwrap_or(Vec3::ZERO);
+    *was = Some(here);
+    let walking = matches!(fly.stance, Stance::Perched(_));
+    let travelled = if walking { moved.length() } else { 0.0 };
+    *gait = (*gait + travelled / STRIDE).fract();
+
+    // A capture cannot press a key.
+    let forced = std::env::var("FLY_GAIT")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok());
+    if let Some(p) = forced {
+        *gait = p;
+    }
+
+    // Legs settle to standing when the fly is not going anywhere, rather than
+    // freezing mid-stride.
+    let blend = 1.0 - (-POSE_RATE * time.delta_secs()).exp();
+    let want = if forced.is_some() || travelled > 1e-5 {
+        1.0
+    } else {
+        0.0
+    };
+    *stepping += (want - *stepping) * blend;
+
+    let along = fly.body * Vec3::NEG_Z;
+    let lateral = fly.body * Vec3::X;
+    for (entity, leg, mut pose) in &mut legs {
+        let Some(frame) = parents
+            .get(entity)
+            .ok()
+            .and_then(|c| placed.get(c.parent()).ok())
+        else {
+            continue;
+        };
+        let (_, turn, _) = frame.to_scale_rotation_translation();
+        let sideways = turn.inverse() * lateral;
+        let forward = turn.inverse() * along;
+
+        let t = (*gait + leg.phase).fract();
+        let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
+        // Up only while the foot is coming back, which is the half of the
+        // cycle that is not carrying any weight.
+        let lift = if t > 0.5 {
+            ((t - 0.5) * std::f32::consts::TAU).sin() * LIFT * *stepping
+        } else {
+            0.0
+        };
+        pose.rotation = Quat::from_axis_angle(sideways, sweep)
+            * Quat::from_axis_angle(forward, lift)
+            * leg.rest;
+    }
+}
+
 /// A wing on the rigged model, and the pose it hangs in at rest.
 #[derive(Component)]
 struct ModelWing {
@@ -707,7 +859,7 @@ fn walk_the_model(
         return;
     }
     let file = handle
-        .get_or_insert_with(|| assets.load("characters/fly/fly-walk.glb"))
+        .get_or_insert_with(|| assets.load("characters/fly/fly-legs.glb"))
         .clone();
 
     // Start it once the skeleton and the file are both here.
