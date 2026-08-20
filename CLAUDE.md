@@ -7,12 +7,19 @@ behavior and documented decisions as the source of truth.
 
 - This is a Rust 2024 and Bevy 0.19 project. Verify APIs against that version.
 - One world unit is one centimetre.
-- Every occupiable room must provide clear interior floor dimensions of at least
-  15 feet by 15 feet (`457.2 cm x 457.2 cm`). Measure between finished interior
-  surfaces; wall thickness, trim, and built-ins must not reduce either dimension
-  below this minimum.
-- Use 9-foot ceilings (`274.32 cm`) measured from the finished floor surface to
-  the finished ceiling surface. Hanging fixtures may extend below this height.
+- The house is built to `assets/FloorPlan.jpg`, at the real dimensions printed
+  on it. That plan replaced a 15-by-15-foot minimum and a uniform 9-foot
+  ceiling, both of which it breaks everywhere: only its great room would have
+  passed the minimum, and its ceilings are deliberately 10 feet through the
+  living areas and 9 in the secondary bedrooms and baths.
+- **A law was not deleted here, it was made stricter.** "At least fifteen feet"
+  only ever caught a room that was small. "Matches the plan" catches a room that
+  is the wrong size in either direction, in the wrong place, or missing — so
+  `house::audit` checks every room against the plan's own figures, and a
+  mismatch refuses to build exactly as the old minimum did.
+- Ceiling heights come from the plan, per room, and are not uniform. The
+  variation is worth having: a fly crossing from a 9-foot bedroom into a 10-foot
+  great room should feel the volume change.
 - The current flight model is approved. Preserve its feel and controls unless a
   house change exposes a concrete collision or traversal bug.
 - Rendering geometry and collision geometry must agree. A visible solid should

@@ -2004,3 +2004,41 @@ and right angles are *correct* for a building and wrong for a sofa.
 
 Blender is live and confirmed working: 5.2.0 LTS, code execution, PolyHaven
 enabled (strongest on textures and HDRIs rather than models).
+
+## The house is rebuilt to a real floor plan
+
+Brett dropped `assets/FloorPlan.jpg` in — an architect's plan for a real house,
+and a much better one than the generated layout: a master suite with its own bath
+and walk-in closet, an office, a pantry, front and rear porches, a proper kitchen
+with an island, a two-car garage.
+
+It breaks both of the dimensional laws. Only its great room would have passed the
+fifteen-by-fifteen minimum, and its ceilings are deliberately mixed — ten feet
+through the living areas and master suite, nine in the secondary bedrooms, baths
+and office. Brett's answer: "Screw the laws!!! LOL, lets go better".
+
+**The law was made stricter rather than deleted.** "At least fifteen feet" only
+ever caught a room that was too small. "Matches the plan" catches a room that is
+wrong in either direction, in the wrong place, or missing altogether. `audit`
+keeps its power to refuse to build.
+
+### Measuring the plan instead of eyeballing it
+
+Blender can read image pixels, so the plan was measured rather than estimated.
+Columns and rows of near-black ink give the wall centrelines; the scale comes
+from the labelled garage — 23 feet across 393 pixels, **17.087 px/ft** — and it
+was confirmed twice over before being trusted: the great room's 18'0" measures
+18.09 ft and its 19'2" measures 19.23 ft, and the 11-foot bedrooms measure 11.18.
+
+The derived grid, in feet from the top-left exterior corner:
+
+    x: 0, 8.84, 13.17, 19.02, 22.97, 35.17, 53.26, 57.06, 59.17, 64.44
+    y: 0, 1.52, 4.83, 10.42, 11.15, 13.46, 14.69, 16.68, 19.37,
+       21.39, 23.32, 23.79, 28.03, 35.0, 38.6, 44.54, 46.5, 51.03
+
+The gaps in that grid are informative too: there is no wall line between the
+dining area and the great room, because the plan draws that boundary dashed. Open
+plan reads as an absence of ink.
+
+Overall 64.44 by 51.03 feet against the old house's 68 by 34.5 — much deeper, and
+no longer scaled by `15/11.5` to satisfy a minimum that no longer exists.
