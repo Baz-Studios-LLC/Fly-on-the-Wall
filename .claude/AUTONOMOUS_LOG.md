@@ -1662,3 +1662,41 @@ unformatted text silently misses.** That cost two rounds of "the system does not
 run" on work that was already correct. The compiler said so both times —
 `function is never used` — and it was faster to read that warning than to
 re-derive the bug.
+
+## The legs were animating all along — too fast to see
+
+Reported twice as "the legs don't animate when it walks", and both times a
+forced capture showed them stepping perfectly. That gap was the whole clue and I
+read it as a scale problem instead of a *rate* problem.
+
+`fly::WALK` is six centimetres a second. A fly's real stride is about a third of
+its body length — under two millimetres on this body — so a physically honest
+`STRIDE` of 0.18 cm puts the gait at **thirty-three cycles a second**. Nothing
+can draw that. The legs ran the whole time and aliased into looking still.
+
+This is the same trap the wingbeat has a paragraph about in the same file: two
+hundred beats a second against sixty frames aliases into a slow wrong-looking
+flutter, which is *why* the wings smear instead of flapping. Having written that
+reasoning down, I then walked straight into it with the legs.
+
+`STRIDE` is a centimetre now — six cycles a second at full walking speed, which
+is brisk and visible — with a per-frame ceiling on top so a burst of speed
+cannot alias it either. The feet slide slightly for it. Sliding feet beat
+invisible ones.
+
+`SWING`, `LIFT` and `FOLD` were also raised: fifteen degrees of thigh is under a
+pixel of foot travel in chase view, which is the only place anybody sees this.
+
+**`FLY_STEP=1`** now reports what the gait is being fed — stance, centimetres a
+frame, phase, and whether it thinks it is stepping. Added because the difference
+between "the signal is zero" and "the movement is too fast to see" is not
+something either of us could tell by looking, and I guessed wrong twice.
+
+## Wings in the air
+
+A held sweep was a stuck decal. There is a buzz on top of it now: twenty-seven
+beats a second, small amplitude, applied *after* the smoothing — a shiver eased
+at `POSE_RATE` is no shiver at all — with the two wings running a half beat
+apart, because a pair in perfect step reads as one object. Aliasing a small
+amplitude is what a blur looks like; aliasing a large one is a slow flap, which
+is what twelve beats a second looked like.

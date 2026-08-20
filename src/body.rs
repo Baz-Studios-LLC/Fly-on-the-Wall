@@ -658,25 +658,62 @@ fn walk_the_model_legs(
     mut was: Local<Option<Vec3>>,
     mut gait: Local<f32>,
     mut stepping: Local<f32>,
+    mut ticks: Local<u32>,
 ) {
     let Ok(fly) = flies.single() else {
         return;
     };
     /// How far a thigh swings fore and aft, radians.
-    const SWING: f32 = 0.26;
+    ///
+    /// Larger than it looks in a close-up, because a close-up is not where
+    /// anybody sees it. In chase view the fly is a few dozen pixels across and
+    /// fifteen degrees of thigh is under a pixel of foot travel.
+    const SWING: f32 = 0.44;
     /// How far it lifts on the way through.
-    const LIFT: f32 = 0.13;
+    const LIFT: f32 = 0.20;
     /// How far the knee folds at the top of the return.
-    const FOLD: f32 = 0.42;
+    const FOLD: f32 = 0.55;
     /// Body travel for one full stride, in centimetres.
-    const STRIDE: f32 = 0.36;
+    ///
+    /// **Chosen so the gait can be drawn, not from anatomy.** A fly's real
+    /// stride is about a third of its body length, which on this body is under
+    /// two millimetres — and at the six centimetres a second `fly::WALK`
+    /// crawls, that is thirty-three gait cycles every second. No screen can
+    /// show that. Set there, the legs ran the whole time and aliased into
+    /// looking perfectly still, which is exactly the trap the wingbeat has a
+    /// paragraph about a hundred lines further down this file. Twice.
+    ///
+    /// A centimetre a stride puts it at six cycles a second at full walking
+    /// speed: brisk, and visible. The feet slide a little for it, and sliding
+    /// feet beat invisible ones.
+    const STRIDE: f32 = 1.0;
+    /// And a ceiling on top, in cycles per frame, so a burst of speed cannot
+    /// alias the gait however fast the fly is dragged along.
+    const FASTEST: f32 = 0.11;
 
     let here = fly.pos;
     let moved = was.map(|w| here - w).unwrap_or(Vec3::ZERO);
     *was = Some(here);
     let walking = matches!(fly.stance, Stance::Perched(_));
     let travelled = if walking { moved.length() } else { 0.0 };
-    *gait = (*gait + travelled / STRIDE).fract();
+    *gait = (*gait + (travelled / STRIDE).min(FASTEST)).fract();
+
+    // `FLY_STEP=1` says what the gait is actually being fed. Twice now the
+    // legs have been reported still while a capture showed them stepping, and
+    // the difference between "the signal is zero" and "the movement is too
+    // small to see" is not something either of us can tell by looking.
+    if std::env::var("FLY_STEP").is_ok() {
+        *ticks += 1;
+        if *ticks % 30 == 0 {
+            info!(
+                "gait: {} travelled {:.4} cm/frame  phase {:.2}  stepping {:.2}",
+                if walking { "walking" } else { "flying" },
+                travelled,
+                *gait,
+                *stepping
+            );
+        }
+    }
 
     // A capture cannot press a key.
     let forced = std::env::var("FLY_GAIT")
@@ -831,10 +868,32 @@ fn beat_the_model_wings(
     const SWEEP: f32 = 0.40;
     /// How much wider the membrane reads when it is working.
     const SMEAR: f32 = 2.0;
+    /// The buzz, in beats a second. Deliberately far below a housefly's two
+    /// hundred and deliberately above what a screen can resolve: at sixty
+    /// frames it aliases, and aliasing a *small* amplitude is what a blur
+    /// looks like. Aliasing a large one is a slow flap, which is what this
+    /// looked like when the number was twelve.
+    const BUZZ: f32 = 27.0;
+    /// How far it shivers about the smear. Small on purpose.
+    const SHIVER: f32 = 0.14;
+    /// How much the whole wing rocks fore and aft across a beat, which is what
+    /// stops a smear reading as a stuck decal.
+    const ROCK: f32 = 0.09;
 
+    let clock = time.elapsed_secs();
     for (wing, mut pose) in &mut wings {
-        let want = wing.rest * Quat::from_rotation_x(SWEEP * effort * wing.side);
-        pose.rotation = pose.rotation.slerp(want, blend);
+        // Held pose: swept up and out into the stroke as effort rises.
+        let held = wing.rest * Quat::from_rotation_x(SWEEP * effort * wing.side);
+        pose.rotation = pose.rotation.slerp(held, blend);
+
+        // Then the buzz on top, applied *after* the smoothing so it is not
+        // smoothed away — a shiver eased at POSE_RATE is no shiver at all.
+        // The two wings run a half beat apart, because a pair in perfect step
+        // reads as one object.
+        let beat = (clock * BUZZ + wing.side * 0.25) * std::f32::consts::TAU;
+        pose.rotation *= Quat::from_rotation_x(beat.sin() * SHIVER * effort * wing.side)
+            * Quat::from_rotation_z(beat.cos() * ROCK * effort);
+
         let widen = 1.0 + (SMEAR - 1.0) * effort;
         pose.scale = pose.scale.lerp(Vec3::new(1.0, widen, 1.0), blend);
     }
