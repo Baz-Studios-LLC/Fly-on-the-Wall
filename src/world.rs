@@ -16,6 +16,7 @@
 //! feels right in both, that is a real result; if it only feels right in one,
 //! that is a more useful result still.
 
+use bevy::math::Affine3A;
 use bevy::prelude::*;
 
 // ---------------------------------------------------------------------------
@@ -181,6 +182,17 @@ pub struct Hull {
     cell: f32,
     lo: Vec3,
     hi: Vec3,
+    /// Where the triangles are *now*, relative to where they were filed.
+    ///
+    /// A rigid motion, and only a rigid one, so a distance measured against the
+    /// filed triangles is still the distance in the room. It exists because a
+    /// person walks: refiling four thousand triangles into a grid every frame
+    /// to say a body has moved forty centimetres is not affordable, and leaving
+    /// the collision behind means the fly lands on a man who is no longer
+    /// there. Queries are moved into the filed frame instead, which costs two
+    /// matrix multiplies.
+    shift: Affine3A,
+    unshift: Affine3A,
 }
 
 /// Closest point on a triangle to `p` — Ericson's method, and the only part of
@@ -254,7 +266,19 @@ impl Hull {
             cell,
             lo,
             hi,
+            shift: Affine3A::IDENTITY,
+            unshift: Affine3A::IDENTITY,
         }
+    }
+
+    /// Carry the whole hull to a new place without refiling anything.
+    ///
+    /// `to` must be rigid — a rotation and a translation. Scaling here would
+    /// silently corrupt every distance the hull reports, because the grid it is
+    /// filed in is measured in centimetres.
+    pub fn carry(&mut self, to: Affine3A) {
+        self.shift = to;
+        self.unshift = to.inverse();
     }
 
     fn cells_between(&self, lo: Vec3, hi: Vec3) -> impl Iterator<Item = (i32, i32, i32)> + use<> {
@@ -269,6 +293,8 @@ impl Hull {
     /// Möller-Trumbore, front and back faces both — a fly inside a cushion
     /// still has to be pushed out of it.
     pub fn raycast(&self, origin: Vec3, dir: Vec3, max: f32) -> Option<(f32, Vec3)> {
+        let origin = self.unshift.transform_point3(origin);
+        let dir = self.unshift.transform_vector3(dir);
         let end = origin + dir * max;
         let mut best: Option<(f32, Vec3)> = None;
         let mut seen = std::collections::HashSet::new();
@@ -306,7 +332,8 @@ impl Hull {
                 }
             }
         }
-        best
+        // The distance survives the move untouched, because the move is rigid.
+        best.map(|(d, n)| (d, self.shift.transform_vector3(n)))
     }
 
     /// Which solid this hull belongs to.
@@ -320,7 +347,23 @@ impl Hull {
     }
 
     pub fn bounds(&self) -> (Vec3, Vec3) {
-        (self.lo, self.hi)
+        if self.shift == Affine3A::IDENTITY {
+            return (self.lo, self.hi);
+        }
+        // A turned box does not have turned corners for bounds: take all eight.
+        let mut low = Vec3::splat(f32::INFINITY);
+        let mut high = Vec3::splat(f32::NEG_INFINITY);
+        for i in 0..8 {
+            let corner = Vec3::new(
+                if i & 1 == 0 { self.lo.x } else { self.hi.x },
+                if i & 2 == 0 { self.lo.y } else { self.hi.y },
+                if i & 4 == 0 { self.lo.z } else { self.hi.z },
+            );
+            let moved = self.shift.transform_point3(corner);
+            low = low.min(moved);
+            high = high.max(moved);
+        }
+        (low, high)
     }
 
     /// Move, turn and resize the hull about a point.
@@ -330,6 +373,17 @@ impl Hull {
     /// they are filed in. Without this the model slides across the room in
     /// arrange mode and leaves its collision standing where it was.
     pub fn place(&mut self, about: Vec3, delta: Vec3, spin: Quat, factor: f32) {
+        // Bake any carried motion in first, or the rebuild files the triangles
+        // where they were rather than where they are.
+        if self.shift != Affine3A::IDENTITY {
+            let shift = self.shift;
+            for tri in &mut self.tris {
+                for point in tri.iter_mut() {
+                    *point = shift.transform_point3(*point);
+                }
+            }
+            self.carry(Affine3A::IDENTITY);
+        }
         for tri in &mut self.tris {
             for point in tri.iter_mut() {
                 *point = about + spin * ((*point - about) * factor) + delta;
@@ -340,6 +394,7 @@ impl Hull {
     }
 
     pub fn nearest(&self, p: Vec3, within: f32) -> Option<Near> {
+        let p = self.unshift.transform_point3(p);
         if p.x < self.lo.x - within
             || p.y < self.lo.y - within
             || p.z < self.lo.z - within
@@ -372,7 +427,11 @@ impl Hull {
                 }
             }
         }
-        best
+        best.map(|near| Near {
+            point: self.shift.transform_point3(near.point),
+            normal: self.shift.transform_vector3(near.normal),
+            distance: near.distance,
+        })
     }
 }
 

@@ -1269,3 +1269,65 @@ a node, not loading a file — which is what a state machine will want.
 Requirements on the exports, none of which an exporter guarantees: same
 skeleton, same bone names, and no root motion baked in. The game moves a body;
 the clip should not.
+
+## He walks about on his own
+
+Brett delivered `assets/characters/dad/dad-idle.glb` and `dad-walking.glb`: same
+41-bone skeleton, clips named `preset:biped:idle` and `preset:biped:walk`, and
+the bind pose is now arms-down rather than a T.
+
+### The travel is taken, not cancelled
+
+The walk has its motion baked in: the hip ramps 1.574 model units over 2.38 s,
+which on a 178 cm body is about 1.18 m/s. Left alone it carries the *drawn* body
+across the room while the entity stands still — the first capture had him walk
+into the camera.
+
+Cancelling it and moving him at a speed chosen here would be wrong twice: it
+throws away the animator's timing, and any disagreement between the two speeds
+shows as feet skating. So the travel is taken. Each frame the hip's sideways
+motion is read, applied to the body's place in the room, and put back. He moves
+exactly as fast as he is animated to move, because it is the same motion.
+
+Only while walking. A standing idle also swings the hips, but a standing body's
+feet are planted and its hips move *against* them; carrying that into the room
+would slide him sideways while stood still.
+
+### Two bugs
+
+**He stood still for twenty seconds.** The clearance test fires rays from the
+walker's own position, and a person's own collision is in the same list as the
+walls — so every direction reported blocked. Rays start 36 cm clear now.
+
+**Brett found this one: he walked three feet off the floor and stood on it
+perfectly.** Putting the hip bone back read `rest + up * height`, which *adds*
+the bind height to the animated height rather than replacing it. The hip's bind
+height is half the body — 0.51 units, 91 cm, almost exactly three feet. It only
+showed while walking because the idle never runs that code. `rest` is stored
+flattened across the up axis now.
+
+### Collision follows him
+
+`Hull` carries a rigid `shift`, so a body that moves does not refile four
+thousand triangles into a grid every frame — queries move into the filed frame
+instead, two matrix multiplies. `Filed` records where a person's hull was built;
+`carry_the_collision` sets the shift from where they have got to, and moves the
+anchor solid so perches stay attached. The limbs are still the pose the hull was
+built in; the *body* is where you can see it, which is the difference between
+landing on a man and landing on a ghost.
+
+### `FLY_STUDIO=<deg>[:head][:keep]`
+
+`keep` leaves the house standing and brings the camera in close with a wider
+lens. The framing is the useful half of the turntable when the question is about
+a body *in* a room — where he has walked to, whether his feet are on the
+floorboards — and the room viewpoints cannot answer it, because at half the
+compass they stand inside a wall.
+
+### Next
+
+- Doorways. He only picks destinations in the room he is already in, because a
+  straight line is the only path he can test. Walking to another room needs the
+  openings as waypoints.
+- The hull is still the pose it was built in. A perch on a swinging arm is
+  wrong by up to a hand's width.

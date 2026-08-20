@@ -29,7 +29,7 @@ use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
 const TALL: f32 = 178.0;
 
 /// The model he is made of.
-const FATHER: &str = "characters/DadRigged.glb";
+const FATHER: &str = "characters/dad/dad-idle.glb";
 
 /// A person. The studio and the camera both look for this.
 #[derive(Component)]
@@ -275,6 +275,11 @@ fn movements(model: &str) -> Vec<(String, String)> {
     found
 }
 
+/// The entity holding a person's `AnimationPlayer`, which the glTF loader puts
+/// on whichever node roots the animated hierarchy rather than on the person.
+#[derive(Component)]
+pub struct Plays(pub Entity);
+
 /// A person playing a clip of their own rather than a pose built here.
 #[derive(Component)]
 struct Animated;
@@ -286,6 +291,9 @@ struct NeedsSeat {
     on: &'static str,
     /// What to do instead if there is nothing there to sit on.
     otherwise: &'static Posture,
+    /// The posture that asked for a seat. Somebody who is not sitting down has
+    /// no business being moved onto the furniture.
+    wanted: &'static Posture,
 }
 
 /// A rig that has not been posed yet, and the posture it is waiting for.
@@ -437,7 +445,7 @@ fn play_what_he_has(
         );
         commands
             .entity(person)
-            .insert((Animated, Repertoire(repertoire)))
+            .insert((Animated, Plays(root), Repertoire(repertoire)))
             .remove::<NeedsPose>();
     }
 }
@@ -457,6 +465,17 @@ fn take_a_seat(
     mut folk: Query<(Entity, &NeedsSeat, &mut Transform)>,
 ) {
     for (person, wanted, mut standing) in &mut folk {
+        if !std::ptr::eq(
+            wanted.wanted,
+            wanted
+                .otherwise
+                .clip
+                .map_or(wanted.wanted, |_| wanted.wanted),
+        ) || wanted.wanted.clip != Some("sit")
+        {
+            commands.entity(person).remove::<NeedsSeat>();
+            continue;
+        }
         let Some(furniture) = home.solids.iter().position(|s| s.model == Some(wanted.on)) else {
             // No sofa, so he stands where he is rather than sitting on the
             // floor in the shape of a chair. Furniture can be removed from the
@@ -605,11 +624,24 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
     // The seat is measured, not guessed: `made` reports the top surface of
     // every model it collides, and the sofa's is forty-three centimetres. He
     // sits a shade back from the middle of it, toward one end.
-    let posture = &SEATED;
-    let sit = Vec3::new(968.0, posture.lift, 1000.0);
-    // The model faces its own +x, so east is no turn at all.
-    let turn = Quat::IDENTITY;
-    let stand = sit;
+    // Sit him down only if there is a clip for sitting. There is idle and
+    // there is walking, and a standing idle played by somebody positioned as
+    // though seated puts a man standing on his own sofa.
+    let moves = movements(FATHER);
+    let posture = if moves.iter().any(|(name, _)| name.contains("sit")) {
+        &SEATED
+    } else {
+        &STANDING
+    };
+    // Where he waits when there is nothing to sit on: clear of the seating
+    // group, facing across the room.
+    let room = crate::house::room("great room");
+    let stand = Vec3::new(
+        room.min.x + room.wide() * 0.55,
+        posture.lift,
+        room.min.y + room.deep() * 0.62,
+    );
+    let turn = Quat::from_rotation_y(-1.2);
 
     // The model is normalised to one unit tall, so the scale is his height in
     // metres. Everything downstream multiplies by a hundred.
@@ -634,7 +666,7 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
         Person,
         Stature(TALL),
         CameFrom(
-            movements(FATHER)
+            moves
                 .into_iter()
                 .inspect(|(movement, path)| info!("a movement is available: {movement} — {path}"))
                 .map(|(movement, path)| (movement, assets.load(path)))
@@ -644,6 +676,7 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
         NeedsSeat {
             on: "models/couch.glb",
             otherwise: &STANDING,
+            wanted: posture,
         },
         NeedsBody { solid: index },
         crate::world::Part { solid: index },
@@ -832,6 +865,16 @@ fn make_him_solid(
         if std::env::var("FLY_HULL").is_ok() {
             crate::made::probe(&mut commands, &hull, &mut meshes, &mut materials);
         }
+        // Remember where it was filed, so a body that walks can carry its
+        // collision rather than rebuild it.
+        let (_, turn, at) = placed
+            .get(person)
+            .map(|g| g.to_scale_rotation_translation())
+            .unwrap_or((Vec3::ONE, Quat::IDENTITY, Vec3::ZERO));
+        commands.entity(person).insert(crate::wander::Filed {
+            at: bevy::math::Affine3A::from_rotation_translation(turn, at),
+            hull: home.hulls.len(),
+        });
         home.hulls.push(hull);
         commands.entity(person).remove::<NeedsBody>();
     }

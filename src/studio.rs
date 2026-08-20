@@ -20,14 +20,32 @@ use bevy::prelude::*;
 
 use crate::folk::Person;
 
-/// Which way round, and whether to frame the head rather than the whole body.
-pub fn studio() -> Option<(f32, bool)> {
+/// How the turntable has been asked for.
+#[derive(Clone, Copy)]
+pub struct Turntable {
+    /// Degrees round from dead ahead of the person.
+    pub round: f32,
+    /// Frame the head rather than the whole body.
+    pub head: bool,
+    /// Leave the house standing. The camera framing is the useful half of this
+    /// tool when the question is about a body *in* a room — where somebody has
+    /// walked to, whether their feet are on the floorboards — and the room
+    /// viewpoints are no use for that, because at half the compass they stand
+    /// inside a wall.
+    pub keep: bool,
+}
+
+/// `FLY_STUDIO=<degrees>[:head][:keep]`.
+pub fn studio() -> Option<Turntable> {
     let raw = std::env::var("FLY_STUDIO").ok()?;
-    let (degrees, rest) = match raw.split_once(':') {
-        Some((d, r)) => (d, r),
-        None => (raw.as_str(), ""),
-    };
-    Some((degrees.trim().parse().ok()?, rest.trim() == "head"))
+    let mut parts = raw.split(':');
+    let round = parts.next()?.trim().parse().ok()?;
+    let flags: Vec<&str> = parts.map(str::trim).collect();
+    Some(Turntable {
+        round,
+        head: flags.contains(&"head"),
+        keep: flags.contains(&"keep"),
+    })
 }
 
 pub struct StudioPlugin;
@@ -35,6 +53,10 @@ pub struct StudioPlugin;
 impl Plugin for StudioPlugin {
     fn build(&self, app: &mut App) {
         if studio().is_none() {
+            return;
+        }
+        let asked = studio();
+        if asked.is_some_and(|t| t.keep) {
             return;
         }
         app.insert_resource(ClearColor(Color::srgb(0.30, 0.31, 0.33)))

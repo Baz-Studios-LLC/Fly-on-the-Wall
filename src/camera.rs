@@ -443,14 +443,18 @@ fn place_the_eye(
     }
 
     // On the turntable, with the room hidden.
-    if let Some((degrees, head)) = crate::studio::studio() {
+    if let Some(asked) = crate::studio::studio() {
         if let Some((person, stature)) = folk.iter().next() {
             let root = person.translation();
             let tall = stature.map(|s| s.0).unwrap_or(178.0);
             // A long lens, because a portrait taken at forty-six degrees has a
             // nose in it that the model does not.
-            let (target, reach, fov) = if head {
+            let (target, reach, fov) = if asked.head {
                 (root.y + tall * 0.925, tall * 0.42, 30.0)
+            } else if asked.keep {
+                // Closer and wider with the house standing, or the long lens
+                // puts the camera through the wall behind him.
+                (root.y + tall * 0.50, tall * 1.10, 52.0)
             } else {
                 (root.y + tall * 0.50, tall * 1.95, 32.0)
             };
@@ -461,7 +465,7 @@ fn place_the_eye(
             // about the face was made on a cheek.
             let (_, turn, _) = person.to_scale_rotation_translation();
             let face = (turn * Vec3::NEG_Z).with_y(0.0).normalize_or(Vec3::NEG_Z);
-            let out = Quat::from_rotation_y(degrees.to_radians()) * face;
+            let out = Quat::from_rotation_y(asked.round.to_radians()) * face;
             transform.translation = heart + out * reach + Vec3::Y * reach * 0.06;
             transform.look_at(heart, Vec3::Y);
             if let Projection::Perspective(perspective) = &mut *projection {

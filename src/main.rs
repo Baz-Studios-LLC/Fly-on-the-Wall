@@ -69,6 +69,7 @@ mod pause;
 mod rooms;
 mod studio;
 mod title;
+mod wander;
 mod wingbeat;
 mod world;
 
@@ -131,6 +132,7 @@ fn main() {
             made::MadePlugin,
             pause::PausePlugin,
             studio::StudioPlugin,
+            wander::WanderPlugin,
         ))
         .add_systems(Startup, light_the_house)
         .add_systems(Update, toggle_fullscreen)
