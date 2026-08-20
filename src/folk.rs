@@ -184,10 +184,88 @@ struct Idling {
     phase: f32,
 }
 
-/// The glTF file a person came out of, kept so its animation clips can be
-/// found later. The scene is a separate asset and does not carry them.
+/// The glTF files a person's movements live in, kept so their clips can be
+/// found once they load. A scene is a separate asset and does not carry them.
+///
+/// More than one, because the rigging tool writes a single animation per
+/// export. There is nothing to merge: Bevy matches a clip to a skeleton by the
+/// *name path* of each bone, so a walk exported from this rig plays on the
+/// body already standing in the room, and the duplicate mesh in the walk file
+/// is simply never used. Combining the files would save disk and change
+/// nothing else.
 #[derive(Component)]
-struct CameFrom(Handle<Gltf>);
+struct CameFrom(Vec<(String, Handle<Gltf>)>);
+
+/// Which clip is which, once they are all in one graph, so a person can be
+/// told to do something else later without reloading anything.
+#[derive(Component)]
+pub struct Repertoire(pub std::collections::HashMap<String, AnimationNodeIndex>);
+
+/// What to call the movement in a file, given the base model's name.
+///
+/// The part that varies between one export and the next is the part worth
+/// reading: `DadRigged` and `DadWalk` share `Dad`, so the second is `walk`.
+/// A file that shares nothing, or everything, keeps its own name — the base
+/// model itself lands there and contributes no clips anyway.
+fn movement_name(model: &str, file: &str) -> String {
+    let shared = file
+        .chars()
+        .zip(model.chars())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let movement = file[shared..].trim_matches(['_', '-', ' ']).to_lowercase();
+    if movement.is_empty() {
+        file.to_lowercase()
+    } else {
+        movement
+    }
+}
+
+/// Every glTF in the characters folder, as (movement, path).
+///
+/// Scanned rather than listed, so a new movement is a file drop and not a code
+/// change. The name comes from the file: `DadWalk.glb` is `walk`, because the
+/// part that varies between one export and the next is the part worth reading.
+fn movements(model: &str) -> Vec<(String, String)> {
+    let folder = std::path::Path::new(model)
+        .parent()
+        .map(|p| p.to_owned())
+        .unwrap_or_default();
+    let stem = std::path::Path::new(model)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    // The longest run of leading letters shared by the base model's name is
+    // taken as the family prefix: `DadRigged` and `DadWalk` share `Dad`.
+    let mut found: Vec<(String, String)> = Vec::new();
+    for root in ["assets", "../assets", "../../assets"] {
+        let here = std::path::Path::new(root).join(&folder);
+        let Ok(entries) = std::fs::read_dir(&here) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("glb") {
+                continue;
+            }
+            let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            found.push((
+                movement_name(stem, name),
+                folder
+                    .join(path.file_name().unwrap())
+                    .to_string_lossy()
+                    .into_owned(),
+            ));
+        }
+        if !found.is_empty() {
+            break;
+        }
+    }
+    found.sort();
+    found
+}
 
 /// A person playing a clip of their own rather than a pose built here.
 #[derive(Component)]
@@ -246,16 +324,38 @@ fn play_what_he_has(
     idling: Query<Entity, With<Idling>>,
 ) {
     for (person, came_from, wanted) in &folk {
-        let Some(file) = files.get(&came_from.0) else {
+        // Every file has to be in before the graph is built, or a person ends
+        // up able to stand and not to walk depending on load order.
+        if came_from.0.iter().any(|(_, file)| !files.contains(file)) {
             continue;
-        };
-        if file.animations.is_empty() {
+        }
+        let mut clips: Vec<(String, Handle<AnimationClip>)> = Vec::new();
+        for (movement, handle) in &came_from.0 {
+            let Some(file) = files.get(handle) else {
+                continue;
+            };
+            // A file that names its clips is believed; one that does not is
+            // named after itself, which is the whole point of one per export.
+            for (name, clip) in &file.named_animations {
+                clips.push((name.to_lowercase(), clip.clone()));
+            }
+            if file.named_animations.is_empty() {
+                for (i, clip) in file.animations.iter().enumerate() {
+                    let name = if i == 0 {
+                        movement.clone()
+                    } else {
+                        format!("{movement}{i}")
+                    };
+                    clips.push((name, clip.clone()));
+                }
+            }
+        }
+        if clips.is_empty() {
             continue;
         }
 
         // The loader puts a player on whichever entity roots the animated
-        // hierarchy, so finding it is also how we know the skeleton has
-        // arrived.
+        // hierarchy, so finding it is also how we know the skeleton is here.
         let mut root = None;
         let mut stack = vec![person];
         while let Some(entity) = stack.pop() {
@@ -271,20 +371,29 @@ fn play_what_he_has(
             continue;
         };
 
-        let named = |want: &str| {
-            file.named_animations
-                .iter()
-                .find(|(name, _)| name.to_lowercase().contains(want))
-                .map(|(_, clip)| clip.clone())
-        };
-        let clip = wanted
-            .0
-            .clip
-            .and_then(named)
-            .or_else(|| named("idle"))
-            .unwrap_or_else(|| file.animations[0].clone());
+        // One graph with everything in it, so changing what somebody is doing
+        // is choosing a node rather than loading a file.
+        let mut graph = AnimationGraph::new();
+        let blend = graph.add_blend(1.0, graph.root);
+        let mut repertoire = std::collections::HashMap::new();
+        for (name, clip) in &clips {
+            repertoire.insert(name.clone(), graph.add_clip(clip.clone(), 1.0, blend));
+        }
 
-        let (graph, node) = AnimationGraph::from_clip(clip);
+        let wants = wanted.0.clip.unwrap_or("idle");
+        let chosen = repertoire
+            .iter()
+            .find(|(name, _)| name.contains(wants))
+            .or_else(|| repertoire.iter().find(|(name, _)| name.contains("idle")))
+            .map(|(name, node)| (name.clone(), *node));
+        let Some((playing, node)) = chosen.or_else(|| {
+            clips
+                .first()
+                .and_then(|(name, _)| repertoire.get(name).map(|n| (name.clone(), *n)))
+        }) else {
+            continue;
+        };
+
         if let Ok(mut player) = players.get_mut(root) {
             player.play(node).repeat();
         }
@@ -305,13 +414,12 @@ fn play_what_he_has(
         }
 
         info!(
-            "a person is animated: {} clips in the file, playing one of {:?}",
-            file.animations.len(),
-            file.named_animations.keys().collect::<Vec<_>>()
+            "a person is animated: playing {playing:?} of {:?}",
+            clips.iter().map(|(n, _)| n).collect::<Vec<_>>()
         );
         commands
             .entity(person)
-            .insert(Animated)
+            .insert((Animated, Repertoire(repertoire)))
             .remove::<NeedsPose>();
     }
 }
@@ -498,7 +606,13 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
     commands.spawn((
         Person,
         Stature(TALL),
-        CameFrom(assets.load(FATHER)),
+        CameFrom(
+            movements(FATHER)
+                .into_iter()
+                .inspect(|(movement, path)| info!("a movement is available: {movement} — {path}"))
+                .map(|(movement, path)| (movement, assets.load(path)))
+                .collect(),
+        ),
         NeedsPose(posture),
         NeedsSeat("models/couch.glb"),
         NeedsBody { solid: index },
@@ -690,5 +804,24 @@ fn make_him_solid(
         }
         home.hulls.push(hull);
         commands.entity(person).remove::<NeedsBody>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::movement_name;
+
+    #[test]
+    fn a_movement_is_named_after_what_differs() {
+        // The rigging tool writes one animation per export, so the files arrive
+        // as a family and the family name is the part they share.
+        assert_eq!(movement_name("DadRigged", "DadWalk"), "walk");
+        assert_eq!(movement_name("DadRigged", "DadSitting"), "sitting");
+        assert_eq!(movement_name("DadRigged", "Dad_Idle"), "idle");
+        // The base model shares its whole name with itself.
+        assert_eq!(movement_name("DadRigged", "DadRigged"), "dadrigged");
+        // And something unrelated dropped in the same folder keeps its name
+        // rather than becoming a suffix of somebody else's.
+        assert_eq!(movement_name("DadRigged", "MumWave"), "mumwave");
     }
 }

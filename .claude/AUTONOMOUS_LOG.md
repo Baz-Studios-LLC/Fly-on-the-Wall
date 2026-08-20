@@ -1247,3 +1247,25 @@ skeleton has arrived at all.
 Still open: an animated body invalidates the once-built collision hull. A seated
 idle drifts by millimetres and does not matter. A walk will, and the answer is
 per-bone collision with perches stored against bones — see above.
+
+## One animation per export is fine
+
+3daistudio writes a single animation per file. Nothing needs merging: Bevy
+matches a clip to a skeleton by the **name path** of each bone, so a walk
+exported from this rig plays on the body already standing in the room, and the
+duplicate mesh inside the walk file is simply never used. Combining the files
+would save disk and change nothing else.
+
+`folk::movements` scans the characters folder rather than listing files, so a
+new movement is a file drop and not a code change. The name comes from what
+differs: `DadRigged` and `DadWalk` share `Dad`, so the second is `walk`. That
+rule is a pure function with a test, because the files that will exercise it do
+not exist yet.
+
+All the clips go into one `AnimationGraph`, and the node index of each is kept
+on the person as `Repertoire`. Changing what somebody is doing is then choosing
+a node, not loading a file — which is what a state machine will want.
+
+Requirements on the exports, none of which an exporter guarantees: same
+skeleton, same bone names, and no root motion baked in. The game moves a body;
+the clip should not.
