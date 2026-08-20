@@ -1494,3 +1494,39 @@ Three retarget faults found in these two files now — forearm roll, spine stoop
 and the baked travel. All three were constants sitting under the animation, and
 all three were measured against the rig's own bind pose rather than guessed at.
 `FLY_MOVE=none` is the tool that makes that comparison possible.
+
+## The launcher build was broken and the repository build was not
+
+Brett booted v0.3.0 from the launcher and found the father standing with his
+arms crossed over the wrong shoulders, not walking. From `FotW.command` it was
+perfect.
+
+`movements()` scanned `assets`, `../assets` and `../../assets` **relative to the
+process's working directory**. That is the repository root when the game is
+started by hand and is not the app's folder when a launcher starts it. So the
+shipped build found no movement files, and then:
+
+- no clips → `play_what_he_has` fell through to the hand-written pose, whose
+  bone angles were authored first for the hand-built body and then for a rig
+  whose bind pose was a T. Against the arms-down rig that replaced both, they
+  fold his arms across his chest.
+- no `Repertoire` → `find_the_hip` never ran → no `Doing` → no walking.
+
+Two fixes, and the second matters more than the first.
+
+**The path.** `FileAssetReader::get_base_path()` is what the asset server itself
+uses: the manifest directory under `cargo run`, the executable's own folder
+otherwise. Bevy found the models perfectly the whole time; only this hand-rolled
+scan did not.
+
+**The fallback.** The hand-built pose tables, the idle sine waves and
+`pose_him`/`breathe` are gone. A fallback that is worse than doing nothing is
+not a fallback: a rigged model arrives in a pose its author chose, and standing
+still in it is the right answer when there is nothing to play. Had that been
+true already, the path bug would have shipped as "he doesn't walk" rather than
+as a man with his arms tied.
+
+**The lesson.** The only build ever tested was the one that could not exhibit
+the bug. Verifying this meant packaging the `.app` and running it from `/tmp`
+with `CARGO_MANIFEST_DIR` unset — which is now the check for anything that
+touches asset paths, and is two commands.

@@ -58,7 +58,6 @@ struct NeedsBody {
 /// There are four people coming and the interesting thing any of them does is
 /// sit down, so a posture is a value now rather than a constant.
 pub struct Posture {
-    bones: &'static [(&'static str, [f32; 3])],
     /// What this posture is called in an animation file, if a clip for it
     /// might exist. Checked before the hand-built bone table is used.
     clip: Option<&'static str>,
@@ -68,121 +67,15 @@ pub struct Posture {
     lift: f32,
 }
 
-/// A pose, as rotations on named bones.
-///
-/// A rig arrives in its bind pose, which for this one is a T — arms straight
-/// out, palms down. Nobody stands like that. The bones are named the way every
-/// humanoid rig names them, so a pose is a short table rather than anything
-/// clever, and it is authored here in radians for the same reason the house is:
-/// it can be tuned by changing a number instead of re-exporting a file.
-///
-/// Angles are Euler XYZ in the bone's own space.
-const STANDING_BONES: &[(&str, [f32; 3])] = &[
-    // Arms down. Most of the angle is a single swing at the shoulder; the rest
-    // is what stops him standing to attention — a little forward, a little out
-    // from the ribs, and a real bend at the elbow.
-    ("L_Clavicle", [0.0, 0.0, -0.05]),
-    ("R_Clavicle", [0.0, 0.0, 0.05]),
-    ("L_Upperarm", [0.10, 0.0, -1.32]),
-    ("R_Upperarm", [0.10, 0.0, 1.32]),
-    ("L_Forearm", [0.0, 0.28, -0.18]),
-    ("R_Forearm", [0.0, -0.28, 0.18]),
-    ("L_Hand", [0.0, 0.0, 0.10]),
-    ("R_Hand", [0.0, 0.0, -0.10]),
-    // Weight on one leg. A body with both legs identical reads as a mannequin
-    // however well it is built.
-    ("R_Thigh", [0.06, 0.0, -0.04]),
-    ("R_Calf", [-0.12, 0.0, 0.0]),
-    ("L_Thigh", [-0.03, 0.0, 0.02]),
-    // And not quite square to the room.
-    ("Spine02", [0.0, 0.05, 0.0]),
-    ("NeckTwist01", [0.02, -0.10, 0.0]),
-];
-
 pub const STANDING: Posture = Posture {
-    bones: STANDING_BONES,
     clip: Some("idle"),
     lift: 0.0,
 };
 
-/// Sitting back on a sofa, watching the television.
-///
-/// Hips and knees near a right angle, but not at one: a man on a sofa is not a
-/// man on a dining chair. He is reclined a few degrees, his knees are a little
-/// higher than his hips because a sofa cushion is lower than a chair, and his
-/// feet are flat and apart.
-const SEATED_BONES: &[(&str, [f32; 3])] = &[
-    // Flexion is about x. It was written about z first, which is abduction —
-    // he sat with his legs straight out sideways in the splits.
-    ("L_Thigh", [1.80, 0.06, 0.16]),
-    ("R_Thigh", [1.80, -0.06, -0.16]),
-    ("L_Calf", [-1.80, 0.0, 0.0]),
-    ("R_Calf", [-1.80, 0.0, 0.0]),
-    ("L_Foot", [-0.25, 0.0, 0.0]),
-    ("R_Foot", [-0.25, 0.0, 0.0]),
-    // Reclined into the back of it.
-    ("Hip", [0.0, 0.0, 0.0]),
-    ("Waist", [-0.10, 0.0, 0.0]),
-    ("Spine01", [-0.06, 0.0, 0.0]),
-    ("NeckTwist01", [0.12, 0.0, 0.0]),
-    // Arms along the cushions, elbows bent, hands in his lap.
-    ("L_Clavicle", [0.0, 0.0, -0.05]),
-    ("R_Clavicle", [0.0, 0.0, 0.05]),
-    ("L_Upperarm", [0.22, 0.0, -1.22]),
-    ("R_Upperarm", [0.22, 0.0, 1.22]),
-    ("L_Forearm", [0.0, 0.55, -0.45]),
-    ("R_Forearm", [0.0, -0.55, 0.45]),
-];
-
 pub const SEATED: Posture = Posture {
-    bones: SEATED_BONES,
     clip: Some("sit"),
     lift: -47.0,
 };
-
-/// A slow movement laid over the resting pose: bone, axis scaled to the
-/// amplitude in radians, cycles per second, and phase in turns.
-///
-/// Nobody stands still. A body that does is the single loudest thing in a room
-/// — more than a blank face, more than a bad texture — because stillness is the
-/// one property no living thing has. None of these amplitudes is meant to be
-/// noticed on its own; a hundredth of a radian at the spine is a millimetre at
-/// the shoulder. What is noticed is their absence.
-///
-/// Rates are deliberately coprime-ish so the whole thing does not visibly loop.
-/// Breathing runs at about fourteen a minute, the weight shift at four, and the
-/// head drifts slower still.
-const IDLE: &[(&str, [f32; 3], f32, f32)] = &[
-    // Breathing: the chest rises and the neck takes it back out, so his head
-    // does not nod along with his lungs.
-    ("Spine01", [0.010, 0.0, 0.0], 0.235, 0.0),
-    ("Spine02", [0.008, 0.0, 0.0], 0.235, 0.02),
-    ("NeckTwist02", [-0.011, 0.0, 0.0], 0.235, 0.05),
-    // Weight shifting from one foot to the other.
-    ("Hip", [0.0, 0.0, 0.019], 0.061, 0.0),
-    ("Waist", [0.0, 0.0, -0.011], 0.061, 0.04),
-    // Looking about the room, slowly.
-    ("Head", [0.015, 0.105, 0.0], 0.037, 0.31),
-    // Arms hanging, not pinned. Deliberately smaller than they want to be:
-    // his collision is built once, from the pose he settles into, and a
-    // hundredth of a radian at the shoulder is already most of a centimetre at
-    // the hand. That is two body lengths to the thing landing on it. Until the
-    // collision follows the bones, the amplitude here is bounded by how far the
-    // hand may drift from the surface the fly can feel.
-    ("L_Upperarm", [0.008, 0.0, 0.013], 0.083, 0.0),
-    ("R_Upperarm", [0.008, 0.0, -0.013], 0.083, 0.5),
-    ("L_Forearm", [0.0, 0.011, 0.0], 0.083, 0.12),
-    ("R_Forearm", [0.0, -0.011, 0.0], 0.083, 0.62),
-];
-
-/// A bone that moves, and the pose it moves around.
-#[derive(Component)]
-struct Idling {
-    rest: Quat,
-    turn: Vec3,
-    rate: f32,
-    phase: f32,
-}
 
 /// The glTF files a person's movements live in, kept so their clips can be
 /// found once they load. A scene is a separate asset and does not carry them.
@@ -245,30 +138,43 @@ fn movements(model: &str) -> Vec<(String, String)> {
         .unwrap_or("");
     // The longest run of leading letters shared by the base model's name is
     // taken as the family prefix: `DadRigged` and `DadWalk` share `Dad`.
+    // Resolved the way Bevy resolves it, not from the working directory.
+    //
+    // This scanned `assets`, `../assets` and `../../assets` relative to the
+    // process's cwd. That is the repository root when the game is started by
+    // hand, and it is *not* the app's folder when a launcher starts it. So the
+    // shipped build found no movement files at all, fell through to a
+    // hand-written pose authored for the previous rig, and testers got a man
+    // standing in his living room with his arms crossed over the wrong
+    // shoulders who could not walk. It ran perfectly from the repository, which
+    // is the whole trap: the only build that was ever tested was the one that
+    // could not exhibit the bug.
+    //
+    // `get_base_path` is what the asset server itself uses — the manifest
+    // directory under `cargo run`, and the executable's own folder in a build
+    // anybody else can start.
+    let root = bevy::asset::io::file::FileAssetReader::get_base_path().join("assets");
+    let here = root.join(&folder);
     let mut found: Vec<(String, String)> = Vec::new();
-    for root in ["assets", "../assets", "../../assets"] {
-        let here = std::path::Path::new(root).join(&folder);
-        let Ok(entries) = std::fs::read_dir(&here) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("glb") {
-                continue;
+    match std::fs::read_dir(&here) {
+        Err(why) => warn!("no movements for {stem}: {} — {why}", here.display()),
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("glb") {
+                    continue;
+                }
+                let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                found.push((
+                    movement_name(stem, name),
+                    folder
+                        .join(path.file_name().unwrap())
+                        .to_string_lossy()
+                        .into_owned(),
+                ));
             }
-            let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            found.push((
-                movement_name(stem, name),
-                folder
-                    .join(path.file_name().unwrap())
-                    .to_string_lossy()
-                    .into_owned(),
-            ));
-        }
-        if !found.is_empty() {
-            break;
         }
     }
     found.sort();
@@ -362,19 +268,26 @@ struct NeedsSeat {
     wanted: &'static Posture,
 }
 
-/// A rig that has not been posed yet, and the posture it is waiting for.
+/// The posture somebody was asked to hold, until a clip is playing for it.
+///
+/// It used to carry a table of bone angles as well, applied when no clip could
+/// be found. Those angles were authored for the hand-built body this file began
+/// as, and then for a rig whose bind pose was a T; against the arms-down rig
+/// that replaced both they fold a man's arms across the wrong shoulders. The
+/// launcher build hit exactly that, because it could not find its clips.
+///
+/// A fallback that is worse than doing nothing is not a fallback. A rigged
+/// model arrives in a pose its author chose, and standing still in it is the
+/// right thing to do when there is nothing to play.
 #[derive(Component)]
-struct NeedsPose(&'static Posture);
+struct Wants(&'static Posture);
 
 pub struct FolkPlugin;
 
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, raise_the_father)
-            .add_systems(
-                Update,
-                (play_what_he_has, take_a_seat, pose_him, breathe).chain(),
-            )
+            .add_systems(Update, (play_what_he_has, take_a_seat).chain())
             // After the transforms have propagated, not merely after the pose
             // has been *set*. Posing writes local rotations; the world
             // positions those imply are worked out later in the frame, and a
@@ -408,12 +321,11 @@ fn play_what_he_has(
     mut commands: Commands,
     files: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
-    folk: Query<(Entity, &CameFrom, &NeedsPose), Without<Animated>>,
+    folk: Query<(Entity, &CameFrom, &Wants), Without<Animated>>,
     children: Query<&Children>,
     names: Query<&Name>,
     local: Query<&Transform>,
     mut players: Query<&mut AnimationPlayer>,
-    idling: Query<Entity, With<Idling>>,
 ) {
     for (person, came_from, wanted) in &folk {
         // Every file has to be in before the graph is built, or a person ends
@@ -484,10 +396,7 @@ fn play_what_he_has(
         let asked = std::env::var("FLY_MOVE").ok();
         if asked.as_deref() == Some("none") {
             info!("a person is left in the pose the model arrived in");
-            commands
-                .entity(person)
-                .insert(Animated)
-                .remove::<NeedsPose>();
+            commands.entity(person).insert(Animated).remove::<Wants>();
             continue;
         }
         let wants = asked.as_deref().or(wanted.0.clip).unwrap_or("idle");
@@ -510,18 +419,6 @@ fn play_what_he_has(
         commands
             .entity(root)
             .insert(AnimationGraphHandle(graphs.add(graph)));
-
-        // The hand-built idle would keep writing the same bones every frame and
-        // win, because it runs after the animation.
-        let mut stack = vec![person];
-        while let Some(entity) = stack.pop() {
-            if let Ok(kids) = children.get(entity) {
-                stack.extend(kids.iter());
-            }
-            if idling.contains(entity) {
-                commands.entity(entity).remove::<Idling>();
-            }
-        }
 
         info!(
             "a person is animated: playing {playing:?} of {:?}",
@@ -582,7 +479,7 @@ fn play_what_he_has(
         commands
             .entity(person)
             .insert((Animated, Plays(root), Repertoire(repertoire)))
-            .remove::<NeedsPose>();
+            .remove::<Wants>();
     }
 }
 
@@ -622,7 +519,7 @@ fn take_a_seat(
             );
             commands
                 .entity(person)
-                .insert(NeedsPose(wanted.otherwise))
+                .insert(Wants(wanted.otherwise))
                 .remove::<NeedsSeat>();
             continue;
         };
@@ -653,84 +550,6 @@ fn take_a_seat(
             seat.at.x, seat.at.y, seat.at.z, seat.facing.x, seat.facing.z
         );
         commands.entity(person).remove::<NeedsSeat>();
-    }
-}
-
-/// Put him at ease.
-///
-/// Runs until it finds the bones, because a glTF scene arrives over several
-/// frames and the skeleton is not there on the first one.
-fn pose_him(
-    mut commands: Commands,
-    waiting: Query<(Entity, &NeedsPose)>,
-    children: Query<&Children>,
-    names: Query<&Name>,
-    mut bones: Query<&mut Transform>,
-) {
-    for (person, wanted) in &waiting {
-        let mut found = 0;
-        let mut stack = vec![person];
-        while let Some(entity) = stack.pop() {
-            if let Ok(kids) = children.get(entity) {
-                stack.extend(kids.iter());
-            }
-            let Ok(name) = names.get(entity) else {
-                continue;
-            };
-            let Some((_, angles)) = wanted
-                .0
-                .bones
-                .iter()
-                .find(|(bone, _)| *bone == name.as_str())
-            else {
-                continue;
-            };
-            if let Ok(mut bone) = bones.get_mut(entity) {
-                // Composed onto the bind rotation, not replacing it. A bind
-                // pose already carries the bone's own orientation, and throwing
-                // that away snaps every limb onto the armature's axes.
-                bone.rotation *= Quat::from_euler(EulerRot::XYZ, angles[0], angles[1], angles[2]);
-                found += 1;
-            }
-        }
-        if found == 0 {
-            continue;
-        }
-
-        // The idle hangs off whatever pose the bone ended on, so the resting
-        // rotation has to be read *after* the pose, not before it.
-        let mut moving = 0;
-        let mut stack = vec![person];
-        while let Some(entity) = stack.pop() {
-            if let Ok(kids) = children.get(entity) {
-                stack.extend(kids.iter());
-            }
-            let Ok(name) = names.get(entity) else {
-                continue;
-            };
-            let Some((_, turn, rate, phase)) =
-                IDLE.iter().find(|(bone, ..)| *bone == name.as_str())
-            else {
-                continue;
-            };
-            let Ok(bone) = bones.get(entity) else {
-                continue;
-            };
-            commands.entity(entity).insert(Idling {
-                rest: bone.rotation,
-                turn: Vec3::from_array(*turn),
-                rate: *rate,
-                phase: *phase,
-            });
-            moving += 1;
-        }
-
-        info!(
-            "a person is posed: {found} of {} bones set, {moving} of {} breathing",
-            wanted.0.bones.len(),
-            IDLE.len()
-        );
-        commands.entity(person).remove::<NeedsPose>();
     }
 }
 
@@ -808,7 +627,7 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
                 .map(|(movement, path)| (movement, assets.load(path)))
                 .collect(),
         ),
-        NeedsPose(posture),
+        Wants(posture),
         NeedsSeat {
             on: "models/couch.glb",
             otherwise: &STANDING,
@@ -822,20 +641,6 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
             .with_rotation(turn)
             .with_scale(Vec3::splat(UNITS_PER_METRE * TALL / UNITS_PER_METRE)),
     ));
-}
-
-/// Move the moving bones.
-///
-/// Sine waves on top of a stored rest rotation, the way the fly's wings and
-/// legs are driven. No animation clips: the file ships none, and a table of
-/// numbers in this file can be tuned by editing a number, which is the same
-/// argument the rest of this game makes for building things in code.
-fn breathe(clock: Res<Time>, mut bones: Query<(&Idling, &mut Transform)>) {
-    let now = clock.elapsed_secs();
-    for (idle, mut bone) in &mut bones {
-        let a = std::f32::consts::TAU * (idle.rate * now + idle.phase);
-        bone.rotation = idle.rest * Quat::from_scaled_axis(idle.turn * a.sin());
-    }
 }
 
 /// Take the retarget's roll back out of the arms, every frame, after the clip
@@ -883,7 +688,7 @@ fn hold_the_roll(steady: Query<&Steady>, mut bones: Query<&mut Transform>) {
 fn make_him_solid(
     mut commands: Commands,
     mut home: ResMut<Home>,
-    waiting: Query<(Entity, &NeedsBody), Without<NeedsPose>>,
+    waiting: Query<(Entity, &NeedsBody), Without<Wants>>,
     children: Query<&Children>,
     skinned: Query<(&Mesh3d, &bevy::mesh::skinning::SkinnedMesh)>,
     placed: Query<&GlobalTransform>,
