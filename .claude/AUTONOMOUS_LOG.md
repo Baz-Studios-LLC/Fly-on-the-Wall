@@ -1906,3 +1906,36 @@ centimetres of daylight under a stack of books reads as wrong without anybody
 being able to say why.
 
 `Solid::settle` is the general form: any model can ask to be stood on the floor.
+
+## A daughter, and one set of clips for the family
+
+Brett added `characters/daughter/daughter-walk.glb`. It is **the same rig as the
+father** — forty-one bones, identical names, identical nesting — and it contains
+**no animation at all**: no `animations` key, seven accessors against his hundred
+and thirty-three, despite having been animated in 3daistudio. Something between
+the animating and the export dropped it.
+
+That turned out not to matter, and the reason is worth keeping. A clip addresses
+a bone by a hash of the *name path* from the animation root down to it. Same
+names in the same nesting hash to the same ids, so **his clips are hers**. One
+set of animations can move the whole household.
+
+What was missing was the wiring, not the clip. Bevy builds an `AnimationPlayer`
+and the per-bone `AnimationTargetId`s only when a glTF actually contains
+animations, so there was nothing on her for a borrowed clip to drive and she
+stood still while he walked about. `wire_up_borrowed_bones` builds them: forty-
+four bones, a player of her own, and she plays his idle.
+
+`folk.rs` no longer knows which resident is the father. `HOUSEHOLD` is a table —
+model, clip folders, height, room, spot, facing — and everything else is derived.
+It knew, for as long as there was one person, and every hard-coded thing about
+him was a thing to untangle the moment a second body arrived.
+
+She stands 138 cm to his 178, and the stoop and forearm-roll corrections apply to
+her for free, because they are keyed on bone names and she has his bones.
+
+### Still to do
+
+- She wanders her bedroom and he wanders the great room. Neither can leave the
+  room they are in, because a straight line is the only path either can test.
+- The turntable picks whichever person it finds first, which is now arbitrary.

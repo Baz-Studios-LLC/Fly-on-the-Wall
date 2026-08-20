@@ -21,15 +21,61 @@
 //! marker the camera and the turntable look for, and collision taken from his
 //! own triangles rather than a box round his shoulders.
 
+use bevy::animation::{AnimatedBy, AnimationTargetId};
 use bevy::prelude::*;
 
 use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
 
-/// How tall he stands, in centimetres.
-const TALL: f32 = 178.0;
-
 /// The model he is made of.
 const FATHER: &str = "characters/dad/dad-idle.glb";
+
+/// And hers.
+const DAUGHTER: &str = "characters/daughter/daughter-walk.glb";
+
+/// Somebody who lives here.
+struct Resident {
+    /// The model that is their body.
+    model: &'static str,
+    /// Folders to take movement clips from, in order.
+    ///
+    /// More than one, because a body's own export may have no animation in it —
+    /// `daughter-walk.glb` has none at all despite the name. Borrowing works
+    /// because every one of these rigs is the same forty-one bones under the
+    /// same names, and Bevy matches a clip to a skeleton by the name path of
+    /// each bone rather than by which file they arrived in. One set of clips
+    /// can move the whole family.
+    clips: &'static [&'static str],
+    /// Height in centimetres. The models are normalised to one unit tall, so
+    /// this is the only thing that decides how big somebody is.
+    tall: f32,
+    /// Which room they start in, and where in it as a fraction of its width and
+    /// depth. They wander from there, but only within the room they are in —
+    /// doorways are not waypoints yet.
+    room: &'static str,
+    at: (f32, f32),
+    facing: f32,
+}
+
+const HOUSEHOLD: &[Resident] = &[
+    Resident {
+        model: FATHER,
+        clips: &["characters/dad"],
+        tall: 178.0,
+        room: "great room",
+        at: (0.55, 0.62),
+        facing: -1.2,
+    },
+    Resident {
+        model: DAUGHTER,
+        // Her own folder first, so a clip of her own wins the moment one
+        // arrives; her father's after it, which is what she moves on today.
+        clips: &["characters/daughter", "characters/dad"],
+        tall: 138.0,
+        room: "bedroom two",
+        at: (0.5, 0.55),
+        facing: 0.7,
+    },
+];
 
 /// A person. The studio and the camera both look for this.
 #[derive(Component)]
@@ -102,24 +148,20 @@ struct CameFrom(Vec<(String, Handle<Gltf>)>);
 #[derive(Component)]
 pub struct Repertoire(pub std::collections::HashMap<String, AnimationNodeIndex>);
 
-/// What to call the movement in a file, given the base model's name.
+/// What a movement is called: the file's name with the family's own name taken
+/// off the front, so `dad-idle` in `dad/` is `idle`.
 ///
-/// The part that varies between one export and the next is the part worth
-/// reading: `DadRigged` and `DadWalk` share `Dad`, so the second is `walk`.
-/// A file that shares nothing, or everything, keeps its own name — the base
-/// model itself lands there and contributes no clips anyway.
-fn movement_name(model: &str, file: &str) -> String {
-    let shared = file
-        .chars()
-        .zip(model.chars())
-        .take_while(|(a, b)| a == b)
-        .count();
-    let movement = file[shared..].trim_matches(['_', '-', ' ']).to_lowercase();
-    if movement.is_empty() {
-        file.to_lowercase()
-    } else {
-        movement
-    }
+/// Only a fallback. A file that names its own clips is believed instead — these
+/// exports call theirs `preset:biped:walk` — and this is what a file with an
+/// unnamed clip gets called.
+fn movement_name(family: &str, file: &str) -> String {
+    let plain = file.to_lowercase();
+    let movement = plain
+        .strip_prefix(&family.to_lowercase())
+        .unwrap_or(&plain)
+        .trim_start_matches(['-', '_', ' '])
+        .to_string();
+    if movement.is_empty() { plain } else { movement }
 }
 
 /// Every glTF in the characters folder, as (movement, path).
@@ -127,54 +169,51 @@ fn movement_name(model: &str, file: &str) -> String {
 /// Scanned rather than listed, so a new movement is a file drop and not a code
 /// change. The name comes from the file: `DadWalk.glb` is `walk`, because the
 /// part that varies between one export and the next is the part worth reading.
-fn movements(model: &str) -> Vec<(String, String)> {
-    let folder = std::path::Path::new(model)
-        .parent()
-        .map(|p| p.to_owned())
-        .unwrap_or_default();
-    let stem = std::path::Path::new(model)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-    // The longest run of leading letters shared by the base model's name is
-    // taken as the family prefix: `DadRigged` and `DadWalk` share `Dad`.
+fn movements(folders: &[&str]) -> Vec<(String, String)> {
     // Resolved the way Bevy resolves it, not from the working directory.
     //
     // This scanned `assets`, `../assets` and `../../assets` relative to the
-    // process's cwd. That is the repository root when the game is started by
-    // hand, and it is *not* the app's folder when a launcher starts it. So the
-    // shipped build found no movement files at all, fell through to a
-    // hand-written pose authored for the previous rig, and testers got a man
-    // standing in his living room with his arms crossed over the wrong
-    // shoulders who could not walk. It ran perfectly from the repository, which
-    // is the whole trap: the only build that was ever tested was the one that
-    // could not exhibit the bug.
+    // process's cwd, which is the repository root when the game is started by
+    // hand and is *not* the app's folder when a launcher starts it. So the
+    // shipped build found no movement files, fell through to a hand-written
+    // pose that had been authored for the previous rig's T-pose, and testers
+    // got a man standing in his living room with his arms crossed over the
+    // wrong shoulders and no idea how to walk. It ran perfectly from the repo.
     //
-    // `get_base_path` is what the asset server itself uses — the manifest
+    // `get_base_path` is what the asset server itself uses: the manifest
     // directory under `cargo run`, and the executable's own folder in a build
     // anybody else can start.
     let root = bevy::asset::io::file::FileAssetReader::get_base_path().join("assets");
-    let here = root.join(&folder);
     let mut found: Vec<(String, String)> = Vec::new();
-    match std::fs::read_dir(&here) {
-        Err(why) => warn!("no movements for {stem}: {} — {why}", here.display()),
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("glb") {
-                    continue;
-                }
-                let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
-                    continue;
-                };
-                found.push((
-                    movement_name(stem, name),
-                    folder
-                        .join(path.file_name().unwrap())
-                        .to_string_lossy()
-                        .into_owned(),
-                ));
+    for folder in folders {
+        let here = root.join(folder);
+        let Ok(entries) = std::fs::read_dir(&here) else {
+            warn!("no movements: cannot read {}", here.display());
+            continue;
+        };
+        // The movement is whatever the file is called once the family's own
+        // name is out of the way: `dad-idle` in `dad/` is `idle`. Only a
+        // fallback — a file that names its own clips is believed instead.
+        let family = std::path::Path::new(folder)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("glb") {
+                continue;
             }
+            let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            found.push((
+                movement_name(&family, name),
+                std::path::Path::new(folder)
+                    .join(path.file_name().unwrap())
+                    .to_string_lossy()
+                    .into_owned(),
+            ));
         }
     }
     found.sort();
@@ -286,8 +325,11 @@ pub struct FolkPlugin;
 
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, raise_the_father)
-            .add_systems(Update, (play_what_he_has, take_a_seat).chain())
+        app.add_systems(PostStartup, raise_the_folk)
+            .add_systems(
+                Update,
+                (wire_up_borrowed_bones, play_what_he_has, take_a_seat).chain(),
+            )
             // After the transforms have propagated, not merely after the pose
             // has been *set*. Posing writes local rotations; the world
             // positions those imply are worked out later in the frame, and a
@@ -301,6 +343,75 @@ impl Plugin for FolkPlugin {
                     make_him_solid.after(TransformSystems::Propagate),
                 ),
             );
+    }
+}
+
+/// Give a model that brought no animation the wiring to borrow one.
+///
+/// Bevy builds an `AnimationPlayer`, and the target ids that address each bone,
+/// only when a glTF actually contains animations. `daughter-walk.glb` contains
+/// none — no `animations` key at all, seven accessors against her father's
+/// hundred and thirty-three — so there was nothing on her for a borrowed clip
+/// to drive, and she stood still while he walked about.
+///
+/// A clip addresses a bone by a hash of the *name path* from the animation root
+/// down to it. Her rig is her father's rig — the same forty-one bones under the
+/// same names in the same nesting — so the same paths hash to the same ids, and
+/// building them by hand makes his clips hers. That is the whole reason one set
+/// of animations can move a family.
+fn wire_up_borrowed_bones(
+    mut commands: Commands,
+    folk: Query<Entity, (With<Person>, Without<Animated>)>,
+    children: Query<&Children>,
+    names: Query<&Name>,
+    players: Query<(), With<AnimationPlayer>>,
+    already: Query<(), With<AnimationTargetId>>,
+) {
+    for person in &folk {
+        // The armature is the animation root in these exports, and the path a
+        // clip was keyed on starts with its name.
+        let mut root = None;
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+            if players.contains(entity) {
+                // It brought its own animation and its own wiring with it.
+                root = None;
+                break;
+            }
+            if names.get(entity).is_ok_and(|n| n.as_str() == "Armature") {
+                root = Some(entity);
+            }
+        }
+        let Some(root) = root else {
+            continue;
+        };
+        if already.contains(root) {
+            continue;
+        }
+
+        let mut wired = 0;
+        let mut walk = vec![(root, Vec::<Name>::new())];
+        while let Some((entity, path)) = walk.pop() {
+            let Ok(name) = names.get(entity) else {
+                continue;
+            };
+            let mut here = path.clone();
+            here.push(name.clone());
+            commands
+                .entity(entity)
+                .insert((AnimationTargetId::from_names(here.iter()), AnimatedBy(root)));
+            wired += 1;
+            if let Ok(kids) = children.get(entity) {
+                for kid in kids.iter() {
+                    walk.push((kid, here.clone()));
+                }
+            }
+        }
+        commands.entity(root).insert(AnimationPlayer::default());
+        info!("a person borrows animation: {wired} bones wired to a player of their own");
     }
 }
 
@@ -568,79 +679,84 @@ fn take_a_seat(
 ///
 /// The pipeline underneath is the one the couch already uses. Two facts — a
 /// path and a place — and the collision comes out of the model's own triangles.
-pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: Res<AssetServer>) {
-    // On the sofa, watching the television.
-    //
-    // He stood in the middle of the great room facing nothing for as long as he
-    // was hand-built, and it was the oddest thing in the house — a man does not
-    // stand in the centre of his own living room. The sofa faces east at the
-    // television, so he does too.
-    //
-    // The seat is measured, not guessed: `made` reports the top surface of
-    // every model it collides, and the sofa's is forty-three centimetres. He
-    // sits a shade back from the middle of it, toward one end.
-    // Sit him down only if there is a clip for sitting. There is idle and
-    // there is walking, and a standing idle played by somebody positioned as
-    // though seated puts a man standing on his own sofa.
-    let moves = movements(FATHER);
-    let posture = if moves.iter().any(|(name, _)| name.contains("sit")) {
-        &SEATED
-    } else {
-        &STANDING
-    };
-    // Where he waits when there is nothing to sit on: clear of the seating
-    // group, facing across the room.
-    let room = crate::house::room("great room");
-    let stand = Vec3::new(
-        room.min.x + room.wide() * 0.55,
-        posture.lift,
-        room.min.y + room.deep() * 0.62,
-    );
-    let turn = Quat::from_rotation_y(-1.2);
+/// Stand the household up.
+///
+/// One entry per person in [`HOUSEHOLD`], and nothing here knows which of them
+/// is the father. It did, for as long as there was one — and the moment a
+/// second body arrived, every hard-coded thing about him was a thing to
+/// untangle. Height, room, clip folders and facing are the whole of what makes
+/// one resident different from another.
+pub fn raise_the_folk(mut commands: Commands, mut home: ResMut<Home>, assets: Res<AssetServer>) {
+    for who in HOUSEHOLD {
+        let moves = movements(who.clips);
+        // Sit somebody down only if there is a clip for sitting. There is idle
+        // and there is walking, and a standing idle played by somebody
+        // positioned as though seated puts a man standing on his own sofa.
+        let posture = if moves.iter().any(|(name, _)| name.contains("sit")) {
+            &SEATED
+        } else {
+            &STANDING
+        };
 
-    // The model is normalised to one unit tall, so the scale is his height in
-    // metres. Everything downstream multiplies by a hundred.
-    let mut solid = Solid::between(
-        stand - Vec3::splat(2.0),
-        stand + Vec3::splat(2.0),
-        Stuff::Fabric,
-    );
-    solid.model = Some(FATHER);
-    solid.rot = turn;
-    solid.unseen = true;
-    solid.scale = TALL / UNITS_PER_METRE;
-    let index = home.solids.len();
-    // He is his own piece, so arrange mode can place him. He was deliberately
-    // left out of it while he was built here out of eighty boxes — dragging him
-    // would have moved the collision and left the man standing there. A model
-    // moves as one thing: solid, hull and scene all follow.
-    solid.piece = index as u32;
-    home.solids.push(solid);
+        let room = crate::house::room(who.room);
+        let stand = Vec3::new(
+            room.min.x + room.wide() * who.at.0,
+            posture.lift,
+            room.min.y + room.deep() * who.at.1,
+        );
+        let turn = Quat::from_rotation_y(who.facing);
 
-    commands.spawn((
-        Person,
-        Stature(TALL),
-        CameFrom(
-            moves
-                .into_iter()
-                .inspect(|(movement, path)| info!("a movement is available: {movement} — {path}"))
-                .map(|(movement, path)| (movement, assets.load(path)))
-                .collect(),
-        ),
-        Wants(posture),
-        NeedsSeat {
-            on: "models/couch.glb",
-            otherwise: &STANDING,
-            wanted: posture,
-        },
-        NeedsBody { solid: index },
-        crate::world::Part { solid: index },
-        Name::new("Father"),
-        WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(FATHER))),
-        Transform::from_translation(stand)
-            .with_rotation(turn)
-            .with_scale(Vec3::splat(UNITS_PER_METRE * TALL / UNITS_PER_METRE)),
-    ));
+        // The models are normalised to one unit tall, so the scale is a height
+        // in metres. Everything downstream multiplies by a hundred.
+        let mut solid = Solid::between(
+            stand - Vec3::splat(2.0),
+            stand + Vec3::splat(2.0),
+            Stuff::Fabric,
+        );
+        solid.model = Some(who.model);
+        solid.rot = turn;
+        solid.unseen = true;
+        solid.scale = who.tall / UNITS_PER_METRE;
+        let index = home.solids.len();
+        // Each is their own piece, so arrange mode can place them. They were
+        // deliberately left out of it while the father was eighty hand-built
+        // boxes — dragging him would have moved the collision and left the man
+        // standing there. A model moves as one thing: solid, hull and scene.
+        solid.piece = index as u32;
+        home.solids.push(solid);
+
+        info!(
+            "{} stands in the {} at {:.0} cm, with {} movement files",
+            who.model,
+            who.room,
+            who.tall,
+            moves.len()
+        );
+
+        commands.spawn((
+            Person,
+            Stature(who.tall),
+            CameFrom(
+                moves
+                    .into_iter()
+                    .map(|(movement, path)| (movement, assets.load(path)))
+                    .collect(),
+            ),
+            Wants(posture),
+            NeedsSeat {
+                on: "models/couch.glb",
+                otherwise: &STANDING,
+                wanted: posture,
+            },
+            NeedsBody { solid: index },
+            crate::world::Part { solid: index },
+            Name::new(who.model),
+            WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(who.model))),
+            Transform::from_translation(stand)
+                .with_rotation(turn)
+                .with_scale(Vec3::splat(who.tall)),
+        ));
+    }
 }
 
 /// Take the retarget's roll back out of the arms, every frame, after the clip
@@ -851,15 +967,16 @@ mod tests {
 
     #[test]
     fn a_movement_is_named_after_what_differs() {
-        // The rigging tool writes one animation per export, so the files arrive
-        // as a family and the family name is the part they share.
-        assert_eq!(movement_name("DadRigged", "DadWalk"), "walk");
-        assert_eq!(movement_name("DadRigged", "DadSitting"), "sitting");
-        assert_eq!(movement_name("DadRigged", "Dad_Idle"), "idle");
-        // The base model shares its whole name with itself.
-        assert_eq!(movement_name("DadRigged", "DadRigged"), "dadrigged");
-        // And something unrelated dropped in the same folder keeps its name
+        // The rigging tool writes one animation per export, so a family arrives
+        // as a folder of files whose shared part is the family's own name.
+        assert_eq!(movement_name("dad", "dad-walking"), "walking");
+        assert_eq!(movement_name("dad", "dad_idle"), "idle");
+        assert_eq!(movement_name("daughter", "daughter-walk"), "walk");
+        // A file that is only the family name keeps it, and contributes no
+        // clips anyway.
+        assert_eq!(movement_name("dad", "dad"), "dad");
+        // And something unrelated dropped in the same folder keeps its own name
         // rather than becoming a suffix of somebody else's.
-        assert_eq!(movement_name("DadRigged", "MumWave"), "mumwave");
+        assert_eq!(movement_name("dad", "mum-wave"), "mum-wave");
     }
 }

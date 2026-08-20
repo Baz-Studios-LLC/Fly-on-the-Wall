@@ -114,7 +114,7 @@ impl Plugin for ArrangePlugin {
             PostStartup,
             (load_arrangement, check_the_round_trip)
                 .chain()
-                .after(crate::folk::raise_the_father),
+                .after(crate::folk::raise_the_folk),
         )
         .add_systems(Update, (toggle, aim, carry, save_or_reset, show).chain());
     }
