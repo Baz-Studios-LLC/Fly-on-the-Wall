@@ -50,6 +50,17 @@ HIP = 0.16
 JOINTS = (0.38, 0.74)
 # How much of the leg's length each handover is spread over.
 BLEND = 0.20
+# How far *inboard of the leg* the femur's pivot is planted, as a fraction of
+# the leg's length.
+#
+# This is the difference between a leg that swings and a leg whose top half
+# looks nailed on. A hinge cannot move the geometry sitting on its own axis, so
+# a femur bone placed exactly at the leg root pins the top of the leg in place
+# and swings only the far end — which is precisely how it looked, and measuring
+# the drive angle proved the bone was turning a full twenty-five degrees while
+# doing it. Real insects have a coxa for this: the pivot is inboard, in the
+# body, and the whole visible leg swings from it.
+COXA = 0.34
 
 
 def load(path):
@@ -150,6 +161,12 @@ def main(src, dst):
             k = parent.get(k)
         return m
 
+    # The middle of the body, for planting the leg pivots inboard of the legs.
+    core = [
+        sum(p[d] for p in pos if p[1] >= LEG_TOP) / max(1, sum(1 for p in pos if p[1] >= LEG_TOP))
+        for d in range(3)
+    ]
+
     # -- find the six legs ---------------------------------------------------
     low = [k for k, p in enumerate(pos) if p[1] < LEG_TOP]
     unseen, clusters = set(low), []
@@ -206,6 +223,7 @@ def main(src, dst):
         # which is what decides whether a bone can be seen to move.
         order = sorted(group, key=lambda k: far[k])
         down = {k: i / max(1, len(order) - 1) for i, k in enumerate(order)}
+        length = max(far.values()) or 1.0
 
         row = "front middle rear".split()[i // 2]
         side = "left" if root[2] < 0 else "right"
@@ -223,8 +241,15 @@ def main(src, dst):
         chain = []
         parent_index = anchor
         parent_world = anchor_world
+        # The femur's pivot goes inboard of the leg, toward the middle of the
+        # body, so the whole leg swings from it rather than pivoting on its own
+        # shoulder.
+        inboard = [core[d] - root[d] for d in range(3)]
+        reach = sum(v * v for v in inboard) ** 0.5 or 1.0
+        hip = [root[d] + inboard[d] / reach * (length * COXA) for d in range(3)]
+
         for part, at in (("femur", 0.0), ("tibia", JOINTS[0]), ("tarsus", JOINTS[1])):
-            here = root if at == 0.0 else joint_at(at)
+            here = hip if at == 0.0 else joint_at(at)
             nodes.append(
                 {"name": f"{stem}_{part}", "translation": apply(invert(parent_world), here)}
             )

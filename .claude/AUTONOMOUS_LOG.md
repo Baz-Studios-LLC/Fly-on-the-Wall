@@ -1738,3 +1738,40 @@ the file's text differed from what I assumed by a couple of words — "does not
 tear" against "does not tear open" — and one of them left the build broken in a
 way that looked like a logic error. Anchor on a unique fragment and scan for the
 block's end; do not hard-code line numbers or trust remembered prose.
+
+## The femur was turning twenty-five degrees and could not move
+
+Reported four times as a top half that does not animate. Three of my four
+explanations were wrong, and the fourth only arrived after logging the one
+number that mattered:
+
+    femur driven  25.2 deg sweep
+
+The bone was turning the whole time. **A hinge cannot move the geometry sitting
+on its own axis.** The femur bone was planted exactly at the leg root, so the top
+of the leg was pinned at the pivot by construction and only the far end swung —
+which is exactly what "the bottom animates and the top doesn't" describes, and
+no amount of weight or amplitude fixes it.
+
+Real insects have a coxa for this: the pivot is *inboard*, in the body, and the
+whole visible leg swings from it. The tool plants the femur's pivot a third of a
+leg-length toward the middle of the body now, and the leg swings as one.
+
+### On method
+
+Every wrong guess here was a guess about the *cause* made from a picture. The
+weight shares were a real bug and fixing them was right, but they were never the
+reported bug — and I only knew that once the drive angle was printed. Three
+diagnostics now exist because of this one problem:
+
+- the tool prints where the weight landed and complains about a starved bone
+- `FLY_STEP=1` prints stance, travel, phase and the femur's driven angle
+- `FLY_GAIT=<phase>` poses the cycle for a capture
+
+The general shape: **when a report and a capture disagree, the thing to measure
+is the signal in between, not the two ends.** Amplitude, weight and rate were all
+downstream of "is the bone turning, and can turning it move anything".
+
+One more thing the log showed: under a capture `travelled` is 0.0000 cm a frame,
+because nothing presses a key. `stepping` only reaches one because `FLY_GAIT`
+forces it. Captures can prove the pose is wired; only play proves the gait runs.

@@ -715,9 +715,11 @@ fn walk_the_model_legs(
     // legs have been reported still while a capture showed them stepping, and
     // the difference between "the signal is zero" and "the movement is too
     // small to see" is not something either of us can tell by looking.
+    let mut said = false;
     if std::env::var("FLY_STEP").is_ok() {
         *ticks += 1;
         if *ticks % 30 == 0 {
+            said = true;
             info!(
                 "gait: {} travelled {:.4} cm/frame  phase {:.2}  stepping {:.2}",
                 if walking { "walking" } else { "flying" },
@@ -773,6 +775,14 @@ fn walk_the_model_legs(
             Segment::Femur => {
                 let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
                 let lift = swinging * LIFT * *stepping;
+                if said {
+                    info!(
+                        "   femur driven {:5.1} deg sweep, {:4.1} deg lift  (phase {:.2})",
+                        sweep.to_degrees(),
+                        lift.to_degrees(),
+                        t
+                    );
+                }
                 Quat::from_axis_angle(sideways, sweep)
                     * Quat::from_axis_angle(forward, lift)
                     * leg.rest
