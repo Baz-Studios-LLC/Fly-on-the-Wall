@@ -1226,3 +1226,24 @@ Bevy loads them all. One file is better than several: the mesh and textures are
 stored once. Separate files also work, because Bevy matches clips to bones by
 name path, but each export usually carries the whole mesh again. What matters is
 that every clip comes off the same skeleton with the same bone names.
+
+## Animation playback, ahead of there being any
+
+Brett is rigging animations in 3daistudio, so the path is in place before the
+file is. `play_what_he_has` looks for clips on the model a person came out of;
+if it finds any, one plays and the hand-built pose and idle stand down. Nothing
+hand-written should be fighting an animator for the same bones.
+
+The clip is chosen by name where the name says what it is — a posture asks for
+`sit`, anything called `idle` will do otherwise — falling back to the first clip
+in the file. The current model has none, so the hand pose still runs; that is
+the fallback working, not a failure.
+
+Two things this depends on and neither is guaranteed by an exporter: every clip
+must come off the same skeleton with the same bone names, and Bevy's loader must
+put an `AnimationPlayer` on the animated root, which is how the system knows the
+skeleton has arrived at all.
+
+Still open: an animated body invalidates the once-built collision hull. A seated
+idle drifts by millimetres and does not matter. A walk will, and the answer is
+per-bone collision with perches stored against bones — see above.

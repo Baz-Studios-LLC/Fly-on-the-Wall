@@ -59,6 +59,9 @@ struct NeedsBody {
 /// sit down, so a posture is a value now rather than a constant.
 pub struct Posture {
     bones: &'static [(&'static str, [f32; 3])],
+    /// What this posture is called in an animation file, if a clip for it
+    /// might exist. Checked before the hand-built bone table is used.
+    clip: Option<&'static str>,
     /// Roughly where the model's own origin sits relative to the floor. Only a
     /// starting guess: a body settles onto the floor by measuring itself, so
     /// this only has to be close enough that the first frame is not absurd.
@@ -98,6 +101,7 @@ const STANDING_BONES: &[(&str, [f32; 3])] = &[
 
 pub const STANDING: Posture = Posture {
     bones: STANDING_BONES,
+    clip: Some("idle"),
     lift: 0.0,
 };
 
@@ -132,6 +136,7 @@ const SEATED_BONES: &[(&str, [f32; 3])] = &[
 
 pub const SEATED: Posture = Posture {
     bones: SEATED_BONES,
+    clip: Some("sit"),
     lift: -47.0,
 };
 
@@ -179,6 +184,15 @@ struct Idling {
     phase: f32,
 }
 
+/// The glTF file a person came out of, kept so its animation clips can be
+/// found later. The scene is a separate asset and does not carry them.
+#[derive(Component)]
+struct CameFrom(Handle<Gltf>);
+
+/// A person playing a clip of their own rather than a pose built here.
+#[derive(Component)]
+struct Animated;
+
 /// Somebody who wants to sit on the named model and has not found it yet.
 #[derive(Component)]
 struct NeedsSeat(&'static str);
@@ -192,7 +206,10 @@ pub struct FolkPlugin;
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, raise_the_father)
-            .add_systems(Update, (take_a_seat, pose_him, breathe).chain())
+            .add_systems(
+                Update,
+                (play_what_he_has, take_a_seat, pose_him, breathe).chain(),
+            )
             // After the transforms have propagated, not merely after the pose
             // has been *set*. Posing writes local rotations; the world
             // positions those imply are worked out later in the frame, and a
@@ -203,6 +220,99 @@ impl Plugin for FolkPlugin {
                 PostUpdate,
                 make_him_solid.after(TransformSystems::Propagate),
             );
+    }
+}
+
+/// Play a clip the model brought with it, if it brought one.
+///
+/// The rigged father arrived with a skeleton and no animation, so everything he
+/// does is authored here as tables of bone angles. That is the right answer for
+/// a body that has nothing else, and the wrong one the moment a file turns up
+/// with a real walk in it — hand-written sine waves should not be fighting an
+/// animator for the same bones.
+///
+/// So: if the file has clips, one of them plays and the hand-built pose and
+/// idle stand down. The clip is chosen by name where the name says what it is —
+/// a posture asks for `sit`, and anything called `idle` will do otherwise —
+/// falling back to the first clip in the file. glTF holds any number of named
+/// clips in one file, so this does not need one file per movement.
+fn play_what_he_has(
+    mut commands: Commands,
+    files: Res<Assets<Gltf>>,
+    mut graphs: ResMut<Assets<AnimationGraph>>,
+    folk: Query<(Entity, &CameFrom, &NeedsPose), Without<Animated>>,
+    children: Query<&Children>,
+    mut players: Query<&mut AnimationPlayer>,
+    idling: Query<Entity, With<Idling>>,
+) {
+    for (person, came_from, wanted) in &folk {
+        let Some(file) = files.get(&came_from.0) else {
+            continue;
+        };
+        if file.animations.is_empty() {
+            continue;
+        }
+
+        // The loader puts a player on whichever entity roots the animated
+        // hierarchy, so finding it is also how we know the skeleton has
+        // arrived.
+        let mut root = None;
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+            if players.contains(entity) {
+                root = Some(entity);
+                break;
+            }
+        }
+        let Some(root) = root else {
+            continue;
+        };
+
+        let named = |want: &str| {
+            file.named_animations
+                .iter()
+                .find(|(name, _)| name.to_lowercase().contains(want))
+                .map(|(_, clip)| clip.clone())
+        };
+        let clip = wanted
+            .0
+            .clip
+            .and_then(named)
+            .or_else(|| named("idle"))
+            .unwrap_or_else(|| file.animations[0].clone());
+
+        let (graph, node) = AnimationGraph::from_clip(clip);
+        if let Ok(mut player) = players.get_mut(root) {
+            player.play(node).repeat();
+        }
+        commands
+            .entity(root)
+            .insert(AnimationGraphHandle(graphs.add(graph)));
+
+        // The hand-built idle would keep writing the same bones every frame and
+        // win, because it runs after the animation.
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+            if idling.contains(entity) {
+                commands.entity(entity).remove::<Idling>();
+            }
+        }
+
+        info!(
+            "a person is animated: {} clips in the file, playing one of {:?}",
+            file.animations.len(),
+            file.named_animations.keys().collect::<Vec<_>>()
+        );
+        commands
+            .entity(person)
+            .insert(Animated)
+            .remove::<NeedsPose>();
     }
 }
 
@@ -388,6 +498,7 @@ pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: 
     commands.spawn((
         Person,
         Stature(TALL),
+        CameFrom(assets.load(FATHER)),
         NeedsPose(posture),
         NeedsSeat("models/couch.glb"),
         NeedsBody { solid: index },
