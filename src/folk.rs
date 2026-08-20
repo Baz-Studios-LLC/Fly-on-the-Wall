@@ -1,642 +1,332 @@
 //! The people who live here.
 //!
-//! Blocky, in the voxel language the game was described in from the start —
-//! but jointed. A Minecraft body is six boxes and its arms swing from the
-//! shoulder in one piece, which is why it reads as a puppet: nothing between
-//! shoulder and hand ever changes shape. This one has **elbows, knees, wrists
-//! and ankles**, so an arm is upper arm, forearm and hand hung off each other,
-//! and a pose is a set of joint angles rather than a set of positions.
+//! One family, and nearly the whole cast of the game: the fly, four of these,
+//! and the odd visitor. That ratio is the argument for how much care goes in
+//! here — a prop that is slightly wrong costs a glance, and a person who is
+//! slightly wrong is most of what anybody looks at.
 //!
-//! Three things are doing most of the work of looking better than the
-//! reference, and none of them cost the blocky read:
+//! The father was built in this file twice. First as boxes, in the voxel
+//! language the game was described in but with elbows and knees, so an arm was
+//! upper arm, forearm and hand hung off each other rather than one swinging
+//! plank. Then as lathed profiles — surfaces of revolution with leaning rings,
+//! which is a genuinely good way to build a body and produced a correctly
+//! proportioned man with a bowl cut and no life in him.
 //!
-//! 1. **Taper.** Every limb segment is five boxes, each a shade narrower than
-//!    the last. A thigh is thick at the hip and thin at the knee, which is
-//!    almost all of what makes a leg look like a leg. Three was the first try
-//!    and it was worse than none: three ledges down a forearm read as three
-//!    loose blocks rather than one arm.
-//! 2. **Joints that exist.** A small box at each elbow and knee, slightly
-//!    proud, so the corner has something in it when the limb bends instead of
-//!    two prisms passing through one another.
-//! 3. **Proportion.** Seven and a half heads, not four. The reference is a
-//!    caricature; this is a man in a room built to centimetres, and standing a
-//!    caricature in it would make the room look wrong rather than him.
+//! Both are gone. He is a made model now, rigged, and he arrives with a
+//! forty-one bone humanoid skeleton — `L_Upperarm`, `R_Calf`, `Head`, the usual
+//! names. That skeleton is worth more than the geometry it carries: it is what
+//! a walk cycle, a turn of the head and a hand on a door will hang off.
 //!
-//! He is scenery for now: entities and transforms, with no collision and no
-//! behaviour. The family simulation is a long way off and this is the body it
-//! will eventually be given.
+//! What stayed from the hand-built versions is everything around the body: the
+//! marker the camera and the turntable look for, and collision taken from his
+//! own triangles rather than a box round his shoulders.
 
 use bevy::prelude::*;
 
-/// Overall height, in centimetres. A tall-ish man, so he reads against
-/// nine-foot ceilings without looking like a child.
+use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
+
+/// How tall he stands, in centimetres.
 const TALL: f32 = 178.0;
 
-/// A joint that can be posed. The name is for later — an animation system will
-/// want to ask for "the right elbow" rather than count children.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Joint {
-    Waist,
-    Neck,
-    Shoulder(Side),
-    Elbow(Side),
-    Hip(Side),
-    Knee(Side),
-    Ankle(Side),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    Left,
-    Right,
-}
-
-impl Side {
-    fn sign(self) -> f32 {
-        match self {
-            Side::Left => -1.0,
-            Side::Right => 1.0,
-        }
-    }
-}
-
-/// A person in the house.
+/// A person. The studio and the camera both look for this.
 #[derive(Component)]
 pub struct Person;
 
-/// One box of a body, and how big it is.
+/// How tall this person is, in centimetres, measured from their own origin.
 ///
-/// Kept on the entity because the collision is read back out of the finished
-/// hierarchy rather than worked out while building it: a knee's world position
-/// is the product of six local transforms, and re-deriving that by hand is how
-/// the collision and the drawing come apart.
+/// The camera needs it and has no other way to know. It used to assume the
+/// person's transform sat at hip height, because the hand-built body was
+/// authored from the pelvis outward; a made model stands on the floor instead,
+/// and the first capture after the swap was framed on a patch of air six
+/// centimetres below his shoe.
 #[derive(Component)]
-struct Slab(Vec3);
+pub struct Stature(pub f32);
 
-/// A person whose boxes have not been handed to the collision yet.
+/// A person whose collision has not been worked out yet.
 #[derive(Component)]
-struct NeedsBody;
+struct NeedsBody {
+    solid: usize,
+}
+
+/// A pose, as rotations on named bones.
+///
+/// A rig arrives in its bind pose, which for this one is a T — arms straight
+/// out, palms down. Nobody stands like that. The bones are named the way every
+/// humanoid rig names them, so a pose is a short table rather than anything
+/// clever, and it is authored here in radians for the same reason the house is:
+/// it can be tuned by changing a number instead of re-exporting a file.
+///
+/// Angles are Euler XYZ in the bone's own space.
+const AT_EASE: &[(&str, [f32; 3])] = &[
+    // Arms down. Most of the angle is a single swing at the shoulder; the rest
+    // is what stops him standing to attention — a little forward, a little out
+    // from the ribs, and a real bend at the elbow.
+    ("L_Clavicle", [0.0, 0.0, -0.05]),
+    ("R_Clavicle", [0.0, 0.0, 0.05]),
+    ("L_Upperarm", [0.10, 0.0, -1.32]),
+    ("R_Upperarm", [0.10, 0.0, 1.32]),
+    ("L_Forearm", [0.0, 0.28, -0.18]),
+    ("R_Forearm", [0.0, -0.28, 0.18]),
+    ("L_Hand", [0.0, 0.0, 0.10]),
+    ("R_Hand", [0.0, 0.0, -0.10]),
+    // Weight on one leg. A body with both legs identical reads as a mannequin
+    // however well it is built.
+    ("R_Thigh", [0.06, 0.0, -0.04]),
+    ("R_Calf", [-0.12, 0.0, 0.0]),
+    ("L_Thigh", [-0.03, 0.0, 0.02]),
+    // And not quite square to the room.
+    ("Spine02", [0.0, 0.05, 0.0]),
+    ("NeckTwist01", [0.02, -0.10, 0.0]),
+];
+
+/// A rig that has not been posed yet.
+#[derive(Component)]
+struct NeedsPose;
 
 pub struct FolkPlugin;
 
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, raise_the_father)
-            .add_systems(Update, make_him_solid);
+            .add_systems(Update, pose_him)
+            // After the transforms have propagated, not merely after the pose
+            // has been *set*. Posing writes local rotations; the world
+            // positions those imply are worked out later in the frame, and a
+            // collision hull built before that lands on the bind pose no matter
+            // what the screen shows. It cost a man a hundred and seventeen
+            // centimetres across the shoulders to find out.
+            .add_systems(
+                PostUpdate,
+                make_him_solid.after(TransformSystems::Propagate),
+            );
     }
 }
 
-// Skin, hair, and the clothes of a man at home on a weekday afternoon.
-const SKIN: Color = Color::srgb(0.78, 0.60, 0.47);
-const SKIN_DARK: Color = Color::srgb(0.70, 0.53, 0.41);
-const HAIR: Color = Color::srgb(0.24, 0.18, 0.14);
-const SHIRT: Color = Color::srgb(0.42, 0.50, 0.58);
-const SHIRT_DARK: Color = Color::srgb(0.36, 0.44, 0.52);
-const JEANS: Color = Color::srgb(0.28, 0.32, 0.42);
-const JEANS_DARK: Color = Color::srgb(0.24, 0.28, 0.37);
-const BELT: Color = Color::srgb(0.22, 0.17, 0.14);
-const SHOE: Color = Color::srgb(0.20, 0.18, 0.17);
-const EYE_WHITE: Color = Color::srgb(0.90, 0.89, 0.86);
-const EYE: Color = Color::srgb(0.20, 0.26, 0.30);
-const MOUTH: Color = Color::srgb(0.54, 0.36, 0.32);
-
-/// One box, hung off a parent at a local offset.
-fn block(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    parent: Entity,
-    at: Vec3,
-    size: Vec3,
-    paint: &Handle<StandardMaterial>,
-) -> Entity {
-    let mesh = meshes.add(Cuboid::new(size.x, size.y, size.z));
-    commands
-        .spawn((
-            ChildOf(parent),
-            Slab(size * 0.5),
-            Mesh3d(mesh),
-            MeshMaterial3d(paint.clone()),
-            Transform::from_translation(at),
-        ))
-        .id()
-}
-
-/// A limb segment: three boxes down its length, tapering.
+/// Put him at ease.
 ///
-/// Hung downward from the joint at the origin, because every limb on a standing
-/// body points down and writing them all that way means a pose is one rotation
-/// per joint with no offsets to keep straight.
-fn limb(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    parent: Entity,
-    length: f32,
-    top: Vec2,
-    bottom: Vec2,
-    paint: &Handle<StandardMaterial>,
-) {
-    // Five segments, not three, and each one overlapping the next.
-    //
-    // Three left a visible ledge at every junction, and three ledges down a
-    // forearm read as three separate blocks rather than one tapering limb —
-    // stairs instead of an arm. Finer steps with an overlap put the change
-    // where the eye reads it as shape.
-    const STEPS: usize = 5;
-    for k in 0..STEPS {
-        let mid = (k as f32 + 0.5) / STEPS as f32;
-        let wide = top.lerp(bottom, mid);
-        block(
-            commands,
-            meshes,
-            parent,
-            Vec3::new(0.0, -length * mid, 0.0),
-            Vec3::new(wide.x, length / STEPS as f32 + 1.6, wide.y),
-            paint,
-        );
-    }
-}
-
-/// A joint block: something for the corner to be made of when the limb bends.
-fn knuckle(
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    parent: Entity,
-    across: f32,
-    paint: &Handle<StandardMaterial>,
-) {
-    block(
-        commands,
-        meshes,
-        parent,
-        Vec3::ZERO,
-        Vec3::splat(across),
-        paint,
-    );
-}
-
-fn raise_the_father(
+/// Runs until it finds the bones, because a glTF scene arrives over several
+/// frames and the skeleton is not there on the first one.
+fn pose_him(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    let dull = |base: Color, rough: f32| StandardMaterial {
-        base_color: base,
-        perceptual_roughness: rough,
-        ..default()
-    };
-    let skin = materials.add(dull(SKIN, 0.72));
-    let skin_dark = materials.add(dull(SKIN_DARK, 0.72));
-    let hair = materials.add(dull(HAIR, 0.88));
-    let shirt = materials.add(dull(SHIRT, 0.92));
-    let shirt_dark = materials.add(dull(SHIRT_DARK, 0.92));
-    let jeans = materials.add(dull(JEANS, 0.95));
-    let jeans_dark = materials.add(dull(JEANS_DARK, 0.95));
-    let belt = materials.add(dull(BELT, 0.55));
-    let shoe = materials.add(dull(SHOE, 0.60));
-    let eye_white = materials.add(dull(EYE_WHITE, 0.30));
-    let eye = materials.add(dull(EYE, 0.20));
-    let mouth = materials.add(dull(MOUTH, 0.70));
-    let meshes = &mut *meshes;
-
-    // Standing in the great room, off to one side, facing across it.
-    let room = crate::house::room("great room");
-    // Clear of everything, which now has to include the made furniture: the
-    // armchair came in at a hundred and sixteen centimetres where the
-    // generated one was ninety-two, and he was standing in it.
-    let stand = Vec3::new(
-        room.min.x + room.wide() * 0.62,
-        0.0,
-        room.min.y + room.deep() * 0.22,
-    );
-
-    // The root is the pelvis. Everything above it hangs off the waist and
-    // everything below off the hips, which is what lets a single rotation at
-    // the waist lean the whole upper body.
-    let hip_height = TALL * 0.53;
-    let root = commands
-        .spawn((
-            Person,
-            NeedsBody,
-            Name::new("Father"),
-            Transform::from_translation(stand + Vec3::new(0.0, hip_height, 0.0))
-                .with_rotation(Quat::from_rotation_y(-0.7)),
-            Visibility::default(),
-        ))
-        .id();
-
-    // -- Below the waist ----------------------------------------------------
-    block(
-        &mut commands,
-        meshes,
-        root,
-        Vec3::new(0.0, 2.0, 0.0),
-        Vec3::new(33.0, 20.0, 20.0),
-        &jeans,
-    );
-    block(
-        &mut commands,
-        meshes,
-        root,
-        Vec3::new(0.0, 12.5, 0.0),
-        Vec3::new(34.0, 5.0, 21.0),
-        &belt,
-    );
-
-    for side in [Side::Left, Side::Right] {
-        let s = side.sign();
-        // A little contrapposto: one leg takes the weight and the other is
-        // slack. A body with both legs identical reads as a mannequin however
-        // well it is built.
-        let slack = if side == Side::Right { 1.0 } else { 0.0 };
-
-        let hip = commands
-            .spawn((
-                ChildOf(root),
-                Joint::Hip(side),
-                Transform::from_translation(Vec3::new(s * 9.0, -6.0, 0.0))
-                    .with_rotation(Quat::from_rotation_x(slack * 0.10)),
-                Visibility::default(),
-            ))
-            .id();
-        limb(
-            &mut commands,
-            meshes,
-            hip,
-            42.0,
-            Vec2::new(16.5, 17.5),
-            Vec2::new(13.0, 14.0),
-            &jeans,
-        );
-
-        let knee = commands
-            .spawn((
-                ChildOf(hip),
-                Joint::Knee(side),
-                Transform::from_translation(Vec3::new(0.0, -42.0, 0.0))
-                    .with_rotation(Quat::from_rotation_x(-slack * 0.22)),
-                Visibility::default(),
-            ))
-            .id();
-        knuckle(&mut commands, meshes, knee, 13.5, &jeans_dark);
-        limb(
-            &mut commands,
-            meshes,
-            knee,
-            42.0,
-            Vec2::new(12.5, 13.5),
-            Vec2::new(9.5, 10.5),
-            &jeans,
-        );
-
-        let ankle = commands
-            .spawn((
-                ChildOf(knee),
-                Joint::Ankle(side),
-                Transform::from_translation(Vec3::new(0.0, -42.0, 0.0)),
-                Visibility::default(),
-            ))
-            .id();
-        // A shoe: sole and upper, with the toe toward the front of the body.
-        //
-        // This whole body faces −z — nose, brow and fringe are all on that
-        // side — and the first version of the shoe put its long end on +z, so
-        // he stood in the great room with his feet on backwards. It is the
-        // kind of mistake that is invisible in the numbers and unmissable the
-        // moment somebody looks at him.
-        block(
-            &mut commands,
-            meshes,
-            ankle,
-            Vec3::new(0.0, -2.5, -3.0),
-            Vec3::new(11.0, 5.0, 26.0),
-            &shoe,
-        );
-        block(
-            &mut commands,
-            meshes,
-            ankle,
-            Vec3::new(0.0, 1.5, 1.0),
-            Vec3::new(10.0, 6.0, 15.0),
-            &shoe,
-        );
-    }
-
-    // -- Above the waist ----------------------------------------------------
-    let waist = commands
-        .spawn((
-            ChildOf(root),
-            Joint::Waist,
-            Transform::from_translation(Vec3::new(0.0, 12.0, 0.0))
-                .with_rotation(Quat::from_rotation_y(0.06)),
-            Visibility::default(),
-        ))
-        .id();
-
-    // Abdomen and chest, the chest wider and deeper: the taper from waist to
-    // shoulder is what separates a man from a fridge.
-    block(
-        &mut commands,
-        meshes,
-        waist,
-        Vec3::new(0.0, 9.0, 0.0),
-        Vec3::new(31.0, 20.0, 19.0),
-        &shirt,
-    );
-    block(
-        &mut commands,
-        meshes,
-        waist,
-        Vec3::new(0.0, 27.0, 0.0),
-        Vec3::new(36.0, 18.0, 21.0),
-        &shirt,
-    );
-    block(
-        &mut commands,
-        meshes,
-        waist,
-        Vec3::new(0.0, 38.0, 0.0),
-        Vec3::new(39.0, 8.0, 21.5),
-        &shirt,
-    );
-    // Collar.
-    block(
-        &mut commands,
-        meshes,
-        waist,
-        Vec3::new(0.0, 43.0, 0.5),
-        Vec3::new(24.0, 4.0, 18.0),
-        &shirt_dark,
-    );
-
-    // -- Head ---------------------------------------------------------------
-    let neck = commands
-        .spawn((
-            ChildOf(waist),
-            Joint::Neck,
-            Transform::from_translation(Vec3::new(0.0, 44.0, 0.0))
-                .with_rotation(Quat::from_rotation_y(-0.12)),
-            Visibility::default(),
-        ))
-        .id();
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 3.0, 0.0),
-        Vec3::new(11.0, 8.0, 11.0),
-        &skin_dark,
-    );
-    // Skull, jaw, brow, nose, ears: six boxes and it stops being a cube.
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 16.0, 0.0),
-        Vec3::new(16.0, 15.0, 18.0),
-        &skin,
-    );
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 8.5, 1.0),
-        Vec3::new(14.5, 8.0, 16.0),
-        &skin,
-    );
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 17.5, -8.5),
-        Vec3::new(14.0, 3.5, 2.5),
-        &skin_dark,
-    );
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 13.5, -9.5),
-        Vec3::new(4.0, 5.0, 3.5),
-        &skin,
-    );
-    for side in [-1.0f32, 1.0] {
-        block(
-            &mut commands,
-            meshes,
-            neck,
-            Vec3::new(side * 8.5, 15.0, 1.0),
-            Vec3::new(2.0, 7.0, 5.0),
-            &skin_dark,
-        );
-    }
-    // Eyes, and the whole face turns on them.
-    //
-    // A head with a brow and a nose and no eyes is a mannequin, and it is the
-    // one place on this body where a two-centimetre box earns more than
-    // anything else on it. White set into the socket under the brow, pupil
-    // proud of that, and both a shade inside the cheekbone so the face has
-    // depth rather than a decal.
-    for side in [-1.0f32, 1.0] {
-        block(
-            &mut commands,
-            meshes,
-            neck,
-            Vec3::new(side * 3.6, 15.6, -8.9),
-            Vec3::new(4.2, 2.6, 1.0),
-            &eye_white,
-        );
-        block(
-            &mut commands,
-            meshes,
-            neck,
-            Vec3::new(side * 4.2, 15.6, -9.3),
-            Vec3::new(1.8, 2.2, 0.8),
-            &eye,
-        );
-    }
-    // A mouth, closed and unremarkable, which is what a face at rest has.
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 9.8, -7.6),
-        Vec3::new(5.6, 1.0, 0.9),
-        &mouth,
-    );
-
-    // Hair: a cap with a fringe over the brow and a shorter back and sides.
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 22.8, 0.5),
-        Vec3::new(16.6, 5.6, 18.6),
-        &hair,
-    );
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        // Overlapping the cap, or a band of scalp shows between fringe and
-        // crown — which on a head this size is a bald stripe.
-        Vec3::new(0.0, 20.4, -8.4),
-        Vec3::new(16.4, 5.6, 2.6),
-        &hair,
-    );
-    for side in [-1.0f32, 1.0] {
-        block(
-            &mut commands,
-            meshes,
-            neck,
-            Vec3::new(side * 8.3, 19.0, 1.0),
-            Vec3::new(1.6, 7.0, 17.0),
-            &hair,
-        );
-    }
-    block(
-        &mut commands,
-        meshes,
-        neck,
-        Vec3::new(0.0, 18.5, 9.2),
-        Vec3::new(16.4, 8.0, 1.8),
-        &hair,
-    );
-
-    // -- Arms ---------------------------------------------------------------
-    for side in [Side::Left, Side::Right] {
-        let s = side.sign();
-        // Arms hang with a little swing and a real bend at the elbow. Straight
-        // arms at the sides is the pose of a doll in a box.
-        let swing = if side == Side::Right { 0.16 } else { -0.24 };
-        // A resting arm is barely bent. Half a radian is a man holding
-        // something.
-        let bend = if side == Side::Right { 0.16 } else { 0.30 };
-
-        let shoulder = commands
-            .spawn((
-                ChildOf(waist),
-                Joint::Shoulder(side),
-                Transform::from_translation(Vec3::new(s * 19.5, 38.0, 0.0))
-                    .with_rotation(Quat::from_rotation_z(-s * 0.10) * Quat::from_rotation_x(swing)),
-                Visibility::default(),
-            ))
-            .id();
-        // The shoulder cap, so the sleeve has a shoulder in it.
-        block(
-            &mut commands,
-            meshes,
-            shoulder,
-            Vec3::new(-s * 1.5, 0.0, 0.0),
-            Vec3::new(10.5, 8.0, 12.0),
-            &shirt,
-        );
-        limb(
-            &mut commands,
-            meshes,
-            shoulder,
-            28.0,
-            Vec2::new(11.0, 12.0),
-            Vec2::new(9.0, 10.0),
-            &shirt,
-        );
-        // The cuff of a rolled sleeve, where shirt gives way to arm.
-        block(
-            &mut commands,
-            meshes,
-            shoulder,
-            Vec3::new(0.0, -27.0, 0.0),
-            Vec3::new(9.6, 4.0, 10.6),
-            &shirt_dark,
-        );
-
-        let elbow = commands
-            .spawn((
-                ChildOf(shoulder),
-                Joint::Elbow(side),
-                Transform::from_translation(Vec3::new(0.0, -28.0, 0.0))
-                    .with_rotation(Quat::from_rotation_x(bend)),
-                Visibility::default(),
-            ))
-            .id();
-        knuckle(&mut commands, meshes, elbow, 9.5, &skin_dark);
-        limb(
-            &mut commands,
-            meshes,
-            elbow,
-            26.0,
-            Vec2::new(9.0, 9.5),
-            Vec2::new(7.0, 7.5),
-            &skin,
-        );
-        // A hand: palm, and a thumb off the inside edge.
-        block(
-            &mut commands,
-            meshes,
-            elbow,
-            Vec3::new(0.0, -31.0, 0.5),
-            Vec3::new(7.5, 11.0, 4.5),
-            &skin,
-        );
-        block(
-            &mut commands,
-            meshes,
-            elbow,
-            Vec3::new(-s * 4.0, -28.5, 0.5),
-            Vec3::new(3.0, 5.5, 4.0),
-            &skin,
-        );
-    }
-}
-
-/// Hand a person's boxes to the collision.
-///
-/// He was scenery: you flew straight through him. His body is boxes and the
-/// house collides as boxes, so this is exact — no hull, no approximation, the
-/// same treatment a wall gets. It costs about fifty solids.
-///
-/// Read out of the built hierarchy rather than computed while building it. A
-/// knee's position in the room is six local transforms multiplied together, and
-/// the moment anyone re-derives that by hand the collision and the drawing
-/// start to disagree. So: wait for the transforms to propagate, then ask them.
-///
-/// He gets no piece, so arrange mode leaves him alone. He is not furniture, and
-/// dragging him would move the boxes and leave the man standing there.
-fn make_him_solid(
-    mut commands: Commands,
-    mut home: ResMut<crate::world::Home>,
-    folk: Query<(Entity, &GlobalTransform), (With<Person>, With<NeedsBody>)>,
+    waiting: Query<Entity, With<NeedsPose>>,
     children: Query<&Children>,
-    parts: Query<(&Slab, &GlobalTransform)>,
+    names: Query<&Name>,
+    mut bones: Query<&mut Transform>,
 ) {
-    for (person, placed) in &folk {
-        // Propagation happens after this schedule on the first frame, so an
-        // unmoved root means the hierarchy is not ready to be measured yet.
-        if placed.translation().length_squared() < 1.0 {
-            continue;
-        }
-        let mut added = 0;
+    for person in &waiting {
+        let mut found = 0;
         let mut stack = vec![person];
         while let Some(entity) = stack.pop() {
             if let Ok(kids) = children.get(entity) {
                 stack.extend(kids.iter());
             }
-            let Ok((slab, at)) = parts.get(entity) else {
+            let Ok(name) = names.get(entity) else {
                 continue;
             };
-            let (scale, rotation, translation) = at.to_scale_rotation_translation();
-            let mut solid = crate::world::Solid::between(
-                -slab.0 * scale,
-                slab.0 * scale,
-                crate::world::Stuff::Fabric,
-            );
-            solid.center = translation;
-            solid.rot = rotation;
-            // Drawn by his own entities; these are only what the fly hits.
-            solid.unseen = true;
-            home.solids.push(solid);
-            added += 1;
+            let Some((_, angles)) = AT_EASE.iter().find(|(bone, _)| *bone == name.as_str()) else {
+                continue;
+            };
+            if let Ok(mut bone) = bones.get_mut(entity) {
+                // Composed onto the bind rotation, not replacing it. A bind
+                // pose already carries the bone's own orientation, and throwing
+                // that away snaps every limb onto the armature's axes.
+                bone.rotation *= Quat::from_euler(EulerRot::XYZ, angles[0], angles[1], angles[2]);
+                found += 1;
+            }
         }
-        info!("a person is solid: {added} boxes");
+        if found > 0 {
+            info!("a person is posed: {found} of {} bones set", AT_EASE.len());
+            commands.entity(person).remove::<NeedsPose>();
+        }
+    }
+}
+
+/// The father, in the great room.
+///
+/// He was built here, out of boxes and then out of lathed profiles, and both
+/// are gone. The lathes were the better version and they were still losing:
+/// a face is not a stack of ellipses, and every pass fixed one feature and
+/// exposed the next. What was left after a long afternoon of it was a man with
+/// correct proportions and no life in him.
+///
+/// He is a made model now, rigged, and he arrives with a skeleton whose joints
+/// are named the way every humanoid rig names them — `L_Upperarm`, `R_Calf`,
+/// `Head`. That skeleton is worth more than the geometry: it is what a walk
+/// cycle and a turn of the head will hang off later.
+///
+/// The pipeline underneath is the one the couch already uses. Two facts — a
+/// path and a place — and the collision comes out of the model's own triangles.
+fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: Res<AssetServer>) {
+    // Standing in the great room, off to one side, facing across it. Clear of
+    // everything, which has to include the made furniture: the armchair came in
+    // at a hundred and sixteen centimetres where the generated one was
+    // ninety-two, and he was standing in it.
+    let room = crate::house::room("great room");
+    let stand = Vec3::new(
+        room.min.x + room.wide() * 0.62,
+        0.0,
+        room.min.y + room.deep() * 0.22,
+    );
+    let turn = Quat::from_rotation_y(-0.7);
+
+    // The model is normalised to one unit tall, so the scale is his height in
+    // metres. Everything downstream multiplies by a hundred.
+    let mut solid = Solid::between(
+        stand - Vec3::splat(2.0),
+        stand + Vec3::splat(2.0),
+        Stuff::Fabric,
+    );
+    solid.model = Some("characters/DadRigged.glb");
+    solid.rot = turn;
+    solid.unseen = true;
+    solid.scale = TALL / UNITS_PER_METRE;
+    let index = home.solids.len();
+    home.solids.push(solid);
+
+    commands.spawn((
+        Person,
+        Stature(TALL),
+        NeedsPose,
+        NeedsBody { solid: index },
+        crate::world::Part { solid: index },
+        Name::new("Father"),
+        WorldAssetRoot(
+            assets.load(GltfAssetLabel::Scene(0).from_asset("characters/DadRigged.glb")),
+        ),
+        Transform::from_translation(stand)
+            .with_rotation(turn)
+            .with_scale(Vec3::splat(UNITS_PER_METRE * TALL / UNITS_PER_METRE)),
+    ));
+}
+
+/// Hand his own triangles to the collision, in the pose he is standing in.
+///
+/// He was scenery: you flew straight through him. The made furniture solved
+/// this already — the mesh you can see is the surface you land on, because a
+/// bounding box round a shoulder stands two centimetres proud of it, which is
+/// four body lengths to the thing landing there.
+///
+/// A rigged body needs one thing more. Skinning happens on the graphics card,
+/// so the mesh held in memory never leaves its bind pose: reading it back the
+/// way the couch is read gives a man standing in a T with his arms out through
+/// the walls, no matter what pose is on screen. So the vertices are skinned
+/// here, on the processor, once — each one moved by its bones' matrices exactly
+/// as the shader would move it. What the fly lands on is then what anybody can
+/// see, which is the whole rule this file is built on.
+///
+/// Once, and only once: this is a standing man, not a walking one. A pose that
+/// changes every frame would need a cheaper answer than four thousand triangles
+/// refiled into a grid, and that is a problem for whoever gives him a walk.
+fn make_him_solid(
+    mut commands: Commands,
+    mut home: ResMut<Home>,
+    waiting: Query<(Entity, &NeedsBody), Without<NeedsPose>>,
+    children: Query<&Children>,
+    skinned: Query<(&Mesh3d, &bevy::mesh::skinning::SkinnedMesh)>,
+    placed: Query<&GlobalTransform>,
+    meshes: Res<Assets<Mesh>>,
+    bindposes: Res<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>,
+) {
+    use bevy::render::mesh::VertexAttributeValues as Values;
+
+    for (person, needs) in &waiting {
+        let mut tris = Vec::new();
+        let mut stack = vec![person];
+        while let Some(entity) = stack.pop() {
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+            let Ok((handle, skin)) = skinned.get(entity) else {
+                continue;
+            };
+            let (Some(mesh), Some(binds)) = (
+                meshes.get(&handle.0),
+                bindposes.get(&skin.inverse_bindposes),
+            ) else {
+                continue;
+            };
+            let (
+                Some(Values::Float32x3(points)),
+                Some(Values::Uint16x4(bones)),
+                Some(Values::Float32x4(weights)),
+            ) = (
+                mesh.attribute(Mesh::ATTRIBUTE_POSITION),
+                mesh.attribute(Mesh::ATTRIBUTE_JOINT_INDEX),
+                mesh.attribute(Mesh::ATTRIBUTE_JOINT_WEIGHT),
+            )
+            else {
+                continue;
+            };
+
+            // One matrix per bone: where that bone is now, undoing where it was
+            // when the mesh was bound to it.
+            let joints: Vec<Mat4> = skin
+                .joints
+                .iter()
+                .enumerate()
+                .map(|(i, &bone)| {
+                    let now = placed
+                        .get(bone)
+                        .map(|at| at.affine().into())
+                        .unwrap_or(Mat4::IDENTITY);
+                    now * binds[i]
+                })
+                .collect();
+
+            let at = |i: usize| -> Vec3 {
+                let p = points[i];
+                let local = Vec3::new(p[0], p[1], p[2]).extend(1.0);
+                let mut out = Vec4::ZERO;
+                for k in 0..4 {
+                    let w = weights[i][k];
+                    if w == 0.0 {
+                        continue;
+                    }
+                    if let Some(joint) = joints.get(bones[i][k] as usize) {
+                        out += *joint * local * w;
+                    }
+                }
+                // A vertex with no weights at all belongs to nothing and would
+                // collapse to the origin, dragging a triangle across the room
+                // with it.
+                if out.w.abs() < 1e-6 {
+                    Vec3::new(p[0], p[1], p[2])
+                } else {
+                    out.truncate() / out.w
+                }
+            };
+
+            match mesh.indices() {
+                Some(indices) => {
+                    let list: Vec<usize> = indices.iter().collect();
+                    for tri in list.chunks_exact(3) {
+                        tris.push([at(tri[0]), at(tri[1]), at(tri[2])]);
+                    }
+                }
+                None => {
+                    for tri in (0..points.len()).collect::<Vec<_>>().chunks_exact(3) {
+                        tris.push([at(tri[0]), at(tri[1]), at(tri[2])]);
+                    }
+                }
+            }
+        }
+
+        // Nothing yet just means the scene has not finished arriving.
+        if tris.is_empty() {
+            continue;
+        }
+        let hull = crate::world::Hull::new(needs.solid, tris, crate::made::CELL);
+        let (low, high) = hull.bounds();
+        info!(
+            // The span across matters as much as the height: it is the one
+            // number that tells you at a glance whether the collision is in the
+            // pose you can see or still in the T it was bound in.
+            "a person is solid: {} triangles, {:.0} cm tall and {:.0} cm across",
+            hull.count(),
+            high.y - low.y,
+            (high.xz() - low.xz()).max_element()
+        );
+        home.hulls.push(hull);
         commands.entity(person).remove::<NeedsBody>();
     }
 }

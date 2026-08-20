@@ -340,7 +340,7 @@ fn choose_view(keys: Res<ButtonInput<KeyCode>>, mut view: ResMut<View>, mut roll
 }
 
 fn place_the_eye(
-    folk: Query<&GlobalTransform, With<crate::folk::Person>>,
+    folk: Query<(&GlobalTransform, Option<&crate::folk::Stature>), With<crate::folk::Person>>,
     time: Res<Time>,
     fixed: Res<Time<Fixed>>,
     view: Res<View>,
@@ -442,14 +442,45 @@ fn place_the_eye(
         return;
     }
 
+    // On the turntable, with the room hidden.
+    if let Some((degrees, head)) = crate::studio::studio() {
+        if let Some((person, stature)) = folk.iter().next() {
+            let root = person.translation();
+            let tall = stature.map(|s| s.0).unwrap_or(178.0);
+            // A long lens, because a portrait taken at forty-six degrees has a
+            // nose in it that the model does not.
+            let (target, reach, fov) = if head {
+                (root.y + tall * 0.925, tall * 0.42, 30.0)
+            } else {
+                (root.y + tall * 0.50, tall * 1.95, 32.0)
+            };
+            let heart = Vec3::new(root.x, target, root.z);
+            // Nought degrees is dead ahead of *him*, not of the world. He
+            // stands at an angle in the great room, and orbiting on world axes
+            // meant the front view was a three-quarter view and every judgement
+            // about the face was made on a cheek.
+            let (_, turn, _) = person.to_scale_rotation_translation();
+            let face = (turn * Vec3::NEG_Z).with_y(0.0).normalize_or(Vec3::NEG_Z);
+            let out = Quat::from_rotation_y(degrees.to_radians()) * face;
+            transform.translation = heart + out * reach + Vec3::Y * reach * 0.06;
+            transform.look_at(heart, Vec3::Y);
+            if let Projection::Perspective(perspective) = &mut *projection {
+                perspective.fov = (fov as f32).to_radians();
+            }
+            eye.seated = true;
+            return;
+        }
+    }
+
     // Standing in front of somebody, looking at them.
     if let Some(degrees) = folk_view() {
-        if let Some(person) = folk.iter().next() {
+        if let Some((person, stature)) = folk.iter().next() {
             // Framed on the *whole* person, not the chest. The first version
             // stood too close and too high and cut the feet off, which is a
             // poor showing for a viewpoint whose only job is looking at a body
             // — and the feet were on backwards at the time.
-            let heart = person.translation() - Vec3::Y * 4.0;
+            let tall = stature.map(|s| s.0).unwrap_or(178.0);
+            let heart = person.translation() + Vec3::Y * tall * 0.48;
             let a = degrees.to_radians();
             transform.translation = heart + Vec3::new(a.sin() * 330.0, 26.0, a.cos() * 330.0);
             transform.look_at(heart, Vec3::Y);

@@ -309,6 +309,11 @@ impl Hull {
         best
     }
 
+    /// How many triangles it collides against.
+    pub fn count(&self) -> usize {
+        self.tris.len()
+    }
+
     pub fn bounds(&self) -> (Vec3, Vec3) {
         (self.lo, self.hi)
     }

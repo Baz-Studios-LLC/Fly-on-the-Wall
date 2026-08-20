@@ -1063,3 +1063,72 @@ failed this morning.
 ## Next
 
 - Then: fly-scale routes, undersides and landing surfaces; restrained clutter.
+
+## The father becomes a made model
+
+Brett supplied `assets/characters/DadRigged.glb` — a Tripo-rigged humanoid, one
+mesh, 4776 triangles, one material with base colour, normal and
+metallic-roughness maps, and a 41 bone skeleton with the standard names
+(`L_Upperarm`, `R_Calf`, `Head`). No animation clips.
+
+He replaced the hand-built body. That body had two lives in `folk.rs`: boxes
+with real elbows and knees, then lathed surfaces of revolution with leaning
+rings. The lathe version was the better engineering and still losing — a face is
+not a stack of ellipses, and each pass fixed one feature and exposed the next.
+Both are gone; git has them.
+
+Kept from the hand-built work: the `Person` marker, the height on `Stature`, and
+collision taken from his own triangles.
+
+### Three real bugs found along the way
+
+**Inverted winding in the lathe.** Every surface of revolution was wound
+backwards, so each shape rendered as its own far wall. A closed convex shape
+looks nearly right that way — the silhouette is identical — which is why it
+survived several passes. What gave it away: shading went flat (normals pointed
+inward, so everything was lit from behind) and nested shapes broke, because the
+depths were inverted. A hair shell wrapped round a skull drew *behind* it, so
+the man was bald with a coloured rim. Diagnosed by rendering the hair bright red
+and then oversizing it: the head poked through a dome that entirely enclosed it.
+
+**Collision built before transforms propagated.** `pose_him` writes local bone
+rotations in `Update`; the world positions those imply are computed in
+`PostUpdate`. Building the hull in `Update` gave a man 117 cm across the
+shoulders — the bind T-pose — while the screen showed his arms down. Moved to
+`PostUpdate.after(TransformSystems::Propagate)`: 179 cm tall, 59 cm across.
+
+**Skinned meshes never leave the bind pose in memory.** Skinning runs on the
+GPU, so reading `ATTRIBUTE_POSITION` the way the couch is read gives the T-pose
+whatever is on screen. `make_him_solid` now skins on the CPU once — each vertex
+moved by `joint_world * inverse_bindpose`, weighted — so the surface the fly
+lands on is the surface anybody can see. Once only; a walking body would need a
+cheaper answer than refiling four thousand triangles.
+
+### New tool: `FLY_STUDIO=<deg>[:head]`
+
+A turntable. Hides everything that is not a person, lights it three-point on a
+flat ground, and orbits **relative to the person's own facing** so nought
+degrees is dead ahead of him rather than of the world.
+
+Built because the house kept preventing the work. `FLY_FOLK` stands 3.5 m out
+and at half the compass that is inside a wall — one capture came back as a sheet
+of magnolia. Most of what was wrong with the hand-built father (head two thirds
+the height it should be, hair reading as sunglasses) was in plain sight and
+simply could not be seen from in there.
+
+### Decisions from Brett
+
+- The blank face is deliberate style, not a defect. Characters never speak
+  intelligibly — the fly cannot understand them — so expression comes from body
+  language. Do not add facial features.
+- The cast is the fly plus four people and the occasional visitor. That ratio is
+  the argument for how much care goes into bodies.
+- Clothing should be **part swapping, not layering**: a garment replaces the
+  drawn version of the segments it covers. No underwear body, no poke-through,
+  and collision derived from what is drawn means a bulky coat gets bulky
+  collision for free.
+
+### Next
+
+- Author `AnimationClip`s in Rust (the file ships none) for idle sway and a walk.
+- A moving body needs bone capsules for collision, not a re-skinned trimesh.

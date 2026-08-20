@@ -32,7 +32,7 @@ use crate::world::Home;
 /// How big a lookup cell is, in centimetres. This is only a filing system for
 /// triangles now, not the collision itself — it decides how many triangles a
 /// query has to consider, and nothing about accuracy.
-const CELL: f32 = 12.0;
+pub const CELL: f32 = 12.0;
 
 /// A model whose collision has not been worked out yet.
 #[derive(Component)]
@@ -51,7 +51,10 @@ impl Plugin for MadePlugin {
 }
 
 /// Walk a scene and collect every triangle in it, in world centimetres.
-fn triangles(
+///
+/// Public because a person is now the same problem as a made model: a hierarchy
+/// of meshes that has to become something the fly can land on.
+pub fn triangles(
     root: Entity,
     children: &Query<&Children>,
     drawn: &Query<(&Mesh3d, &GlobalTransform)>,

@@ -67,6 +67,7 @@ mod lamps;
 mod made;
 mod pause;
 mod rooms;
+mod studio;
 mod title;
 mod wingbeat;
 mod world;
@@ -129,6 +130,7 @@ fn main() {
             folk::FolkPlugin,
             made::MadePlugin,
             pause::PausePlugin,
+            studio::StudioPlugin,
         ))
         .add_systems(Startup, light_the_house)
         .add_systems(Update, toggle_fullscreen)
