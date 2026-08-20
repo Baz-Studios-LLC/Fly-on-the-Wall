@@ -121,10 +121,6 @@ fn worn() -> Worn {
     }
 }
 
-fn use_the_model() -> bool {
-    worn() != Worn::Built
-}
-
 /// Measured nose-to-tail extent of the boxes below, before scaling. Everything
 /// in the trunk is authored at whatever size read well and then scaled as a
 /// group to [`FLY_LENGTH`], so the proportions can be edited without anyone
@@ -202,7 +198,10 @@ impl Plugin for BodyPlugin {
                 work_the_wings,
                 pose_the_legs,
                 walk_the_model,
-            ),
+                find_the_model_wings,
+                beat_the_model_wings,
+            )
+                .chain(),
         );
     }
 }
@@ -555,8 +554,133 @@ fn reach(anchor: Vec3, foot: Vec3, femur: f32, tibia: f32, pole: Vec3) -> (Vec3,
     (femur_dir, (foot - knee).normalize_or_zero())
 }
 
+/// A wing on the rigged model, and the pose it hangs in at rest.
+#[derive(Component)]
+struct ModelWing {
+    rest: Quat,
+    /// −1 or +1: which side of the body it is on, so the pair sweeps apart
+    /// rather than both the same way.
+    side: f32,
+}
+
+/// Find the model's wing bones.
+///
+/// The rig names almost everything `bone_N`, so they are identified by what
+/// they *hold* rather than what they are called: weighing every vertex against
+/// every bone puts `bone_12` and `bone_14` alone up at y≈0.70, out at z≈∓0.31,
+/// and carrying twenty-odd units of weight each — thin membranes, high on the
+/// body, symmetric about the centreline. Nothing else in the skeleton looks
+/// remotely like that.
+///
+/// The legs are a different story and are left alone. `tripo::0_Left_Limb_6`
+/// carries eight hundred and eighty units spread across ninety-six per cent of
+/// the model's width, so the auto-rig has hung several legs off one bone; there
+/// is no per-leg control to drive a tripod gait with, and pretending otherwise
+/// would swing half the undercarriage at once.
+fn find_the_model_wings(
+    mut commands: Commands,
+    flies: Query<Entity, With<Fly>>,
+    children: Query<&Children>,
+    names: Query<&Name>,
+    poses: Query<&Transform>,
+    already: Query<(), With<ModelWing>>,
+    mut looked: Local<bool>,
+) {
+    if worn() != Worn::Rigged || *looked {
+        return;
+    }
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+    let mut found = 0;
+    let mut stack = vec![fly];
+    while let Some(entity) = stack.pop() {
+        if let Ok(kids) = children.get(entity) {
+            stack.extend(kids.iter());
+        }
+        let Ok(name) = names.get(entity) else {
+            continue;
+        };
+        let side = match name.as_str() {
+            "bone_12" => -1.0,
+            "bone_14" => 1.0,
+            _ => continue,
+        };
+        if already.contains(entity) {
+            continue;
+        }
+        let Ok(rest) = poses.get(entity) else {
+            continue;
+        };
+        commands.entity(entity).insert(ModelWing {
+            rest: rest.rotation,
+            side,
+        });
+        found += 1;
+    }
+    if found == 2 {
+        *looked = true;
+        info!("the rigged fly's wings are wired up");
+    }
+}
+
+/// Work the model's wings, the way the built ones are worked.
+///
+/// Not a flap. A housefly beats at about two hundred a second and a screen
+/// draws sixty, so an honest flap aliases into a slow, wrong-looking flutter —
+/// the built wings answer that by *smearing*, widening into the arc they sweep
+/// and thinning as they work harder. The same answer here: the wings sweep up
+/// and forward into the beat as effort rises, and spread wider as they go.
+///
+/// `FLY_BEAT=<0..1>` forces the effort, because a capture cannot hold a key and
+/// a wing at rest tells you nothing about a wing at work.
+fn beat_the_model_wings(
+    time: Res<Time>,
+    flies: Query<&Fly>,
+    mut wings: Query<(&ModelWing, &mut Transform)>,
+) {
+    let Ok(fly) = flies.single() else {
+        return;
+    };
+    let forced = std::env::var("FLY_BEAT")
+        .ok()
+        .and_then(|v| v.parse::<f32>().ok());
+    let effort = forced.unwrap_or_else(|| fly.effort()).clamp(0.0, 1.0);
+    let blend = 1.0 - (-POSE_RATE * time.delta_secs()).exp();
+
+    /// How far the wing sweeps up out of rest at full effort, radians.
+    const SWEEP: f32 = 0.40;
+    /// How much wider the membrane reads when it is working.
+    const SMEAR: f32 = 2.0;
+
+    for (wing, mut pose) in &mut wings {
+        let want = wing.rest * Quat::from_rotation_x(SWEEP * effort * wing.side);
+        pose.rotation = pose.rotation.slerp(want, blend);
+        let widen = 1.0 + (SMEAR - 1.0) * effort;
+        pose.scale = pose.scale.lerp(Vec3::new(1.0, widen, 1.0), blend);
+    }
+}
+
 /// Drive the rigged model's own walk clip from how fast the fly is actually
-/// crossing the floor.
+/// crossing the floor. **Off unless `FLY_WALK=1`, because the clip does not fit
+/// the rig.**
+///
+/// `preset:hexapod:walk` leaves the root, the spine and the head alone — good —
+/// and then swings three bones named `tripo::0_Left_Limb_2`, `_4` and `_6`
+/// through sixty to ninety degrees. Weighing the mesh against each bone says
+/// what they actually hold: `_6` alone carries eight hundred and eighty units
+/// of vertex weight spread across ninety-six per cent of the model's width.
+/// That is not one leg, it is most of the undercarriage, and a preset that
+/// takes it for a femur throws the animal about.
+///
+/// So this is not a constant offset that can be subtracted, the way the
+/// father's stoop and forearm roll were. The preset and the rig disagree about
+/// what the bones *are*. The bind pose is excellent, so standing in it beats
+/// thrashing in a clip written for a different skeleton.
+///
+/// The same weighing does say where the wings are, which is worth having for
+/// whoever rigs them: `bone_12` and `bone_14`, high on the body at y≈0.70 and
+/// symmetric about the centreline at z≈±0.31.
 ///
 /// The model brings one clip, a hexapod walk, and a fly spends most of its life
 /// off the ground — so the clip is not simply left looping. Its speed is the
@@ -575,9 +699,11 @@ fn walk_the_model(
     assets: Res<AssetServer>,
     mut handle: Local<Option<Handle<Gltf>>>,
     mut commands: Commands,
-    roots: Query<Entity, (With<AnimationPlayer>, Without<AnimationGraphHandle>)>,
+    flies_entity: Query<Entity, With<Fly>>,
+    children: Query<&Children>,
+    has_player: Query<(), With<AnimationPlayer>>,
 ) {
-    if worn() != Worn::Rigged {
+    if worn() != Worn::Rigged || std::env::var("FLY_WALK").as_deref() != Ok("1") {
         return;
     }
     let file = handle
@@ -585,10 +711,28 @@ fn walk_the_model(
         .clone();
 
     // Start it once the skeleton and the file are both here.
+    // Found by walking the fly's own hierarchy, not by asking the world for an
+    // animation player. There is another body in this house with a skeleton in
+    // it, and a global query happily handed the fly's walk to the father: the
+    // graph went on his root, the fly's player never got one, and the legs sat
+    // perfectly still while the log said the clip was playing.
+    let fly_root = flies_entity.single().ok().and_then(|fly| {
+        let mut stack = vec![fly];
+        while let Some(entity) = stack.pop() {
+            if has_player.contains(entity) {
+                return Some(entity);
+            }
+            if let Ok(kids) = children.get(entity) {
+                stack.extend(kids.iter());
+            }
+        }
+        None
+    });
+
     if clip.is_none()
         && let Some(loaded) = files.get(&file)
         && let Some(first) = loaded.animations.first()
-        && let Some(root) = roots.iter().next()
+        && let Some(root) = fly_root
     {
         let (graph, node) = AnimationGraph::from_clip(first.clone());
         commands
@@ -613,15 +757,21 @@ fn walk_the_model(
     /// How fast the fly crosses the floor when the clip runs at its authored
     /// speed, in centimetres a second. Tuned against the model's own stride.
     const PACE: f32 = 2.6;
-    let ground = if fly.stance.perch().is_some() {
+    // A capture cannot press a key, so the walk can be run from outside — the
+    // same reason `FLY_GAIT` exists for the built legs.
+    let forced = std::env::var("FLY_GAIT").is_ok();
+    let ground = if forced {
+        PACE
+    } else if matches!(fly.stance, Stance::Perched(_)) {
         (fly.pos - fly.prev_pos).with_y(0.0).length() * crate::fly::TICK_RATE as f32
     } else {
         0.0
     };
-    for mut player in &mut players {
-        if let Some(playing) = player.animation_mut(node) {
-            playing.set_speed((ground / PACE).clamp(0.0, 4.0));
-        }
+    if let Some(root) = fly_root
+        && let Ok(mut player) = players.get_mut(root)
+        && let Some(playing) = player.animation_mut(node)
+    {
+        playing.set_speed((ground / PACE).clamp(0.0, 4.0));
     }
 }
 

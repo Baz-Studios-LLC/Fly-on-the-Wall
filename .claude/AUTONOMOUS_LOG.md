@@ -1562,3 +1562,37 @@ is where the game is played.
 The fix is to drive the model's own wing bones from the same effort signal, and
 the bones are there: 32 of them, mostly named `bone_N`, so they need identifying
 from the geometry rather than the names.
+
+## Reading the fly's rig instead of trusting its clip
+
+The rigged fly walked like it was being thrown about. Weighing every vertex
+against every bone says why, and the same weighing says what *is* usable.
+
+**The wings are rigged properly.** `bone_12` and `bone_14` drive one hundred per
+cent of the wing geometry, fifty–fifty, one bone per wing: thin membranes high
+on the body at y≈0.70, symmetric at z≈∓0.31. Nothing else in the skeleton looks
+like that. They are driven from code now.
+
+**The legs are not.** `tripo::0_Left_Limb_6` alone carries 882 units of weight
+spread across ninety-six per cent of the model's width — the auto-rig hung
+several legs off one bone. There is no per-leg control to run a tripod gait
+with, and `preset:hexapod:walk` swinging that bone through ninety degrees is
+what threw the animal around. The clip is off unless `FLY_WALK=1`.
+
+This is a different kind of fault from the father's. His were *constants* —
+a forearm roll, a spine stoop — sitting under otherwise good animation, and
+subtracting a constant fixed them. Here the preset and the rig disagree about
+what the bones *are*, and no correction fixes that. The bind pose is excellent,
+so standing in it beats thrashing.
+
+**The wingbeat is a smear, not a flap.** A housefly beats about two hundred
+times a second and a screen draws sixty, so an honest flap aliases into a slow
+wrong-looking flutter. The built wings answered that by widening into the arc
+they sweep; the model's do the same — folded along the back at rest, swept out
+and widened as effort rises. `FLY_BEAT=<0..1>` forces it, because a capture
+cannot hold a key.
+
+Method worth keeping: **bones were identified by what they hold, not what they
+are called.** This rig names almost everything `bone_N`. Weighted vertex
+centroids told me which two were wings, which one was the body, and that the
+legs were unusable — in one pass, before writing any code against them.
