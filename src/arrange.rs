@@ -93,7 +93,13 @@ impl Plugin for ArrangePlugin {
         // updates a query that is still empty — and which of the two happens is
         // a scheduling race. `PostStartup` is after the flush, so the query is
         // real and the furniture actually moves with its solids.
-        .add_systems(PostStartup, load_arrangement)
+        // After the people are standing. They add their own solids in
+        // `PostStartup` too, and a saved arrangement that loads first would be
+        // looking for a piece that does not exist yet.
+        .add_systems(
+            PostStartup,
+            load_arrangement.after(crate::folk::raise_the_father),
+        )
         .add_systems(Update, (toggle, aim, carry, save_or_reset, show).chain());
     }
 }

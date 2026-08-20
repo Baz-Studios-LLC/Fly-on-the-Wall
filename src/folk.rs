@@ -28,6 +28,9 @@ use crate::world::{Home, Solid, Stuff, UNITS_PER_METRE};
 /// How tall he stands, in centimetres.
 const TALL: f32 = 178.0;
 
+/// The model he is made of.
+const FATHER: &str = "characters/DadRigged.glb";
+
 /// A person. The studio and the camera both look for this.
 #[derive(Component)]
 pub struct Person;
@@ -48,6 +51,20 @@ struct NeedsBody {
     solid: usize,
 }
 
+/// A way of holding a body: the bones that differ from the bind pose, and how
+/// far the whole body drops from where its feet would otherwise be.
+///
+/// One posture was enough while there was one person standing in one place.
+/// There are four people coming and the interesting thing any of them does is
+/// sit down, so a posture is a value now rather than a constant.
+pub struct Posture {
+    bones: &'static [(&'static str, [f32; 3])],
+    /// Roughly where the model's own origin sits relative to the floor. Only a
+    /// starting guess: a body settles onto the floor by measuring itself, so
+    /// this only has to be close enough that the first frame is not absurd.
+    lift: f32,
+}
+
 /// A pose, as rotations on named bones.
 ///
 /// A rig arrives in its bind pose, which for this one is a T — arms straight
@@ -57,7 +74,7 @@ struct NeedsBody {
 /// it can be tuned by changing a number instead of re-exporting a file.
 ///
 /// Angles are Euler XYZ in the bone's own space.
-const AT_EASE: &[(&str, [f32; 3])] = &[
+const STANDING_BONES: &[(&str, [f32; 3])] = &[
     // Arms down. Most of the angle is a single swing at the shoulder; the rest
     // is what stops him standing to attention — a little forward, a little out
     // from the ribs, and a real bend at the elbow.
@@ -78,6 +95,45 @@ const AT_EASE: &[(&str, [f32; 3])] = &[
     ("Spine02", [0.0, 0.05, 0.0]),
     ("NeckTwist01", [0.02, -0.10, 0.0]),
 ];
+
+pub const STANDING: Posture = Posture {
+    bones: STANDING_BONES,
+    lift: 0.0,
+};
+
+/// Sitting back on a sofa, watching the television.
+///
+/// Hips and knees near a right angle, but not at one: a man on a sofa is not a
+/// man on a dining chair. He is reclined a few degrees, his knees are a little
+/// higher than his hips because a sofa cushion is lower than a chair, and his
+/// feet are flat and apart.
+const SEATED_BONES: &[(&str, [f32; 3])] = &[
+    // Flexion is about x. It was written about z first, which is abduction —
+    // he sat with his legs straight out sideways in the splits.
+    ("L_Thigh", [1.80, 0.06, 0.16]),
+    ("R_Thigh", [1.80, -0.06, -0.16]),
+    ("L_Calf", [-1.80, 0.0, 0.0]),
+    ("R_Calf", [-1.80, 0.0, 0.0]),
+    ("L_Foot", [-0.25, 0.0, 0.0]),
+    ("R_Foot", [-0.25, 0.0, 0.0]),
+    // Reclined into the back of it.
+    ("Hip", [0.0, 0.0, 0.0]),
+    ("Waist", [-0.10, 0.0, 0.0]),
+    ("Spine01", [-0.06, 0.0, 0.0]),
+    ("NeckTwist01", [0.12, 0.0, 0.0]),
+    // Arms along the cushions, elbows bent, hands in his lap.
+    ("L_Clavicle", [0.0, 0.0, -0.05]),
+    ("R_Clavicle", [0.0, 0.0, 0.05]),
+    ("L_Upperarm", [0.22, 0.0, -1.22]),
+    ("R_Upperarm", [0.22, 0.0, 1.22]),
+    ("L_Forearm", [0.0, 0.55, -0.45]),
+    ("R_Forearm", [0.0, -0.55, 0.45]),
+];
+
+pub const SEATED: Posture = Posture {
+    bones: SEATED_BONES,
+    lift: -47.0,
+};
 
 /// A slow movement laid over the resting pose: bone, axis scaled to the
 /// amplitude in radians, cycles per second, and phase in turns.
@@ -123,16 +179,20 @@ struct Idling {
     phase: f32,
 }
 
-/// A rig that has not been posed yet.
+/// Somebody who wants to sit on the named model and has not found it yet.
 #[derive(Component)]
-struct NeedsPose;
+struct NeedsSeat(&'static str);
+
+/// A rig that has not been posed yet, and the posture it is waiting for.
+#[derive(Component)]
+struct NeedsPose(&'static Posture);
 
 pub struct FolkPlugin;
 
 impl Plugin for FolkPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, raise_the_father)
-            .add_systems(Update, (pose_him, breathe).chain())
+            .add_systems(Update, (take_a_seat, pose_him, breathe).chain())
             // After the transforms have propagated, not merely after the pose
             // has been *set*. Posing writes local rotations; the world
             // positions those imply are worked out later in the frame, and a
@@ -146,18 +206,68 @@ impl Plugin for FolkPlugin {
     }
 }
 
+/// Sit somebody on the piece of furniture they were told to sit on.
+///
+/// The seat is found from the furniture's own collision rather than written
+/// down here. Brett resized the sofa in arrange mode and saved it, which is
+/// exactly the event that should break nothing — and it left the father sitting
+/// in the air beside a smaller sofa, because he had been placed at coordinates
+/// measured off one afternoon's log.
+///
+/// Runs until the furniture's hull exists, which takes a few frames.
+fn take_a_seat(
+    mut commands: Commands,
+    mut home: ResMut<crate::world::Home>,
+    mut folk: Query<(Entity, &NeedsSeat, &mut Transform)>,
+) {
+    for (person, wanted, mut standing) in &mut folk {
+        let Some(furniture) = home.solids.iter().position(|s| s.model == Some(wanted.0)) else {
+            warn!("nobody can sit on {}: no such model in the house", wanted.0);
+            commands.entity(person).remove::<NeedsSeat>();
+            continue;
+        };
+        let Some(seat) = home
+            .hulls
+            .iter()
+            .find(|h| h.belongs_to() == furniture)
+            .and_then(crate::made::seat)
+        else {
+            continue;
+        };
+
+        // The model faces its own +x, so this is the turn that points that at
+        // whatever the sofa is pointing at.
+        let turn = Quat::from_rotation_y(seat.facing.z.atan2(seat.facing.x) * -1.0);
+        standing.translation = Vec3::new(seat.at.x, standing.translation.y, seat.at.z);
+        standing.rotation = turn;
+        let mine = home
+            .solids
+            .iter()
+            .position(|s| s.model == Some(FATHER))
+            .unwrap_or(furniture);
+        home.solids[mine].center.x = seat.at.x;
+        home.solids[mine].center.z = seat.at.z;
+        home.solids[mine].rot = turn;
+        info!(
+            "somebody sits at ({:.0}, {:.0}, {:.0}) facing ({:.2}, {:.2})",
+            seat.at.x, seat.at.y, seat.at.z, seat.facing.x, seat.facing.z
+        );
+        commands.entity(person).remove::<NeedsSeat>();
+    }
+}
+
 /// Put him at ease.
 ///
 /// Runs until it finds the bones, because a glTF scene arrives over several
 /// frames and the skeleton is not there on the first one.
 fn pose_him(
     mut commands: Commands,
-    waiting: Query<Entity, With<NeedsPose>>,
+    waiting: Query<(Entity, &NeedsPose)>,
     children: Query<&Children>,
     names: Query<&Name>,
     mut bones: Query<&mut Transform>,
 ) {
-    for person in &waiting {
+    for (person, wanted) in &waiting {
         let mut found = 0;
         let mut stack = vec![person];
         while let Some(entity) = stack.pop() {
@@ -167,7 +277,12 @@ fn pose_him(
             let Ok(name) = names.get(entity) else {
                 continue;
             };
-            let Some((_, angles)) = AT_EASE.iter().find(|(bone, _)| *bone == name.as_str()) else {
+            let Some((_, angles)) = wanted
+                .0
+                .bones
+                .iter()
+                .find(|(bone, _)| *bone == name.as_str())
+            else {
                 continue;
             };
             if let Ok(mut bone) = bones.get_mut(entity) {
@@ -212,7 +327,7 @@ fn pose_him(
 
         info!(
             "a person is posed: {found} of {} bones set, {moving} of {} breathing",
-            AT_EASE.len(),
+            wanted.0.bones.len(),
             IDLE.len()
         );
         commands.entity(person).remove::<NeedsPose>();
@@ -234,18 +349,22 @@ fn pose_him(
 ///
 /// The pipeline underneath is the one the couch already uses. Two facts — a
 /// path and a place — and the collision comes out of the model's own triangles.
-fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: Res<AssetServer>) {
-    // Standing in the great room, off to one side, facing across it. Clear of
-    // everything, which has to include the made furniture: the armchair came in
-    // at a hundred and sixteen centimetres where the generated one was
-    // ninety-two, and he was standing in it.
-    let room = crate::house::room("great room");
-    let stand = Vec3::new(
-        room.min.x + room.wide() * 0.62,
-        0.0,
-        room.min.y + room.deep() * 0.22,
-    );
-    let turn = Quat::from_rotation_y(-0.7);
+pub fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: Res<AssetServer>) {
+    // On the sofa, watching the television.
+    //
+    // He stood in the middle of the great room facing nothing for as long as he
+    // was hand-built, and it was the oddest thing in the house — a man does not
+    // stand in the centre of his own living room. The sofa faces east at the
+    // television, so he does too.
+    //
+    // The seat is measured, not guessed: `made` reports the top surface of
+    // every model it collides, and the sofa's is forty-three centimetres. He
+    // sits a shade back from the middle of it, toward one end.
+    let posture = &SEATED;
+    let sit = Vec3::new(968.0, posture.lift, 1000.0);
+    // The model faces its own +x, so east is no turn at all.
+    let turn = Quat::IDENTITY;
+    let stand = sit;
 
     // The model is normalised to one unit tall, so the scale is his height in
     // metres. Everything downstream multiplies by a hundred.
@@ -254,23 +373,27 @@ fn raise_the_father(mut commands: Commands, mut home: ResMut<Home>, assets: Res<
         stand + Vec3::splat(2.0),
         Stuff::Fabric,
     );
-    solid.model = Some("characters/DadRigged.glb");
+    solid.model = Some(FATHER);
     solid.rot = turn;
     solid.unseen = true;
     solid.scale = TALL / UNITS_PER_METRE;
     let index = home.solids.len();
+    // He is his own piece, so arrange mode can place him. He was deliberately
+    // left out of it while he was built here out of eighty boxes — dragging him
+    // would have moved the collision and left the man standing there. A model
+    // moves as one thing: solid, hull and scene all follow.
+    solid.piece = index as u32;
     home.solids.push(solid);
 
     commands.spawn((
         Person,
         Stature(TALL),
-        NeedsPose,
+        NeedsPose(posture),
+        NeedsSeat("models/couch.glb"),
         NeedsBody { solid: index },
         crate::world::Part { solid: index },
         Name::new("Father"),
-        WorldAssetRoot(
-            assets.load(GltfAssetLabel::Scene(0).from_asset("characters/DadRigged.glb")),
-        ),
+        WorldAssetRoot(assets.load(GltfAssetLabel::Scene(0).from_asset(FATHER))),
         Transform::from_translation(stand)
             .with_rotation(turn)
             .with_scale(Vec3::splat(UNITS_PER_METRE * TALL / UNITS_PER_METRE)),
@@ -319,6 +442,7 @@ fn make_him_solid(
     mut meshes: ResMut<Assets<Mesh>>,
     bindposes: Res<Assets<bevy::mesh::skinning::SkinnedMeshInverseBindposes>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut stance: Query<&mut Transform>,
 ) {
     use bevy::render::mesh::VertexAttributeValues as Values;
 
@@ -410,14 +534,43 @@ fn make_him_solid(
         }
         let hull = crate::world::Hull::new(needs.solid, tris, crate::made::CELL);
         let (low, high) = hull.bounds();
+
+        // Stand him on the floor by measuring where he actually reaches.
+        //
+        // Every pose changes it. A model's origin is between its feet only
+        // while it is standing in the pose it was exported in; fold the legs to
+        // sit somebody down and the feet end up half a metre in front of the
+        // origin and well above it. Authoring that offset per pose is a number
+        // nobody can get right by looking at it — the seated father had his
+        // shoes fifteen centimetres into the floorboards, with one visible
+        // under the sofa.
+        //
+        // So the drop is measured off the collision that was just built, and
+        // the whole body moves by it. One correction is exact; the loop is only
+        // there because the transforms have to propagate again before the hull
+        // can be rebuilt to match.
+        if low.y.abs() > 0.5 {
+            if let Ok(mut standing) = stance.get_mut(person) {
+                standing.translation.y -= low.y;
+            }
+            home.solids[needs.solid].center.y -= low.y;
+            continue;
+        }
         info!(
             // The span across matters as much as the height: it is the one
             // number that tells you at a glance whether the collision is in the
             // pose you can see or still in the T it was bound in.
-            "a person is solid: {} triangles, {:.0} cm tall and {:.0} cm across",
+            "a person is solid: {} triangles, {:.0} cm tall and {:.0} cm across, \
+             feet at {:.0}, crown at {:.0}, x {:.0}..{:.0} z {:.0}..{:.0}",
             hull.count(),
             high.y - low.y,
-            (high.xz() - low.xz()).max_element()
+            (high.xz() - low.xz()).max_element(),
+            low.y,
+            high.y,
+            low.x,
+            high.x,
+            low.z,
+            high.z
         );
         // `FLY_HULL=1` draws it, because a person's collision is the one kind
         // with no geometry of its own to check against.

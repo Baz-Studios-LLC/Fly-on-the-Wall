@@ -1169,3 +1169,60 @@ trimesh is the wrong answer (a few milliseconds, and it does not fix the perch).
 The answer is per-bone collision: a capsule or a small hull per bone, posed with
 it, and perches stored relative to the bone rather than the body. That is what a
 walk cycle needs before it can exist.
+
+## Sitting him down, and finding the seat rather than remembering it
+
+A man standing motionless in the centre of his own living room was the oddest
+thing left in the house. He sits on the sofa now, watching the television.
+
+`Posture` is a value rather than a constant: the bones that differ from the bind
+pose, and a rough starting height. There are four people coming and the
+interesting thing any of them does is sit down.
+
+Getting the seated pose right took several rounds, and two of the mistakes are
+worth remembering:
+
+- **Flexion is about x, not z.** Written about z first, which is abduction: he
+  sat with his legs straight out sideways in the splits.
+- **A model's origin is only between its feet while it is standing.** Fold the
+  legs and the feet end up half a metre in front of the origin and well above
+  it. Authoring that offset per pose is a number nobody can eyeball — the first
+  seated father had his shoes fifteen centimetres into the floorboards, with one
+  visible under the sofa. So the drop is *measured*: `make_him_solid` reads the
+  bottom of the hull it just built and shifts the whole body by it. Exact in one
+  correction; the retry only exists so transforms can propagate before the hull
+  is rebuilt. Every future posture gets this for free.
+
+### Brett resized the sofa
+
+Mid-session, in arrange mode, and saved it. That is exactly the event that
+should break nothing, and it left the father sitting in the air beside a smaller
+sofa — he had been placed at coordinates copied out of one afternoon's log.
+
+So `made::seat` finds a seat from a model's own collision. Probes are dropped
+over its footprint; a cushion is the low plateau, a back is the high one, and
+the direction from one to the other is the way the piece faces. Thresholds are
+fractions of the piece's own height, so scaling it changes nothing.
+
+The first version took "anything at roughly seat height" as cushion and put him
+a foot inside his own sofa. A ray dropped just off the back edge grazes the
+sloping outside and lands anywhere between the top and the floor, so a band
+alone collects a scatter of hits behind the seat. A cushion is a *plateau*: bin
+the heights, take the fullest bin, keep only what is level with it. Graze hits
+spread across every bin; a cushion fills one.
+
+### Diagnostics added
+
+`made` now reports, for every model it collides: size, position, the height of
+the top surface at its centre, and a surface profile across x. That profile is
+what identified which way the sofa faced — reading it off the code that placed
+the furniture does not work, because the generated sofa was thrown away and the
+model brought its own orientation.
+
+### Answered for Brett
+
+A single glb can hold many animations — glTF has a named `animations` array and
+Bevy loads them all. One file is better than several: the mesh and textures are
+stored once. Separate files also work, because Bevy matches clips to bones by
+name path, but each export usually carries the whole mesh again. What matters is
+that every clip comes off the same skeleton with the same bone names.

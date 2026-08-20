@@ -129,9 +129,48 @@ fn fit_collision(
             probe(&mut commands, &hull, &mut meshes, &mut materials);
         }
 
+        let (low, high) = hull.bounds();
+        // The height of whatever is on top at the middle of it: a seat, a
+        // table top, a shelf. It is the number anybody actually wants when
+        // putting something — or somebody — on a model, and reading it off the
+        // collision means it stays right when the model is replaced.
+        // A profile across it, so the shape of a seat is legible from the log:
+        // a sofa reads as a tall back and a low seat, and which side is which
+        // says which way it faces. Guessing that from the code that placed it
+        // does not work — the generated sofa was thrown away and the model
+        // brought its own orientation with it.
+        let across: Vec<String> = (0..=6)
+            .map(|k| {
+                let x = low.x + (high.x - low.x) * k as f32 / 6.0;
+                let from = Vec3::new(x, high.y + 10.0, (low.z + high.z) * 0.5);
+                let h = hull
+                    .raycast(from, Vec3::NEG_Y, high.y - low.y + 40.0)
+                    .map(|(d, _)| from.y - d)
+                    .unwrap_or(low.y);
+                format!("{h:.0}")
+            })
+            .collect();
+        info!("   surface across x, west to east: {}", across.join("  "));
+        let middle = Vec3::new(
+            (low.x + high.x) * 0.5,
+            high.y + 10.0,
+            (low.z + high.z) * 0.5,
+        );
+        let surface = hull
+            .raycast(middle, Vec3::NEG_Y, high.y - low.y + 40.0)
+            .map(|(d, _)| middle.y - d)
+            .unwrap_or(low.y);
         info!(
-            "made model: piece {} — {count} triangles as collision, in {} cm cells",
-            home.solids[needs.solid].piece, CELL
+            "made model: piece {} — {count} triangles as collision, in {} cm cells; \
+             {:.0} x {:.0} x {:.0} cm about ({:.0}, {:.0}, {:.0}), top surface at {surface:.0}",
+            home.solids[needs.solid].piece,
+            CELL,
+            high.x - low.x,
+            high.y - low.y,
+            high.z - low.z,
+            (low.x + high.x) * 0.5,
+            low.y,
+            (low.z + high.z) * 0.5,
         );
         home.hulls.push(hull);
         commands.entity(root).remove::<NeedsHull>();
@@ -195,4 +234,103 @@ pub fn probe(
         }
     }
     info!("hull probe: {landed} of {} landed", across * along);
+}
+
+/// Somewhere to sit on a piece of furniture, worked out from its collision.
+pub struct Seat {
+    /// The middle of the cushion, at cushion height.
+    pub at: Vec3,
+    /// The way somebody sitting on it would face: away from the back.
+    pub facing: Vec3,
+}
+
+/// Find the seat on a sofa or a chair.
+///
+/// Brett resized the sofa in arrange mode and saved it, which is exactly the
+/// event that should not break anything and did: the father had been sat at
+/// hand-measured coordinates, and the moment the furniture under him changed
+/// size he was sitting in the air beside it. Coordinates copied out of a log
+/// are a snapshot of one afternoon.
+///
+/// So the seat is found rather than remembered. Probes are dropped over the
+/// model's own footprint and sorted by how high they land: a cushion is the
+/// low plateau, a back is the high one, and the direction from one to the other
+/// is the way the thing faces. Everything is measured as a fraction of the
+/// piece's own height, so it survives being scaled.
+pub fn seat(hull: &crate::world::Hull) -> Option<Seat> {
+    const STEP: f32 = 3.0;
+    let (low, high) = hull.bounds();
+    let tall = high.y - low.y;
+    if tall < 20.0 {
+        return None;
+    }
+
+    // Drop a probe every three centimetres and keep where each one landed.
+    let mut hits: Vec<Vec3> = Vec::new();
+    let mut back = (Vec3::ZERO, 0.0f32);
+    let mut x = low.x;
+    while x <= high.x {
+        let mut z = low.z;
+        while z <= high.z {
+            let from = Vec3::new(x, high.y + 10.0, z);
+            if let Some((d, _)) = hull.raycast(from, Vec3::NEG_Y, tall + 40.0) {
+                let hit = Vec3::new(x, from.y - d, z);
+                let up = (hit.y - low.y) / tall;
+                if (0.18..0.66).contains(&up) {
+                    hits.push(hit);
+                } else if up > 0.74 {
+                    back.0 += hit;
+                    back.1 += 1.0;
+                }
+            }
+            z += STEP;
+        }
+        x += STEP;
+    }
+
+    // A cushion is a *plateau*, and saying "anything at roughly seat height" is
+    // not the same thing. A ray dropped just off the back edge of a sofa grazes
+    // the sloping outside of it and lands anywhere between the top and the
+    // floor, so a band alone collects a scatter of hits behind the seat and
+    // drags the back edge a foot into the upholstery — which is where the
+    // father sat, inside his own sofa.
+    //
+    // So: bin the heights, take the fullest bin, and keep only what is level
+    // with it. Graze hits spread across every bin; a cushion fills one.
+    const BIN: f32 = 2.0;
+    let mut bins: std::collections::HashMap<i32, u32> = Default::default();
+    for hit in &hits {
+        *bins.entry((hit.y / BIN).round() as i32).or_default() += 1;
+    }
+    let (level, count) = bins.into_iter().max_by_key(|&(_, n)| n)?;
+    if count < 8 {
+        return None;
+    }
+    let level = level as f32 * BIN;
+    let cushion: Vec<Vec3> = hits
+        .into_iter()
+        .filter(|hit| (hit.y - level).abs() < 4.0)
+        .collect();
+    if cushion.len() < 8 {
+        return None;
+    }
+
+    let middle = cushion.iter().copied().sum::<Vec3>() / cushion.len() as f32;
+    let facing = if back.1 > 3.0 {
+        (middle - back.0 / back.1).with_y(0.0).normalize_or(Vec3::X)
+    } else {
+        Vec3::X
+    };
+    // Not the middle of the cushion: the back of it. People sit back, and a
+    // body placed at the centroid of a two-metre sofa has its knees over the
+    // front edge and its shoulders a foot clear of the cushions.
+    let hard_back = cushion
+        .iter()
+        .map(|p| p.dot(facing))
+        .fold(f32::INFINITY, f32::min);
+    let at = middle + facing * (hard_back - middle.dot(facing) + 6.0);
+    Some(Seat {
+        at: at.with_y(level),
+        facing,
+    })
 }

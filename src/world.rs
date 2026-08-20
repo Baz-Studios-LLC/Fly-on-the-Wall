@@ -309,6 +309,11 @@ impl Hull {
         best
     }
 
+    /// Which solid this hull belongs to.
+    pub fn belongs_to(&self) -> usize {
+        self.solid
+    }
+
     /// How many triangles it collides against.
     pub fn count(&self) -> usize {
         self.tris.len()
