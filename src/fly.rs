@@ -475,7 +475,17 @@ fn gather_intent(
             axis(KeyCode::Space, KeyCode::ControlLeft),
             axis(KeyCode::KeyW, KeyCode::KeyS),
         );
-        intent.land = keys.pressed(KeyCode::KeyF) || mouse.pressed(MouseButton::Right);
+        // Reaching for a surface is also the default when nothing is asked
+        // for. A fly that stops flying does not hover — it sinks, and a sinking
+        // fly is looking for somewhere to put its feet. So letting go of
+        // everything is landing, and touching any key is flying again. `F` and
+        // the right button still ask for it outright, which is what you want
+        // when you are aiming at a particular windowsill at speed.
+        //
+        // Holding a *descend* counts as flying, deliberately: driving yourself
+        // down is not the same as drifting down.
+        let idle = intent.thrust == Vec3::ZERO;
+        intent.land = idle || keys.pressed(KeyCode::KeyF) || mouse.pressed(MouseButton::Right);
         // Latched, not overwritten: a press must survive until a tick eats it.
         intent.launch |= keys.just_pressed(KeyCode::Space);
     }

@@ -1812,3 +1812,51 @@ judged, that is a fault in the tooling, not a reason to squint. `FLY_INSPECT` no
 takes an elevation — `FLY_INSPECT=35:42` — because a fore-and-aft swing is
 invisible from the side of the swing, exactly as a twenty-degree stoop was
 invisible head-on.
+
+## Landing by letting go, legs in the air, and faster wings
+
+Three of Brett's asks, and one bug found on the way.
+
+**Letting go is landing.** A fly that stops flying does not hover — it sinks, and
+a sinking fly is looking for somewhere to put its feet. So `Intent::land` is now
+true whenever no thrust is asked for, and touching any key flies again. `F` and
+the right button still ask outright, which is what you want when aiming at a
+particular windowsill at speed. Holding *descend* counts as flying: driving
+yourself down is not drifting down.
+
+**Legs are carried, not frozen.** A fly holds its forelegs folded up and forward
+under the head, its middle pair tucked back along the body, and its hind pair
+trailing out behind — and brings all six forward on approach, which is the
+landing gear anybody has watched go down on a windowsill. That second half came
+free: reaching for a surface is already what `Intent::land` means, so the legs
+untuck exactly when the fly starts looking for somewhere to land. `FLY_TUCK=1`
+forces it, because a capture is always perched.
+
+**A mirroring bug, found while adding the rows.** The sweep is a turn about the
+body's vertical, and one rotation about a shared axis sends the two sides
+opposite ways: the same angle that swings a right leg forward swings a left leg
+back. Two legs in the same tripod were protracting in opposite directions. The
+sweep is mirrored by side now.
+
+**Wings.** A housefly beats at 180–220 Hz. At sixty frames that is 0.3 samples a
+beat, so there is no honest way to show it — and raising the rate past thirty
+makes it look *slower*, because it aliases down: forty-five reads as fifteen.
+Speed therefore comes from less visible travel and more blur, which is also why a
+real fly's wings look like nothing but a haze. `FLY_BUZZ=<hz>` and
+`FLY_SHIVER=<radians>` are tunable without a rebuild, because past the physics
+this is taste and taste needs trying.
+
+### The smear axis, and four captures wasted on not measuring
+
+The blur scales the wing across its chord, and I did not know which local axis
+that was. I tried X, then X-or-Z by side, then the reverse, reading each capture
+as "one wing broad, one a spike" and inventing a mirrored-bone theory to explain
+it. Then I weighed each wing's own vertices into its bone's frame: extents
+x=0.550, y=0.421, z=0.264 on one and x=0.493, y=0.425, z=0.296 on the other.
+Span is X, chord is Y, Z is the thickness of a membrane — and **both wings agree**,
+so they were never mirrored at all.
+
+The "spike" was a wing seen edge-on. Three of the four captures I was reasoning
+from showed nothing of the kind, and I had never once rendered the wings with the
+smear switched off to see what unscaled looked like. Establish the baseline
+before reading a difference.

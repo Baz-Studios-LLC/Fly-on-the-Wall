@@ -570,6 +570,15 @@ struct ModelLeg {
     /// folds it out of the way, and the tarsus keeps the foot pointing at the
     /// floor while the other two move.
     segment: Segment,
+    /// Which pair, for deciding how it is carried in flight.
+    row: Row,
+    /// −1 on the left, +1 on the right.
+    ///
+    /// The sweep is a turn about the body's *vertical*, and a single rotation
+    /// about a shared axis sends the two sides opposite ways: the same angle
+    /// that swings a right leg forward swings a left leg back. Without this,
+    /// two legs in the same tripod protract in opposite directions.
+    side: f32,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -577,6 +586,16 @@ enum Segment {
     Femur,
     Tibia,
     Tarsus,
+}
+
+/// Which pair a leg belongs to. A fly does not hold its three pairs the same
+/// way in the air: the forelegs fold up and forward under the head, the middle
+/// pair tucks back along the body, and the hind pair trails out behind.
+#[derive(Clone, Copy, PartialEq)]
+enum Row {
+    Front,
+    Middle,
+    Rear,
 }
 
 /// Find the six leg bones added by `tools/rig-the-legs.py`.
@@ -627,6 +646,12 @@ fn find_the_model_legs(
             "front_right" | "middle_left" | "rear_right" => 0.5,
             _ => continue,
         };
+        let row = match which.split('_').next() {
+            Some("front") => Row::Front,
+            Some("middle") => Row::Middle,
+            _ => Row::Rear,
+        };
+        let side = if which.ends_with("left") { -1.0 } else { 1.0 };
         let segment = match part {
             "femur" => Segment::Femur,
             "tibia" => Segment::Tibia,
@@ -640,6 +665,8 @@ fn find_the_model_legs(
             rest: rest.rotation,
             phase,
             segment,
+            row,
+            side,
         });
         found += 1;
     }
@@ -661,7 +688,7 @@ fn find_the_model_legs(
 /// floor by construction rather than by a constant somebody tuned.
 fn walk_the_model_legs(
     time: Res<Time>,
-    flies: Query<&Fly>,
+    flies: Query<(&Fly, &Intent)>,
     parents: Query<&ChildOf>,
     placed: Query<&GlobalTransform>,
     mut legs: Query<(Entity, &ModelLeg, &mut Transform)>,
@@ -669,8 +696,9 @@ fn walk_the_model_legs(
     mut gait: Local<f32>,
     mut stepping: Local<f32>,
     mut ticks: Local<u32>,
+    mut tuck: Local<f32>,
 ) {
-    let Ok(fly) = flies.single() else {
+    let Ok((fly, intent)) = flies.single() else {
         return;
     };
     /// How far a thigh swings fore and aft, radians.
@@ -686,6 +714,13 @@ fn walk_the_model_legs(
     /// than curling under the leg.
     const FOLD: f32 = 0.52;
     const FLATTEN: f32 = 0.30;
+    /// How each pair is carried in the air: sweep, lift, and how far the tibia
+    /// folds. Sweep is positive forward and gets mirrored by side.
+    const TUCKED: [(f32, f32, f32); 3] = [
+        (0.85, 0.55, 1.20),  // forelegs, folded up under the head
+        (-0.45, 0.50, 0.85), // middle, tucked back along the body
+        (-0.95, 0.20, 0.22), // hind, trailing
+    ];
     /// Body travel for one full stride, in centimetres.
     ///
     /// **Chosen so the gait can be drawn, not from anatomy.** A fly's real
@@ -757,6 +792,24 @@ fn walk_the_model_legs(
     // The tibia and tarsus *do* point downward, which is why they alone looked
     // animated — the same rotation swung them properly. A leg that reaches
     // sideways protracts about the vertical.
+    // How a fly carries its legs in the air, and it is not "the way it stood".
+    //
+    // Forelegs fold up and forward under the head, the middle pair tucks back
+    // along the body, and the hind pair trails out behind — and all six come
+    // *forward* again on approach, which is the landing gear anybody has
+    // watched a fly put down on a windowsill. That second half falls out for
+    // free: reaching for a surface is already what `Intent::land` means, so the
+    // legs untuck exactly when the fly starts looking for somewhere to land.
+    //
+    // `FLY_TUCK=1` forces it, because a capture is always perched.
+    let airborne = !matches!(fly.stance, Stance::Perched(_));
+    let want_tuck = if std::env::var("FLY_TUCK").is_ok() || (airborne && !intent.land) {
+        1.0
+    } else {
+        0.0
+    };
+    *tuck += (want_tuck - *tuck) * blend;
+
     let along = fly.body * Vec3::NEG_Z;
     let upright = fly.body * Vec3::Y;
     for (entity, leg, mut pose) in &mut legs {
@@ -780,10 +833,19 @@ fn walk_the_model_legs(
             0.0
         };
 
+        let (tuck_sweep, tuck_lift, tuck_fold) = TUCKED[match leg.row {
+            Row::Front => 0,
+            Row::Middle => 1,
+            Row::Rear => 2,
+        }];
+
         pose.rotation = match leg.segment {
             Segment::Femur => {
                 let sweep = (t * std::f32::consts::TAU).cos() * SWING * *stepping;
                 let lift = swinging * LIFT * *stepping;
+                let sweep = sweep * (1.0 - *tuck) + tuck_sweep * *tuck;
+                let lift = lift * (1.0 - *tuck) + tuck_lift * *tuck;
+                let sweep = sweep * leg.side;
                 if said {
                     info!(
                         "   femur driven {:5.1} deg sweep, {:4.1} deg lift  (phase {:.2})",
@@ -802,12 +864,15 @@ fn walk_the_model_legs(
             // Folding happens in the leg's own plane, which for a leg reaching
             // outward and down is the plane about the fore-and-aft axis.
             Segment::Tibia => {
-                Quat::from_axis_angle(forward, FOLD * swinging * *stepping) * leg.rest
+                let fold = FOLD * swinging * *stepping * (1.0 - *tuck) + tuck_fold * *tuck;
+                Quat::from_axis_angle(forward, fold * leg.side) * leg.rest
             }
             // And the tarsus gives some of that back, so the foot arrives flat
             // instead of tucked under the leg it hangs from.
             Segment::Tarsus => {
-                Quat::from_axis_angle(forward, -FLATTEN * swinging * *stepping) * leg.rest
+                let fold =
+                    -FLATTEN * swinging * *stepping * (1.0 - *tuck) + tuck_fold * 0.3 * *tuck;
+                Quat::from_axis_angle(forward, fold * leg.side) * leg.rest
             }
         };
     }
@@ -897,6 +962,8 @@ fn beat_the_model_wings(
     time: Res<Time>,
     flies: Query<&Fly>,
     mut wings: Query<(&ModelWing, &mut Transform)>,
+    mut rate: Local<Option<f32>>,
+    mut depth: Local<Option<f32>>,
 ) {
     let Ok(fly) = flies.single() else {
         return;
@@ -909,19 +976,44 @@ fn beat_the_model_wings(
 
     /// How far the wing sweeps up out of rest at full effort, radians.
     const SWEEP: f32 = 0.40;
-    /// How much wider the membrane reads when it is working.
-    const SMEAR: f32 = 2.0;
-    /// The buzz, in beats a second. Deliberately far below a housefly's two
-    /// hundred and deliberately above what a screen can resolve: at sixty
-    /// frames it aliases, and aliasing a *small* amplitude is what a blur
-    /// looks like. Aliasing a large one is a slow flap, which is what this
-    /// looked like when the number was twelve.
-    const BUZZ: f32 = 27.0;
-    /// How far it shivers about the smear. Small on purpose.
-    const SHIVER: f32 = 0.14;
+    /// How much wider the membrane reads when it is working. The main cue for
+    /// speed, now that the shiver is deliberately hard to follow.
+    const SMEAR: f32 = 2.8;
+    /// The buzz, in beats a second.
+    ///
+    /// **This cannot simply be raised to look faster, and that is worth
+    /// knowing.** Sampled at sixty frames, anything past thirty aliases *down*:
+    /// forty-five beats a second reads as fifteen, which looks slower than
+    /// what it replaced. Twenty-nine is as fast as a wing can honestly appear
+    /// to move on a sixty-hertz screen.
+    ///
+    /// So speed comes from the other two numbers instead. Less visible travel
+    /// and more blur reads as faster than more travel does — which is why a
+    /// real fly's wings, at two hundred beats a second, look like nothing but
+    /// a haze.
+    const BUZZ: f32 = 29.0;
+    /// How far it shivers about the smear. Small on purpose: motion you can
+    /// follow with your eye is motion that looks slow.
+    const SHIVER: f32 = 0.11;
     /// How much the whole wing rocks fore and aft across a beat, which is what
     /// stops a smear reading as a stuck decal.
-    const ROCK: f32 = 0.09;
+    const ROCK: f32 = 0.045;
+
+    // `FLY_BUZZ=<hz>` and `FLY_SHIVER=<radians>` so this can be tuned by eye
+    // without a rebuild, which is the only way to settle it — the honest
+    // answer is unshowable and everything past that is taste.
+    let buzz = *rate.get_or_insert_with(|| {
+        std::env::var("FLY_BUZZ")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(BUZZ)
+    });
+    let shiver = *depth.get_or_insert_with(|| {
+        std::env::var("FLY_SHIVER")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(SHIVER)
+    });
 
     let clock = time.elapsed_secs();
     for (wing, mut pose) in &mut wings {
@@ -933,12 +1025,24 @@ fn beat_the_model_wings(
         // smoothed away — a shiver eased at POSE_RATE is no shiver at all.
         // The two wings run a half beat apart, because a pair in perfect step
         // reads as one object.
-        let beat = (clock * BUZZ + wing.side * 0.25) * std::f32::consts::TAU;
-        pose.rotation *= Quat::from_rotation_x(beat.sin() * SHIVER * effort * wing.side)
+        let beat = (clock * buzz + wing.side * 0.25) * std::f32::consts::TAU;
+        pose.rotation *= Quat::from_rotation_x(beat.sin() * shiver * effort * wing.side)
             * Quat::from_rotation_z(beat.cos() * ROCK * effort);
 
+        // Across the chord, not along the span — and the two wing bones are
+        // mirrored, so the chord is not the same local axis on both sides.
+        // Widening the wrong one stretches the wing into a blade twice the
+        // length of the animal, which is what one side did while the other
+        // looked right. A scale axis on a bone means nothing until you know
+        // which way that particular bone runs.
         let widen = 1.0 + (SMEAR - 1.0) * effort;
-        pose.scale = pose.scale.lerp(Vec3::new(1.0, widen, 1.0), blend);
+        // Across the chord. Measured, not guessed: weighing each wing's own
+        // vertices into its bone's frame gives extents of x=0.55, y=0.42,
+        // z=0.26 — so the span is local X, the chord is Y, and Z is nothing but
+        // the thickness of a membrane. Both wings agree, which is worth knowing
+        // too, because a great deal of time went on assuming they were mirrored.
+        let want = Vec3::new(1.0, widen, 1.0);
+        pose.scale = pose.scale.lerp(want, blend);
     }
 }
 
