@@ -2177,3 +2177,52 @@ draws any hull's collision.
 - **A measurement tells you what it measured.** Reading "largest extent" as "the
   span" wasted four captures; reading "the bone is turning" as "the leg is
   moving" wasted five rounds.
+
+## 2026-08-20 (evening) — openings from the drawing, the real roof, the lawn
+
+- **Recalibrated the plan**: 16.82 px/ft (the logged 17.087 was the *previous*
+  drawing). Printed dims chain to the measured east wall at 65.24 ft within a
+  pixel. Middle stack starts at y=18.0 ft (was 19.4), porch 7.61–17.61.
+- **Nine columns now**: mudroom hall (3.61 ft) and wing hall (3.4 ft) are real
+  rooms; laundry 10'-0" across cols 1–2; pantry 5'-7"; storage bay open to the
+  garage over exactly its printed 13'-1"; bath two keeps a tub nook.
+- **PORTALS is the single authority for every opening** (32 entries, measured
+  in feet off the drawing, checked by an unmatched-portal error). Walls cut it,
+  CUT_BOXES records it, glazing/trim/audit/leaves read the record. The floating
+  windows are dead: sashes go exactly where holes are.
+- **Wall dedupe is symmetric** ((line+near)/2), immune to table rounding —
+  32 openings from 32 portals, 46 duplicate offers dropped, 91 runs.
+- **Thresholds** saddle every floor-level opening; seam boards own open-plan
+  gaps; ceilings tuck a hair *down* (up opened an attic slit at the cornice).
+- **Roof rebuilt to the photos**: west-bar ridge gable-to-gable (9:12), main
+  E-W ridge with slopes over both porches (6:12), east wing continues the main
+  line stepped down (4:12, wide east gable), steep entry cross-gable (12:12)
+  with the attic triple; garage gable window; charcoal shingles.
+- **Style locked from the 19 reference photos** (13-agent survey + 5-agent
+  adversarial capture-vs-photo verify): white board-and-batten, black
+  single-hung 1-over-1 sashes, white flat casings, shut slate double front
+  doors, white carriage door with X-bucks and lite row, glass rear door,
+  lanterns, brick front porch + steps, cedar rear posts, low sills (70; 25 on
+  porch walls; 130 over sink/bath).
+- **Grounds re-laid to the plan**: drive centred on the garage (was 10 ft
+  off), walk + brick steps, mulched beds clear of openings, cypress pair.
+  envelope() now reflects the built footprint.
+- **The lawn**: ported Grass Test (../Grass Test) → src/lawn.rs +
+  assets/shaders/lawn{,_blade}.wgsl. GPU-hashed blades, no per-blade memory,
+  wind/gusts/dry flecks, pixel-width floor. Fixed chunk grid over the lot,
+  house/drive chunks skipped, 13k blades per 4 m chunk, blade height clamped
+  8.5 cm (paving tops sit at −1.2). Deterministic: chunk-coord seeds; captures
+  at equal delay match. NO trample (Brett: nothing walks out there).
+- **Reachability audit un-stale-ified**: floods plan-derived rooms via
+  room-rects grown by INNER (gap-crossing), porches exempt (all outside doors
+  deliberately shut — the fly does not go outside).
+- **Direct-run gotcha**: running target/release binary directly resolves
+  assets to target/release/assets → every glb/shader silently failed.
+  `BEVY_ASSET_ROOT="$PWD"` for dev runs. The .command launcher is unaffected.
+- Brett: wants ambientCG + PolyHaven textures (CC0 ✓) — needs an image-texture
+  path in Stuff (only procedural 64px now). Wants strong occlusion culling —
+  portal/room culling fits our data exactly; measure first, solids are
+  per-entity so per-room Visibility toggling is feasible.
+- Still open: interior door leaves/casings (furniture pass), garage interior,
+  gable vents, FLY_FURNISH re-flow room by room, texture pipeline, right-wing
+  window treatments, people can't leave their rooms.
