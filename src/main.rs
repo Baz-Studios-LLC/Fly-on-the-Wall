@@ -64,6 +64,7 @@ mod folk;
 mod furniture;
 mod house;
 mod lamps;
+mod lawn;
 mod made;
 mod pause;
 mod rooms;
@@ -132,6 +133,7 @@ fn main() {
             made::MadePlugin,
             pause::PausePlugin,
             studio::StudioPlugin,
+            lawn::LawnPlugin,
             wander::WanderPlugin,
         ))
         .add_systems(Startup, light_the_house)

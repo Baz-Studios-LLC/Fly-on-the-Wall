@@ -308,13 +308,53 @@ const PORTALS: [(&str, char, &str, f32, f32, Cut); 32] = [
     // The dining room's front: one wide unit the glazing mullions into the
     // photographs' three equal sashes.
     ("dining", 's', "outside", 25.10, 33.50, PANE),
-    ("great room", 's', "front porch", 47.62, 51.13, PANE),
+    (
+        "great room",
+        's',
+        "front porch",
+        47.62,
+        51.13,
+        Cut::Pane {
+            sill: 25.0,
+            head: 213.0,
+        },
+    ),
     // Onto the rear porch: the kitchen's high window over the sink, and the
     // great room's three.
     ("kitchen", 'n', "rear porch", 26.22, 29.25, HIGH_PANE),
-    ("great room", 'n', "rear porch", 41.50, 44.47, PANE),
-    ("great room", 'n', "rear porch", 45.01, 47.98, PANE),
-    ("great room", 'n', "rear porch", 48.51, 51.49, PANE),
+    (
+        "great room",
+        'n',
+        "rear porch",
+        41.50,
+        44.47,
+        Cut::Pane {
+            sill: 25.0,
+            head: 213.0,
+        },
+    ),
+    (
+        "great room",
+        'n',
+        "rear porch",
+        45.01,
+        47.98,
+        Cut::Pane {
+            sill: 25.0,
+            head: 213.0,
+        },
+    ),
+    (
+        "great room",
+        'n',
+        "rear porch",
+        48.51,
+        51.49,
+        Cut::Pane {
+            sill: 25.0,
+            head: 213.0,
+        },
+    ),
     // -- Doors to the outside ------------------------------------------
     // The double front door, off the front porch.
     ("great room", 's', "front porch", 37.57, 42.57, WAY),
@@ -622,8 +662,8 @@ fn wall_run(
                 // Battens land on a global grid, so they stay aligned across
                 // the separate pieces either side of a window and across
                 // separate runs of the same facade.
-                const SPACE: f32 = 40.0;
-                const BATTEN: f32 = 6.0;
+                const SPACE: f32 = 34.0;
+                const BATTEN: f32 = 6.5;
                 let along0 = if along_x { a.x } else { a.y };
                 let mut k = ((along0 + s + BATTEN * 0.5) / SPACE).ceil();
                 while k * SPACE < along0 + e - BATTEN * 0.5 {
@@ -637,7 +677,7 @@ fn wall_run(
                     } else {
                         (
                             Vec3::new(a.x + face * half, low, a.y + at - BATTEN * 0.5),
-                            Vec3::new(a.x + face * (half + 2.2), high, a.y + at + BATTEN * 0.5),
+                            Vec3::new(a.x + face * (half + 3.0), high, a.y + at + BATTEN * 0.5),
                         )
                     };
                     let mut batten = Solid::between(bmin.min(bmax), bmin.max(bmax), Stuff::Wood);
@@ -861,12 +901,12 @@ fn grain(v: f32) -> f32 {
 fn envelope() -> (f32, f32, f32, f32, f32, f32) {
     let h = OUTER * 0.5;
     (
-        ft(0.0) - h,  // west
-        ft(68.0) + h, // east, past the garage
-        ft(0.0) - h,  // north
-        ft(34.5) + h, // south
-        ft(24.0) + h, // the garage's south wall
-        ft(46.0) + h, // where the house ends and the garage begins
+        ft(0.0) - h,   // west
+        ft(65.24) + h, // east
+        ft(-1.66) - h, // north — the wing projects past the main block
+        ft(50.35) + h, // south, the garage front: the furthest the house reaches
+        ft(50.35) + h, // the garage's south wall
+        ft(23.06) + h, // where the west bar ends
     )
 }
 
@@ -983,8 +1023,7 @@ fn window_trim(out: &mut Vec<Solid>) {
 /// outside; the shrubs get away with it by being vegetation, which is what
 /// `Stuff::Grass` already means.
 fn grounds(out: &mut Vec<Solid>) {
-    let (_w, _e, _n, so, garage_south, _he) = envelope();
-    let paving = Color::srgb(0.63, 0.62, 0.59);
+    let (_w, _e, _n, so, _gs, _he) = envelope();
     let joint = Color::srgb(0.46, 0.46, 0.44);
 
     let mut pave = |min: Vec3, max: Vec3, tint: Color| {
@@ -994,21 +1033,25 @@ fn grounds(out: &mut Vec<Solid>) {
         out.push(s);
     };
 
-    // The drive, in bays, running out from under the garage door to the path.
-    let (dx, drive_half) = (ft(57.0), ft(16.0) * 0.5 + 40.0);
-    let drive_end = so + 190.0;
-    const BAYS: usize = 5;
+    // The drive, in bays, running out from under the garage door to the
+    // sidewalk. Centred on the garage because that is what a drive is for —
+    // the old one was authored against the previous plan and missed the
+    // garage by ten feet.
+    let garage = room("garage");
+    let (dx, drive_half) = (garage.middle().x, ft(16.0) * 0.5 + 40.0);
+    let drive_end = so + 900.0;
+    const BAYS: usize = 6;
     pave(
-        Vec3::new(dx - drive_half, -11.0, garage_south),
-        Vec3::new(dx + drive_half, -3.0, drive_end),
+        Vec3::new(dx - drive_half, -11.0, garage.max.y),
+        Vec3::new(dx + drive_half, -2.0, drive_end),
         joint,
     );
     for k in 0..BAYS {
-        let run = (drive_end - garage_south) / BAYS as f32;
-        let z0 = garage_south + run * k as f32;
+        let run = (drive_end - garage.max.y) / BAYS as f32;
+        let z0 = garage.max.y + run * k as f32;
         pave(
             Vec3::new(dx - drive_half + 3.0, -11.0, z0 + 3.0),
-            Vec3::new(dx + drive_half - 3.0, -2.0, z0 + run - 3.0),
+            Vec3::new(dx + drive_half - 3.0, -1.2, z0 + run - 3.0),
             Color::srgb(
                 0.63 + grain(dx + z0 * 1.7) * 0.02,
                 0.62 + grain(z0 + dx * 1.7) * 0.02,
@@ -1017,37 +1060,40 @@ fn grounds(out: &mut Vec<Solid>) {
         );
     }
 
-    // The path along the front, and the spur up to the step.
-    let door_x = ft(25.0);
-    let walk = so + 152.0;
+    // The walk, from the drive across to the porch steps.
+    let porch = room("front porch");
+    let door_x = (ft(37.57) + ft(42.57)) * 0.5;
+    let walk = porch.max.y + 120.0;
     pave(
-        Vec3::new(door_x - 70.0, -11.0, walk - 62.0),
-        Vec3::new(dx - drive_half, -3.0, walk + 62.0),
+        Vec3::new(dx + drive_half - 10.0, -11.0, walk - 62.0),
+        Vec3::new(door_x + 62.0, -1.4, walk + 62.0),
         joint,
     );
-    for k in 0..9 {
-        let run = (dx - drive_half - door_x + 70.0) / 9.0;
-        let x0 = door_x - 70.0 + run * k as f32;
-        pave(
-            Vec3::new(x0 + 3.0, -11.0, walk - 59.0),
-            Vec3::new(x0 + run - 3.0, -2.0, walk + 59.0),
-            Color::srgb(0.63 + grain(x0 + walk * 1.7) * 0.02, 0.62, 0.59),
-        );
-    }
+    // The spur up to the steps.
     pave(
-        Vec3::new(door_x - 62.0, -11.0, so + 30.0),
-        Vec3::new(door_x + 62.0, -2.0, walk),
-        paving,
+        Vec3::new(door_x - 62.0, -11.0, porch.max.y + 24.0),
+        Vec3::new(door_x + 62.0, -1.4, walk),
+        joint,
+    );
+    // Two brick steps the full width of the porch mouth, up from the walk to
+    // the porch slab — the photographs' brick steps, in the same muted
+    // terracotta as the porch floor now wears.
+    let brick = Color::srgb(0.56, 0.39, 0.32);
+    pave(
+        Vec3::new(porch.min.x + 30.0, -11.0, porch.max.y),
+        Vec3::new(porch.max.x - 30.0, -4.5, porch.max.y + 24.0),
+        brick,
     );
 
-    // Foundation planting, between the front windows and clear of the door.
+    // Foundation planting: low mulched beds with shrub masses, sited clear of
+    // every opening, and a pair of narrow uprights flanking the garage door.
     //
     // Five boxes a shrub rather than three, turned to different angles and
-    // overlapping hard, because a plant wants to read as one mass with a ragged
-    // edge — three stacked cubes read as three stacked cubes. They are
-    // `Stuff::Grass`, which is both what they are and how they get past the
-    // envelope law: vegetation is allowed to stand outside the walls.
-    for (x, tall) in [(ft(11.0), 98.0f32), (ft(35.0), 84.0), (ft(44.0), 110.0)] {
+    // overlapping hard, because a plant wants to read as one mass with a
+    // ragged edge. They are `Stuff::Grass`, which is both what they are and
+    // how they get past the envelope law.
+    let mulch = Color::srgb(0.24, 0.18, 0.13);
+    let shrub = |x: f32, z_wall: f32, tall: f32, girth: f32, out: &mut Vec<Solid>| {
         for (k, (spread, lift)) in [
             (1.00f32, 0.26f32),
             (0.92, 0.44),
@@ -1059,9 +1105,9 @@ fn grounds(out: &mut Vec<Solid>) {
         .enumerate()
         {
             let n = grain(x + tall * 3.1 + k as f32 * 7.7);
-            let wide = 86.0 * spread * (1.0 + n * 0.10);
+            let wide = girth * spread * (1.0 + n * 0.10);
             let y = tall * lift;
-            let at = Vec3::new(x + n * 9.0, y, so + 40.0 + n * 7.0);
+            let at = Vec3::new(x + n * 6.0, y, z_wall + girth * 0.5 + 14.0 + n * 5.0);
             let mut bush = Solid::between(
                 at - Vec3::new(wide * 0.5, tall * 0.20, wide * 0.5),
                 at + Vec3::new(wide * 0.5, tall * 0.20, wide * 0.5),
@@ -1069,8 +1115,6 @@ fn grounds(out: &mut Vec<Solid>) {
             );
             bush.outdoors = true;
             bush.rot = Quat::from_rotation_y(k as f32 * 0.55 + n * 0.4);
-            // Darker and greyer than lawn, and each layer a shade off the one
-            // below so the mass has some depth in flat sun.
             bush.paint = Some(Color::srgb(
                 0.13 + k as f32 * 0.014,
                 0.23 + k as f32 * 0.022,
@@ -1078,6 +1122,33 @@ fn grounds(out: &mut Vec<Solid>) {
             ));
             out.push(bush);
         }
+    };
+
+    // (bed centre x in feet, which wall face it stands against, height, girth)
+    let garage_face = garage.max.y;
+    let dining_face = ft(45.56) + OUTER;
+    let wing_face = ft(43.40) + OUTER;
+    for (x, face, tall, girth) in [
+        // Uprights flanking the garage door, like the photographs' cypresses.
+        (2.0, garage_face, 190.0, 44.0),
+        (21.0, garage_face, 190.0, 44.0),
+        // Under the dining triple, kept below its low sill.
+        (26.8, dining_face, 52.0, 70.0),
+        (31.8, dining_face, 55.0, 74.0),
+        // The east wing's front, clear of the office window.
+        (55.9, wing_face, 66.0, 78.0),
+        (63.4, wing_face, 82.0, 84.0),
+    ] {
+        let cx = ft(x);
+        let mut bed = Solid::between(
+            Vec3::new(cx - girth * 0.9, -9.0, face),
+            Vec3::new(cx + girth * 0.9, -6.0, face + girth + 34.0),
+            Stuff::Stone,
+        );
+        bed.paint = Some(mulch);
+        bed.outdoors = true;
+        out.push(bed);
+        shrub(cx, face, tall, girth, out);
     }
 }
 
@@ -1492,7 +1563,7 @@ const OVERHANG: f32 = 46.0;
 const ROOF_THICK: f32 = 16.0;
 const FASCIA_DEEP: f32 = 20.0;
 
-const SHINGLE: Color = Color::srgb(0.27, 0.25, 0.24);
+const SHINGLE: Color = Color::srgb(0.16, 0.16, 0.17);
 const TRIM: Color = Color::srgb(0.90, 0.89, 0.85);
 const SIDING: Color = Color::srgb(0.90, 0.90, 0.91);
 
@@ -1848,7 +1919,7 @@ fn gable_windows(out: &mut Vec<Solid>) {
     // The garage gable's single, tall and narrow.
     let garage = room("garage");
     let face = garage.max.y + OUTER + OUTER * 0.5 + 1.5;
-    unit(garage.middle().x, face, 360.0, 495.0, 62.0, 1);
+    unit(garage.middle().x, face, 355.0, 462.0, 58.0, 1);
 }
 
 /// The header beam across each porch's open side, sitting on the posts,
@@ -2208,14 +2279,31 @@ fn door_leaves(out: &mut Vec<Solid>) {
     // window panels across the top, and an X-buck brace on each lower panel.
     {
         let (lo, hi) = vehicle_door();
-        let mid = (lo.z + hi.z) * 0.5;
+        let mid = (lo.z + hi.z) * 0.5 - 4.0;
         let mut slab = Solid::between(
             Vec3::new(lo.x, 0.0, mid - 2.5),
             Vec3::new(hi.x, hi.y, mid + 2.5),
             Stuff::Wood,
         );
-        slab.paint = Some(white);
+        // A shade warmer than the siding, and set back into the opening —
+        // flush and matching, it read as more wall with windows floating on it.
+        slab.paint = Some(Color::srgb(0.88, 0.87, 0.85));
         out.push(slab);
+        // Jamb and header casing, in the trim white.
+        let trim = Color::srgb(0.94, 0.93, 0.90);
+        for (bx0, by0, bx1, by1) in [
+            (lo.x - 9.0, 0.0, lo.x, hi.y + 9.0),
+            (hi.x, 0.0, hi.x + 9.0, hi.y + 9.0),
+            (lo.x - 9.0, hi.y, hi.x + 9.0, hi.y + 9.0),
+        ] {
+            let mut case = Solid::between(
+                Vec3::new(bx0, by0, mid + 3.0),
+                Vec3::new(bx1, by1, mid + 9.0),
+                Stuff::Wood,
+            );
+            case.paint = Some(trim);
+            out.push(case);
+        }
         let face = mid + 2.5;
         let panel = (hi.x - lo.x) / 4.0;
         for i in 0..4 {
@@ -2267,6 +2355,20 @@ fn door_leaves(out: &mut Vec<Solid>) {
         let (lo, hi) = front_door();
         let mid = (lo.z + hi.z) * 0.5;
         let slate = Color::srgb(0.30, 0.33, 0.31);
+        let trim = Color::srgb(0.94, 0.93, 0.90);
+        for (bx0, by0, bx1, by1) in [
+            (lo.x - 8.0, 0.0, lo.x, hi.y + 8.0),
+            (hi.x, 0.0, hi.x + 8.0, hi.y + 8.0),
+            (lo.x - 8.0, hi.y, hi.x + 8.0, hi.y + 8.0),
+        ] {
+            let mut case = Solid::between(
+                Vec3::new(bx0, by0, mid + 2.6),
+                Vec3::new(bx1, by1, mid + 8.0),
+                Stuff::Wood,
+            );
+            case.paint = Some(trim);
+            out.push(case);
+        }
         let leaf_w = (hi.x - lo.x) * 0.5 - 1.0;
         for side in [0.0f32, 1.0] {
             let x0 = lo.x + side * ((hi.x - lo.x) * 0.5 + 1.0);
@@ -2326,6 +2428,45 @@ fn door_leaves(out: &mut Vec<Solid>) {
         }
     }
 
+    // The lanterns: two flanking the garage door, one beside the front
+    // doors, one by the rear door. A dark box with a warm pane is all a
+    // lantern is at this distance.
+    {
+        let (glo, ghi) = vehicle_door();
+        let (flo, fhi) = front_door();
+        let mut spots = vec![
+            (glo.x - 40.0, 205.0, (glo.z + ghi.z) * 0.5 + 8.0),
+            (ghi.x + 40.0, 205.0, (glo.z + ghi.z) * 0.5 + 8.0),
+            (fhi.x + 34.0, 180.0, (flo.z + fhi.z) * 0.5 + 8.0),
+        ];
+        for (lo, hi) in cut_boxes(Hole::Back) {
+            spots.push((hi.x + 34.0, 180.0, (lo.z + hi.z) * 0.5 - 8.0));
+        }
+        for (x, y, z) in spots {
+            let mut lantern = Solid::between(
+                Vec3::new(x - 7.0, y - 13.0, z - 7.0),
+                Vec3::new(x + 7.0, y + 9.0, z + 7.0),
+                Stuff::Metal,
+            );
+            lantern.paint = Some(black);
+            out.push(lantern);
+            let mut glow = Solid::between(
+                Vec3::new(x - 4.5, y - 9.0, z - 4.5),
+                Vec3::new(x + 4.5, y + 4.0, z + 4.5),
+                Stuff::Glass,
+            );
+            glow.paint = Some(Color::srgb(1.0, 0.92, 0.72));
+            out.push(glow);
+            let mut cap = Solid::between(
+                Vec3::new(x - 8.0, y + 9.0, z - 8.0),
+                Vec3::new(x + 8.0, y + 13.0, z + 8.0),
+                Stuff::Metal,
+            );
+            cap.paint = Some(black);
+            out.push(cap);
+        }
+    }
+
     // The rear door: one full-view glass leaf in a dark frame.
     for (lo, hi) in cut_boxes(Hole::Back) {
         let mid = (lo.z + hi.z) * 0.5;
@@ -2373,8 +2514,8 @@ fn porch_posts(out: &mut Vec<Solid>) {
     for f in [0.25, 0.5, 0.75] {
         let x = rp.min.x + (rp.max.x - rp.min.x) * f;
         let mut post = Solid::between(
-            Vec3::new(x - 7.5, 0.0, rp.min.y),
-            Vec3::new(x + 7.5, rp.tall, rp.min.y + 15.0),
+            Vec3::new(x - 10.0, 0.0, rp.min.y),
+            Vec3::new(x + 10.0, rp.tall, rp.min.y + 20.0),
             Stuff::Wood,
         );
         post.paint = Some(Color::srgb(0.64, 0.45, 0.30));
@@ -2990,10 +3131,8 @@ fn unreachable(home: &Home, all: &[Room]) -> usize {
     const CELL: f32 = 16.0;
     const AT: f32 = 150.0;
 
-    let (lo, hi) = (
-        Vec2::new(ft(0.0) - OUTER, ft(0.0) - OUTER),
-        Vec2::new(ft(68.0) + OUTER, ft(34.5) + OUTER),
-    );
+    let (blo, bhi) = bounds();
+    let (lo, hi) = (blo - OUTER, bhi + OUTER);
     let wide = (((hi.x - lo.x) / CELL).ceil() as usize).max(1);
     let deep = (((hi.y - lo.y) / CELL).ceil() as usize).max(1);
     let point = |ix: usize, iz: usize| {
@@ -3004,11 +3143,19 @@ fn unreachable(home: &Home, all: &[Room]) -> usize {
         )
     };
 
-    // Inside the house proper, or inside the garage. Anything else is outdoors.
+    // Inside any indoor room, or inside the wall gap between two of them —
+    // each room expanded by the partition width covers the gaps, so a doorway
+    // is crossable and it is the wall solids that decide whether it is open.
+    // The porches are rooms but not indoors: with every outside door shut and
+    // every sash down, the outside is scenery, not floor plan.
     let indoors = |p: Vec3| {
-        let house = p.x > ft(0.0) && p.x < ft(46.0) && p.z > ft(0.0) && p.z < ft(34.5);
-        let garage = p.x > ft(46.0) && p.x < ft(68.0) && p.z > ft(0.0) && p.z < ft(24.0);
-        house || garage
+        all.iter().any(|r| {
+            !outdoors(r.name)
+                && p.x > r.min.x - INNER
+                && p.x < r.max.x + INNER
+                && p.z > r.min.y - INNER
+                && p.z < r.max.y + INNER
+        })
     };
 
     let mut open = vec![false; wide * deep];
@@ -3055,6 +3202,9 @@ fn unreachable(home: &Home, all: &[Room]) -> usize {
 
     let mut faults = 0;
     for r in all {
+        if outdoors(r.name) {
+            continue;
+        }
         // Sample the room rather than trusting its middle, which may have a bed
         // in it.
         let mut found = false;
