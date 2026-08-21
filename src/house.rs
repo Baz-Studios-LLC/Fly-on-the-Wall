@@ -1907,6 +1907,7 @@ fn porch_headers(out: &mut Vec<Solid>) {
 enum Hole {
     Pane,
     Doorway,
+    Barn,
     Arch,
     Front,
     Back,
@@ -2203,6 +2204,13 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
                         Cut::Way { .. } if a == "garage" && b == "outside" => Hole::Vehicle,
                         Cut::Way { .. } if b == "front porch" => Hole::Front,
                         Cut::Way { .. } if b == "rear porch" => Hole::Back,
+                        // The drawing marks these two BARN DOOR.
+                        Cut::Way { .. }
+                            if (a, b) == ("master bedroom", "master bath")
+                                || (a, b) == ("kitchen", "mud hall") =>
+                        {
+                            Hole::Barn
+                        }
                         Cut::Way { .. } => Hole::Doorway,
                         Cut::Arch { .. } => Hole::Arch,
                         Cut::Wide => Hole::Wide,
@@ -2709,7 +2717,9 @@ fn glaze(s: &mut Vec<Solid>) {
 /// Every hinged interior doorway, in world centimetres — recorded by the wall
 /// that cut it. The rear glass door onto the porch is among them.
 pub fn interior_doors() -> Vec<(Vec3, Vec3)> {
-    cut_boxes(Hole::Doorway)
+    let mut out = cut_boxes(Hole::Doorway);
+    out.extend(cut_boxes(Hole::Barn));
+    out
 }
 
 /// The cased openings: the wing hall's arch off the great room and the two
