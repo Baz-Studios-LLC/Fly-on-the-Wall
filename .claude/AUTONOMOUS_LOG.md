@@ -2042,3 +2042,138 @@ plan reads as an absence of ink.
 
 Overall 64.44 by 51.03 feet against the old house's 68 by 34.5 — much deeper, and
 no longer scaled by `15/11.5` to satisfy a minimum that no longer exists.
+
+# ===========================================================================
+# HANDOFF — read this first
+# ===========================================================================
+
+## Where the build actually is
+
+The house is **mid-rebuild** to `assets/FloorPlan.jpg`. It compiles, runs at
+about 40 fps, and is flyable, but the shell is half-converted and the furniture
+is switched off. Do not judge it as finished work; do not "fix" the missing
+furniture by turning it back on.
+
+**Done and trustworthy:**
+
+- `PLAN` is gone. The plan is `COLUMNS` (five columns of stacked rooms) plus
+  `SPANS` (the garage and rear porch, which cover two columns each), all in feet,
+  chained with a partition between each. Coordinates are *derived*; only the
+  printed dimensions are entered. Two rooms cannot overlap by construction.
+- `walls_from_plan` derives every wall by intersecting each room's edges against
+  its neighbours' spans. Exterior versus partition falls out of whether anything
+  is on the other side. Sixteen rooms in a U come out correctly.
+- Ceilings are per room (`Room::tall`), 10 ft through the living areas and master
+  suite, 9 ft in the right wing and rear porch.
+- `inside_envelope` is derived from the rooms, so it handles the U.
+- Furniture is **off unless `FLY_FURNISH=1`**.
+
+**Known broken, in the order I would fix them:**
+
+1. **Windows float.** Frames stand proud of the wall with a gap, and the opening
+   does not appear to be cut where the glass is. `GLAZING` now records what
+   `walls_from_plan` cut and `window_openings()` reads it, which fixed *where*
+   they are; the frame depth and the cut are still wrong. This is the live bug.
+2. **A column stands mid-room** in the great room — a wall run terminating in
+   open space. Probably an edge whose neighbour covers only part of it.
+3. **Doorways have no casing or trim.** They are bare holes.
+4. **The roof is still shaped for the old rectangle.** From outside it is wrong.
+5. **The grounds are still authored for the old footprint.** Trespassers are
+   evicted by a rule — *nothing outdoors belongs inside a room* — which stopped
+   32 pieces standing in the house but did not re-lay the paving or planting.
+6. **All furniture needs re-flowing room by room.** It is authored as fractions
+   of room bounds that no longer exist plus hand-tuned offsets against walls
+   that have moved.
+7. **The right wing's circulation is unresolved.** I could not read from the
+   drawing how you reach bedrooms 2 and 3 and bath 2. Ask Brett or find a
+   clearer plan before inventing a corridor.
+
+## Decisions Brett has made — do not relitigate
+
+- **Blender, not Opificium.** Opificium is in alpha and not ready. `CLAUDE.md`
+  is updated.
+- **Architecture stays generated in Rust; contents become models.** Reasons are
+  in `CLAUDE.md` and they are load-bearing: a wall *is* a box so its collision is
+  exact, and `audit` can only refuse to build what it can measure.
+- **The 15×15 minimum and the uniform 9-foot ceiling are gone**, replaced by
+  "matches the plan". The law was made *stricter*, not deleted — a minimum only
+  catches a room that is small.
+- **The blank faces are deliberate style.** Characters never speak intelligibly
+  because the fly cannot understand them. Do not add facial features.
+- **Smooth models, not low-poly.** This game's camera gets closer to geometry
+  than almost anything; faceting shows worst exactly where the player lives.
+- **Clothing will be part-swapping, not layered.** A garment replaces the drawn
+  version of the segments it covers.
+
+## Numbers not to rediscover
+
+- Plan calibration: **17.087 px/ft**, from the labelled 23-foot garage across
+  393 pixels, confirmed against the great room's 18'0" and 19'2".
+- The printed dimensions *tile*, which is the evidence the columns are real:
+  **garage 23'0" = 8'8" + partition + 14'0"** and
+  **rear porch 30'4" = 12'0" + partition + 18'0"**.
+- **The new house is smaller than the old one.** 65.2 × 50.0 ft = 3,262 sq ft
+  against the old 88.7 × 45.0 = 3,991. The old one was inflated by `15/11.5` to
+  satisfy the minimum. It has 16 rooms against 10, but 18% less floor. `SCALE`
+  is kept at `1.0` as the lever if Brett wants a bigger world after flying it.
+- Dad's rig: 41 bones, and **44% of vertices genuinely deform** across bones
+  (rigid >99%: 2510, near-rigid: 879, blended: 1535, soft: 1121 of 6045). I had
+  guessed 10–20%, and that mattered — see the walking plan below.
+- Fly's rig: `bone_12` and `bone_14` are the wings, and are the only part the
+  supplied rig got right. Legs and head are re-skinned by
+  `tools/rig-the-fly.py`; re-run it after any re-export.
+- **Texel density beats resolution at fly scale.** A 1K texture over 2 m is
+  ~5 texels/cm; a fly 2 cm from a wall sees each texel as roughly 90×90 screen
+  pixels. No scan resolution wins this. Use PolyHaven for the material's
+  character at flying distance and keep the procedural generator as a
+  millimetre-frequency detail layer.
+
+## The pixel-perfect walking plan (Brett's "doozy")
+
+Asked for and designed, not built. Exactness is already proven — the hull is
+CPU-skinned with the same `joint_world × inverse_bind` matrices the shader uses.
+What is missing is doing it continuously:
+
+1. **Skin every frame and broadphase by the skeleton.** 41 bone bounding boxes,
+   each owning the triangles dominated by it. Skinning a few thousand vertices is
+   microseconds; the expense was always rebuilding a spatial hash. My earlier
+   idea of precomputing static per-bone geometry only covers 56% of the body, so
+   this simpler route is better.
+2. **Move `Perch` from solid-relative to bone-relative.** A fly on a forearm then
+   follows that forearm for free.
+3. **Sweep in the surface's frame.** A hand at 3 m/s covers 5 cm a tick. Landing
+   on a torso is easy; landing on a moving hand is the hard part.
+
+## Diagnostics added this session
+
+`FLY_STUDIO=<deg>[:head][:keep]` turntable that hides the house — built because
+the in-room viewpoint is inside a wall at half the compass. `FLY_INSPECT=<deg>[:elev]`
+now takes an elevation. `FLY_MOVE=none` shows a model's untouched bind pose.
+`FLY_STEP` prints gait signal and the femur's driven angle. `FLY_GAIT`, `FLY_BEAT`,
+`FLY_TUCK`, `FLY_LOOK` force poses a capture cannot press a key for. `FLY_BUZZ`,
+`FLY_SHIVER`, `FLY_SMEAR` tune the wings live. `FLY_FURNISH=1` re-enables
+furniture. `FLY_WALK=1` plays the fly's mismatched hexapod clip. `FLY_HULL=1`
+draws any hull's collision.
+
+## Process lessons that cost real time
+
+- **When a report and a capture disagree, measure the signal in between.** The
+  fly's legs took five rounds and four wrong explanations, all guesses from
+  renders. Printing the femur's driven angle — 25 degrees, all along — ended it
+  in one shot. Three diagnostics exist because of that one bug.
+- **Establish the baseline before reading a difference.** Four captures were
+  spent on a wing "spike" that was a wing seen edge-on, and I had never once
+  rendered the wings with the smear switched off.
+- **A viewpoint that cannot show the fault is a tooling fault, not a reason to
+  squint.** The dad's 23-degree stoop is invisible head-on; a leg's fore-aft
+  swing is invisible from the side of the swing.
+- **`cargo fmt` reflows `add_systems` tuples, and a string replace against
+  remembered prose misses silently.** This happened four times, twice leaving
+  code that compiled and did nothing. Anchor on something short and unique or
+  edit by line, and *check the edit landed* before reasoning about its effect.
+- **Anything unshowable aliases.** A 200 Hz wingbeat and a 33-cycle-per-second
+  gait both read as motionless. Pick rates a screen can draw and get speed from
+  blur and amplitude instead.
+- **A measurement tells you what it measured.** Reading "largest extent" as "the
+  span" wasted four captures; reading "the bone is turning" as "the leg is
+  moving" wasted five rounds.

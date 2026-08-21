@@ -35,27 +35,33 @@ use crate::world::{Home, Solid, Stuff};
 // The laws, and the scale that satisfies them
 // ---------------------------------------------------------------------------
 
-/// Nine feet, finished floor to finished ceiling.
-pub const CEILING: f32 = 274.32;
-
-/// Fifteen feet: the least clear interior floor a habitable room may offer in
-/// either direction.
-pub const MIN_ROOM: f32 = 457.2;
-
-/// How far under the minimum still counts as meeting it: half a millimetre.
+/// The tallest ceiling in the house, ten feet, for anything that needs one
+/// number rather than a room's own.
 ///
-/// `11.5 * (15 / 11.5) * 30.48` is 457.2 in arithmetic and 457.19998 in `f32`,
-/// and a law enforced without a tolerance fails on its own scale factor. Half a
-/// millimetre is far below anything a fly could find and far above the noise.
+/// Heights are **per room** now. The plan is deliberately mixed — ten feet
+/// through the living areas, master suite, kitchen, dining and garage, nine in
+/// the secondary bedrooms, baths, office and rear porch — and the variation is
+/// worth having: a fly crossing from a nine-foot bedroom into the great room
+/// should feel the volume change.
+pub const CEILING: f32 = 10.0 * FOOT;
+
+/// A tolerance for the laws: half a millimetre.
+///
+/// Far below anything a fly could find and far above `f32` noise.
 const HAIR: f32 = 0.05;
 
 /// Centimetres per foot.
 const FOOT: f32 = 30.48;
 
-/// What the drawing is multiplied by so its tightest bedroom — eleven foot six —
-/// reaches the fifteen-foot minimum. Applied to the whole plan, so nothing is
-/// distorted relative to anything else.
-const SCALE: f32 = 15.0 / 11.5;
+/// **One.** The house is built at the dimensions printed on the drawing.
+///
+/// This was `15 / 11.5`, stretching the whole plan so its tightest bedroom
+/// reached a fifteen-foot minimum. That minimum is gone: the house is built to
+/// `assets/FloorPlan.jpg` now, where only the great room would have passed it.
+/// Kept as a named constant rather than deleted, because a scale factor
+/// silently applied to a drawing is exactly the kind of thing that wants to be
+/// visible when somebody wonders why a room measures what it measures.
+const SCALE: f32 = 1.0;
 
 /// Feet on the drawing to centimetres in the world.
 fn ft(feet: f32) -> f32 {
@@ -120,8 +126,15 @@ pub struct Room {
     pub name: &'static str,
     pub use_for: Use,
     /// Clear interior bounds in world centimetres, between finished surfaces.
+    ///
+    /// These *are* the dimensions printed on the drawing. The plan gives clear
+    /// interior sizes, so the printed figure is the room and the walls go
+    /// outside it — which is what makes "built exactly to the plan" true in the
+    /// sense the plan means it.
     pub min: Vec2,
     pub max: Vec2,
+    /// Finished floor to finished ceiling, in centimetres.
+    pub tall: f32,
 }
 
 impl Room {
@@ -136,24 +149,98 @@ impl Room {
     }
 }
 
-/// The drawing: `(name, use, x0, z0, x1, z1)` in **feet**.
-const PLAN: [(&str, Use, f32, f32, f32, f32); 10] = [
-    // Left column: two bedrooms with the hall bath between them.
-    ("bedroom three", Use::Bed, 0.0, 0.0, 12.0, 11.5),
-    ("bathroom", Use::Bath, 0.0, 11.5, 12.0, 23.0),
-    ("bedroom two", Use::Bed, 0.0, 23.0, 12.0, 34.5),
-    // The hall, running the depth of the house.
-    ("hall", Use::Hall, 12.0, 0.0, 16.0, 34.5),
-    // The middle: one open volume, kitchen at the back, great room in front.
-    ("kitchen", Use::Kitchen, 16.0, 0.0, 33.67, 14.0),
-    ("great room", Use::Living, 16.0, 14.0, 33.67, 34.5),
-    // Right column: laundry, the main suite's bath, the main bedroom.
-    ("laundry", Use::Utility, 33.67, 0.0, 46.0, 6.67),
-    ("main bath", Use::Bath, 33.67, 6.67, 46.0, 22.0),
-    ("main bedroom", Use::Bed, 33.67, 22.0, 46.0, 34.5),
-    // And the garage on the end.
-    ("garage", Use::Garage, 46.0, 0.0, 68.0, 24.0),
+/// Interior partition thickness, in feet, for chaining the plan.
+const PARTITION: f32 = INNER / FOOT;
+
+/// The drawing, as five columns of stacked rooms.
+///
+/// `(clear width, where the stack starts, [(name, use, ceiling, clear depth)])`,
+/// all in **feet**, `y` running from the back of the house to the front.
+///
+/// Every figure here is printed on the drawing. Nothing is a position: widths
+/// and depths are chained with a partition between each, so adjacent rooms share
+/// a wall exactly and **two rooms cannot overlap by construction**. Sixteen
+/// hand-entered rectangles could, and did — by between an inch and seven,
+/// which is the gap between the printed sizes and positions read off pixels at
+/// seventeen per foot. A wall built across a nine-centimetre overlap has a
+/// nine-centimetre seam in it, and at fly scale that is a doorway.
+///
+/// The printed figures tile, which is the evidence the columns are real:
+/// **garage 23'0" = master bath 8'8" + partition + master bedroom 14'0"**, and
+/// **rear porch 30'4" = kitchen 12'0" + partition + great room 18'0"**. Two
+/// dimensions on the drawing that only add up if the house is these columns.
+///
+/// The middle two columns start nine feet back, which is the recessed rear
+/// porch: the master suite and bedroom three project past it and the back of the
+/// house is a U rather than a wall.
+type Stack = &'static [(&'static str, Use, f32, f32)];
+const COLUMNS: [(f32, f32, Stack); 5] = [
+    (
+        8.667,
+        0.0,
+        &[
+            ("master bath", Use::Bath, 10.0, 13.0),
+            ("master closet", Use::Utility, 10.0, 8.5),
+            ("open storage", Use::Utility, 10.0, 4.667),
+        ],
+    ),
+    (
+        14.0,
+        0.0,
+        &[
+            ("master bedroom", Use::Bed, 10.0, 15.0),
+            ("laundry", Use::Utility, 10.0, 6.333),
+            ("pantry", Use::Utility, 10.0, 4.5),
+        ],
+    ),
+    (
+        12.0,
+        19.4,
+        &[
+            ("kitchen", Use::Kitchen, 10.0, 16.833),
+            ("dining", Use::Living, 10.0, 10.333),
+        ],
+    ),
+    (
+        18.0,
+        19.4,
+        &[
+            ("great room", Use::Living, 10.0, 19.167),
+            ("front porch", Use::Hall, 10.0, 8.0),
+        ],
+    ),
+    (
+        11.0,
+        0.0,
+        &[
+            ("bedroom three", Use::Bed, 9.0, 11.0),
+            // The band the plan labels `LIN.`, measured rather than printed.
+            ("linen", Use::Utility, 9.0, 2.31),
+            ("bath two", Use::Bath, 9.0, 9.82),
+            ("bedroom two", Use::Bed, 9.0, 11.0),
+            ("office", Use::Bed, 9.0, 9.333),
+        ],
+    ),
 ];
+
+/// Rooms that cover more than one column: `(name, use, ceiling, first column,
+/// last column, y, depth)`.
+const SPANS: [(&str, Use, f32, usize, usize, f32, f32); 2] = [
+    ("garage", Use::Garage, 10.0, 0, 1, 27.0, 23.0),
+    ("rear porch", Use::Hall, 9.0, 2, 3, 9.4, 10.0),
+];
+
+/// Where each column's clear interior starts and ends, in feet.
+fn column(i: usize) -> (f32, f32) {
+    let mut x = 0.0;
+    for (n, (wide, _, _)) in COLUMNS.iter().enumerate() {
+        if n == i {
+            return (x, x + wide);
+        }
+        x += wide + PARTITION;
+    }
+    (x, x)
+}
 
 /// Which room a point is in, if any.
 pub fn room_at(p: Vec2) -> Option<Room> {
@@ -184,14 +271,31 @@ fn wall_colour(r: &Room) -> Color {
 }
 
 pub fn rooms() -> Vec<Room> {
-    PLAN.iter()
-        .map(|&(name, use_for, x0, z0, x1, z1)| Room {
+    let mut out = Vec::new();
+    for (i, (_, from, stack)) in COLUMNS.iter().enumerate() {
+        let (x0, x1) = column(i);
+        let mut y = *from;
+        for &(name, use_for, tall, deep) in stack.iter() {
+            out.push(Room {
+                name,
+                use_for,
+                min: Vec2::new(ft(x0), ft(y)),
+                max: Vec2::new(ft(x1), ft(y + deep)),
+                tall: ft(tall),
+            });
+            y += deep + PARTITION;
+        }
+    }
+    for &(name, use_for, tall, first, last, y, deep) in SPANS.iter() {
+        out.push(Room {
             name,
             use_for,
-            min: Vec2::new(ft(x0), ft(z0)),
-            max: Vec2::new(ft(x1), ft(z1)),
-        })
-        .collect()
+            min: Vec2::new(ft(column(first).0), ft(y)),
+            max: Vec2::new(ft(column(last).1), ft(y + deep)),
+            tall: ft(tall),
+        });
+    }
+    out
 }
 
 pub fn room(named: &str) -> Room {
@@ -1434,6 +1538,192 @@ fn roof(out: &mut Vec<Solid>) {
     }
 }
 
+/// Every window the derived walls actually cut, as world-space boxes.
+///
+/// Recorded rather than tabulated. Trim, glazing and the law that stops a
+/// picture being hung over a window all used to read constant lists of
+/// positions measured against a hand-authored shell — so the moment the walls
+/// came from the plan instead, the frames stayed where the old walls had been
+/// and hung in mid-air with daylight around them.
+///
+/// One source now: the wall that cut the hole says where the hole is.
+static GLAZING: std::sync::LazyLock<std::sync::Mutex<Vec<(Vec3, Vec3)>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// Which pairs of rooms the plan leaves open to each other.
+///
+/// The drawing says so by drawing them dashed, and the pixel scan found no wall
+/// line between them at all: open plan reads as an absence of ink.
+fn open_to_each_other(a: &str, b: &str) -> bool {
+    const OPEN: [(&str, &str); 3] = [
+        ("kitchen", "dining"),
+        ("dining", "great room"),
+        ("kitchen", "great room"),
+    ];
+    OPEN.iter()
+        .any(|&(x, y)| (a == x && b == y) || (a == y && b == x))
+}
+
+/// A porch is outside. The wall between a room and one is an exterior wall with
+/// a door in it, not a partition.
+fn outdoors(name: &str) -> bool {
+    name.ends_with("porch")
+}
+
+/// Every wall in the house, derived from the plan rather than authored.
+///
+/// The old shell was hand-written runs around a simple rectangle: four exterior
+/// walls and a handful of partitions between three columns. This plan is sixteen
+/// rooms in a U with two recessed porches, and no amount of authoring that by
+/// hand stays correct through the next reading of the drawing.
+///
+/// So each room offers its four edges, and each edge is walked in six-inch
+/// steps asking one question: is there another room immediately on the other
+/// side? Runs of the same answer become one wall — a partition where two rooms
+/// meet, an exterior wall where a room meets the outside. Partial adjacency
+/// falls out for free, which matters because the garage's back wall meets two
+/// different columns along its length and its neighbours change halfway.
+///
+/// Each run is emitted once. A partition belongs to both of its rooms and would
+/// otherwise be built twice, in the same place, which is invisible until
+/// something has to decide which of the two surfaces a fly is standing on.
+fn walls_from_plan(s: &mut Vec<Solid>) {
+    let all = rooms();
+    let mut done: std::collections::HashSet<(i32, i32, i32, i32)> = Default::default();
+    let (mut built, mut shared, mut holes_cut) = (0, 0, 0);
+    GLAZING.lock().unwrap().clear();
+
+    for r in &all {
+        // (runs along x, the edge's own line, the span, which way is outward)
+        let edges = [
+            (true, r.min.y, r.min.x, r.max.x, -1.0f32),
+            (true, r.max.y, r.min.x, r.max.x, 1.0),
+            (false, r.min.x, r.min.y, r.max.y, -1.0),
+            (false, r.max.x, r.min.y, r.max.y, 1.0),
+        ];
+        for (horizontal, line, from, to, out) in edges {
+            // Who is on the other side, and over exactly which stretch.
+            //
+            // This was sampled in six-inch steps and grouped by whose name came
+            // back, which quantised every run end to a step boundary. Two rooms
+            // sharing a wall then disagreed about where their shared stretch
+            // ended — one stopping on its true edge, the other on the nearest
+            // step — so the two offers never matched, the duplicate was never
+            // dropped, and every partition between columns was built twice.
+            // Coplanar walls fight, and their door reveals fight worst.
+            //
+            // Intersecting the spans outright has no step to land on.
+            let mut spans: Vec<(f32, f32, &Room)> = Vec::new();
+            for n in &all {
+                if n.name == r.name {
+                    continue;
+                }
+                let (near, lo, hi) = if horizontal {
+                    (if out > 0.0 { n.min.y } else { n.max.y }, n.min.x, n.max.x)
+                } else {
+                    (if out > 0.0 { n.min.x } else { n.max.x }, n.min.y, n.max.y)
+                };
+                if (near - (line + out * INNER)).abs() > 2.0 {
+                    continue;
+                }
+                let (a, b) = (lo.max(from), hi.min(to));
+                if b - a > 1.0 {
+                    spans.push((a, b, n));
+                }
+            }
+            spans.sort_by(|x, y| x.0.total_cmp(&y.0));
+
+            // Walk the edge, alternating between the gaps and the neighbours.
+            let mut runs: Vec<(f32, f32, Option<&Room>)> = Vec::new();
+            let mut at = from;
+            for (a, b, n) in &spans {
+                if a - at > 1.0 {
+                    runs.push((at, *a, None));
+                }
+                runs.push((at.max(*a), *b, Some(*n)));
+                at = b.max(at);
+            }
+            if to - at > 1.0 {
+                runs.push((at, to, None));
+            }
+
+            for (start, end, neighbour) in runs {
+                // The wall goes in the *gap*, not on the room's own face, so
+                // both rooms compute the same centreline and the duplicate can
+                // be recognised at all.
+                let half = if neighbour.is_some() { INNER } else { OUTER } * 0.5;
+                let mid = line + out * half;
+                let (p, q) = if horizontal {
+                    (Vec2::new(start, mid), Vec2::new(end, mid))
+                } else {
+                    (Vec2::new(mid, start), Vec2::new(mid, end))
+                };
+                let key = (
+                    (p.x * 4.0) as i32,
+                    (p.y * 4.0) as i32,
+                    (q.x * 4.0) as i32,
+                    (q.y * 4.0) as i32,
+                );
+                if done.contains(&key) || done.contains(&(key.2, key.3, key.0, key.1)) {
+                    shared += 1;
+                    continue;
+                }
+                done.insert(key);
+
+                if neighbour.is_some_and(|n| open_to_each_other(r.name, n.name)) {
+                    continue;
+                }
+                let span = (q - p).length();
+                if span <= 1.0 {
+                    continue;
+                }
+                let inside = neighbour.is_some_and(|n| !outdoors(n.name)) && !outdoors(r.name);
+                let tall = neighbour.map_or(r.tall, |n| r.tall.max(n.tall));
+
+                let mut cut: Vec<Opening> = Vec::new();
+                if neighbour.is_some() {
+                    if span > DOOR_WIDE + 40.0 {
+                        cut.push(Opening::door(span * 0.5 - DOOR_WIDE * 0.5));
+                    }
+                } else if span > WINDOW_WIDE + 90.0 && !outdoors(r.name) {
+                    cut.push(Opening::window(span * 0.5 - WINDOW_WIDE * 0.5));
+                    // Remember it, so the frame and the glass go where the hole
+                    // is rather than where a table says it should be.
+                    let along = (q - p) / span;
+                    let at = p + along * (span * 0.5);
+                    let across = Vec2::new(-along.y, along.x) * OUTER;
+                    let reach = along * (WINDOW_WIDE * 0.5);
+                    let lo = at - reach - across;
+                    let hi = at + reach + across;
+                    GLAZING.lock().unwrap().push((
+                        Vec3::new(lo.x.min(hi.x), SILL, lo.y.min(hi.y)),
+                        Vec3::new(lo.x.max(hi.x), HEAD, lo.y.max(hi.y)),
+                    ));
+                }
+                holes_cut += cut.len();
+                built += 1;
+                wall_run(
+                    s,
+                    p,
+                    q,
+                    if inside { INNER } else { OUTER },
+                    tall,
+                    Stuff::Plaster,
+                    &cut,
+                );
+            }
+        }
+    }
+    // Every partition is offered twice, once by each room it separates, so
+    // `shared` counts the duplicates recognised. A figure near zero means the
+    // two offers are landing on different lines and every partition is being
+    // built twice — invisible in a still frame, and the door reveals fighting
+    // the moment anything moves.
+    info!(
+        "walls: {built} runs from the plan, {shared} duplicate offers dropped, {holes_cut} openings"
+    );
+}
+
 pub fn build() -> Home {
     let mut s: Vec<Solid> = Vec::new();
     let top = CEILING;
@@ -1463,159 +1753,14 @@ pub fn build() -> Home {
         lay_floor(&mut s, &r);
     }
 
-    // -- Exterior ----------------------------------------------------------
-    let windows = |list: &[f32], from: f32| -> Vec<Opening> {
-        list.iter()
-            .map(|&p| Opening::window(ft(p) - from))
-            .collect()
-    };
-
-    // North, the back of the house, running past the garage too.
-    wall_run(
-        &mut s,
-        Vec2::new(w, n),
-        Vec2::new(e, n),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &windows(&NORTH_WINDOWS, w),
-    );
-    // South, the front. The front door opens into the great room.
-    let mut front = windows(&SOUTH_WINDOWS, w);
-    front.push(Opening::door(ft(25.0) - w));
-    wall_run(
-        &mut s,
-        Vec2::new(w, so),
-        Vec2::new(house_east, so),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &front,
-    );
-    // West.
-    wall_run(
-        &mut s,
-        Vec2::new(w, n),
-        Vec2::new(w, so),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &windows(&WEST_WINDOWS, n),
-    );
-    // East: the garage's far wall, then the main bedroom's wall south of it.
-    wall_run(
-        &mut s,
-        Vec2::new(e, n),
-        Vec2::new(e, garage_south),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &[],
-    );
-    wall_run(
-        &mut s,
-        Vec2::new(house_east, garage_south),
-        Vec2::new(house_east, so),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &[Opening::window(ft(EAST_WINDOW) - garage_south)],
-    );
-    // The garage's south wall and its vehicle door — at fly scale the house's
-    // widest and least reliable connection to outdoors.
-    wall_run(
-        &mut s,
-        Vec2::new(house_east, garage_south),
-        Vec2::new(e, garage_south),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &[Opening::cased(ft(57.0) - house_east, ft(16.0))],
-    );
-
-    // -- Interior ----------------------------------------------------------
-    // Left rooms | hall: three doors.
-    wall_run(
-        &mut s,
-        Vec2::new(ft(12.0), n),
-        Vec2::new(ft(12.0), so),
-        INNER,
-        top,
-        Stuff::Plaster,
-        &[
-            Opening::door(ft(6.0) - n),
-            Opening::door(ft(17.0) - n),
-            Opening::door(ft(29.0) - n),
-        ],
-    );
-    // Hall | the open middle: two wide cased openings, so the hall reads as part
-    // of the same volume rather than a tunnel with holes in it.
-    wall_run(
-        &mut s,
-        Vec2::new(ft(16.0), n),
-        Vec2::new(ft(16.0), so),
-        INNER,
-        top,
-        Stuff::Plaster,
-        &[
-            Opening::cased(ft(7.0) - n, ft(6.0)),
-            Opening::cased(ft(25.0) - n, ft(8.0)),
-        ],
-    );
-    // The middle | the right column.
-    wall_run(
-        &mut s,
-        Vec2::new(ft(33.67), n),
-        Vec2::new(ft(33.67), so),
-        INNER,
-        top,
-        Stuff::Plaster,
-        &[
-            Opening::door(ft(3.3) - n),
-            Opening::door(ft(14.0) - n),
-            Opening::door(ft(28.0) - n),
-        ],
-    );
-    // Bedroom three | bathroom | bedroom two.
-    for z in [11.5f32, 23.0] {
-        wall_run(
-            &mut s,
-            Vec2::new(w, ft(z)),
-            Vec2::new(ft(12.0), ft(z)),
-            INNER,
-            top,
-            Stuff::Plaster,
-            &[],
-        );
-    }
-    // Laundry | main bath | main bedroom.
-    for z in [6.67f32, 22.0] {
-        wall_run(
-            &mut s,
-            Vec2::new(ft(33.67), ft(z)),
-            Vec2::new(house_east, ft(z)),
-            INNER,
-            top,
-            Stuff::Plaster,
-            &[],
-        );
-    }
-    // House | garage, with the door out of the laundry.
-    wall_run(
-        &mut s,
-        Vec2::new(house_east, n),
-        Vec2::new(house_east, garage_south),
-        OUTER,
-        top,
-        Stuff::Plaster,
-        &[Opening::door(ft(3.3) - n)],
-    );
+    // -- Walls, derived from the plan --------------------------------------
+    walls_from_plan(&mut s);
 
     // -- Ceilings, one per room -------------------------------------------
     for r in rooms() {
         let mut slab = Solid::between(
-            Vec3::new(r.min.x - INNER, top, r.min.y - INNER),
-            Vec3::new(r.max.x + INNER, top + SLAB, r.max.y + INNER),
+            Vec3::new(r.min.x - INNER, r.tall, r.min.y - INNER),
+            Vec3::new(r.max.x + INNER, r.tall + SLAB, r.max.y + INNER),
             Stuff::Plaster,
         );
         // Ceilings are painted white, and brighter than any wall under them.
@@ -1630,12 +1775,47 @@ pub fn build() -> Home {
     }
 
     roof(&mut s);
+
+    // The grounds and the neighbours, and then anything of theirs that has
+    // ended up indoors is thrown out.
+    //
+    // Both are laid out against the old rectangle's outline, so on the new
+    // footprint they planted a shrub in the great room and ran paving under the
+    // dining table. Rather than re-author either against a plan that is still
+    // settling, the rule is the one thing that cannot go stale: **nothing
+    // outdoors belongs inside a room.**
+    let before = s.len();
     grounds(&mut s);
     neighbourhood(&mut s);
+    let mut evicted = 0;
+    let mut kept = Vec::with_capacity(s.len());
+    for (i, solid) in s.drain(..).enumerate() {
+        if i >= before && solid.outdoors && inside_envelope(solid.center.xz()) {
+            evicted += 1;
+            continue;
+        }
+        kept.push(solid);
+    }
+    s = kept;
+    if evicted > 0 {
+        info!("grounds: {evicted} outdoor pieces were standing inside the house");
+    }
     window_trim(&mut s);
     glaze(&mut s);
     fixtures(&mut s);
-    crate::furniture::furnish(&mut s);
+    // **Off by default while the shell is being rebuilt to the plan.**
+    //
+    // Every piece of it is authored against the previous ten-room layout — as
+    // fractions of room bounds that no longer exist, and hand-tuned offsets
+    // against walls that have moved. Left on, it puts beds in the master bath
+    // and parks the car across a partition, and the result is unjudgeable: "the
+    // house looks like a Picasso painting". A shell cannot be assessed through
+    // furniture standing in the wrong rooms.
+    //
+    // `FLY_FURNISH=1` brings it back, for re-flowing it room by room.
+    if std::env::var("FLY_FURNISH").as_deref() == Ok("1") {
+        crate::furniture::furnish(&mut s);
+    }
 
     let great = room("great room");
     Home {
@@ -1856,72 +2036,56 @@ pub fn bounds() -> (Vec2, Vec2) {
 }
 
 pub fn window_openings() -> Vec<(Vec3, Vec3)> {
-    let (w, _e, n, so, _gs, house_east) = envelope();
-    let half = WINDOW_WIDE * 0.5;
-    let t = OUTER;
-    let mut out = Vec::new();
-    for &x in &NORTH_WINDOWS {
-        out.push((
-            Vec3::new(ft(x) - half, SILL, n - t),
-            Vec3::new(ft(x) + half, HEAD, n + t),
-        ));
-    }
-    for &x in &SOUTH_WINDOWS {
-        out.push((
-            Vec3::new(ft(x) - half, SILL, so - t),
-            Vec3::new(ft(x) + half, HEAD, so + t),
-        ));
-    }
-    for &z in &WEST_WINDOWS {
-        out.push((
-            Vec3::new(w - t, SILL, ft(z) - half),
-            Vec3::new(w + t, HEAD, ft(z) + half),
-        ));
-    }
-    out.push((
-        Vec3::new(house_east - t, SILL, ft(EAST_WINDOW) - half),
-        Vec3::new(house_east + t, HEAD, ft(EAST_WINDOW) + half),
-    ));
-    out
+    GLAZING.lock().unwrap().clone()
 }
 
-/// Measure what was actually built, and complain if it breaks a law.
-///
-/// The plan's numbers are not evidence. A room is only fifteen feet if it
-/// *measures* fifteen feet once every wall around it has taken its thickness,
-/// and the cheapest way to be sure of that forever is to check on every run
-/// rather than to be careful once.
+// ---------------------------------------------------------------------------
+// Checking the laws
+// ---------------------------------------------------------------------------
+
 /// Is this point within the building's outline?
 ///
-/// The plan is an L: a rectangle with the corner south of the garage bitten
-/// out of it.
+/// Derived from the plan rather than described. The old version spelled out an
+/// L — a rectangle with the corner south of the garage bitten out — which is
+/// exactly the kind of hand-written shape that stops being true the moment the
+/// drawing changes, and this plan is a U with two recessed porches.
+///
+/// Measured to the outer face of the wall *plus its trim*, not the centreline.
+/// Floors run a little way into the wall on purpose so no seam can open at a
+/// threshold, and skirting and cornice stand proud of the plaster on both faces;
+/// a line down the middle of the wall calls every floorboard and every length
+/// of moulding in the house an escapee.
 fn inside_envelope(p: Vec2) -> bool {
-    let (w, e, n, so, garage_south, house_east) = envelope();
-    // Measured to the outer face of the wall *plus its trim*, not the
-    // centreline. Floors are laid a little way into the wall on purpose so no
-    // seam can open at a threshold, and the skirting and cornice stand proud of
-    // the plaster on both faces; a line drawn down the middle of the wall calls
-    // every floorboard and every length of moulding in the house an escapee.
     let m = OUTER * 0.5 + TRIM_PROUD + HAIR;
-    if p.x < w - m || p.x > e + m || p.y < n - m || p.y > so + m {
-        return false;
-    }
-    !(p.x > house_east + m && p.y > garage_south + m)
+    rooms().iter().any(|r| {
+        p.x >= r.min.x - m && p.x <= r.max.x + m && p.y >= r.min.y - m && p.y <= r.max.y + m
+    })
 }
 
 pub fn audit(home: &Home) {
     let mut faults = 0;
     let all = rooms();
     for r in &all {
-        if r.use_for.habitable() && (r.wide() < MIN_ROOM - HAIR || r.deep() < MIN_ROOM - HAIR) {
-            error!(
-                "{} is {:.1} x {:.1} cm — under the {:.1} cm minimum",
-                r.name,
-                r.wide(),
-                r.deep(),
-                MIN_ROOM
-            );
-            faults += 1;
+        // No two rooms may overlap.
+        //
+        // This replaces a fifteen-foot minimum, and it is the stricter law.
+        // "At least fifteen feet" only ever caught a room that was small. The
+        // plan is sixteen rooms of hand-entered coordinates in a U, and the
+        // mistake waiting in that is a transposed digit putting two of them
+        // through each other — which a minimum would pass without comment.
+        for other in &all {
+            if std::ptr::eq(r, other) {
+                continue;
+            }
+            let over = (r.max.x.min(other.max.x) - r.min.x.max(other.min.x))
+                .min(r.max.y.min(other.max.y) - r.min.y.max(other.min.y));
+            if over > HAIR {
+                error!(
+                    "{} and {} overlap by {:.1} cm — the plan has them apart",
+                    r.name, other.name, over
+                );
+                faults += 1;
+            }
         }
 
         // The ceiling really is at nine feet, sampled across the room rather
@@ -1940,12 +2104,12 @@ pub fn audit(home: &Home) {
                     r.min.x + r.wide() * gx as f32 * 0.25,
                     r.min.y + r.deep() * gz as f32 * 0.25,
                 );
-                let from = Vec3::new(at.x, CEILING - 5.0, at.y);
+                let from = Vec3::new(at.x, r.tall - 5.0, at.y);
                 match home.raycast(from, Vec3::Y, 40.0) {
-                    Some(hit) if (hit.point.y - CEILING).abs() > 1.0 => {
+                    Some(hit) if (hit.point.y - r.tall).abs() > 1.0 => {
                         error!(
                             "{}: ceiling is {:.1} cm up at ({:.0},{:.0}), not {:.1}",
-                            r.name, hit.point.y, at.x, at.y, CEILING
+                            r.name, hit.point.y, at.x, at.y, r.tall
                         );
                         faults += 1;
                     }
@@ -2047,16 +2211,41 @@ pub fn audit(home: &Home) {
     faults += floating(home);
     faults += unreachable(home, &all);
 
-    let living = all.iter().filter(|r| r.use_for.habitable()).count();
+    // The envelope the plan was measured at, in feet, as an independent check
+    // on sixteen hand-entered rooms: printed sizes at measured positions have
+    // to add back up to the drawing's own outline.
+    let wide = all.iter().fold(0.0f32, |m, r| m.max(r.max.x));
+    let deep = all.iter().fold(0.0f32, |m, r| m.max(r.max.y));
+    // A foot and a half of tolerance, because the two figures are measuring
+    // different things and cannot agree exactly. The plan's ink gives wall
+    // *centrelines*; the rooms are chained from the printed *clear interior*
+    // sizes with a partition between each. Over five columns and five stacks
+    // those differ by about a foot, and the chained figure is the trustworthy
+    // one — the printed dimensions are the drawing's own statement, and the
+    // pixels were only ever scaffolding to find the topology.
+    //
+    // It still earns its place as a guard: an error large enough to matter
+    // trips it, and a room quietly gaining a foot in a later edit would too.
+    for (what, got, want) in [("wide", wide, ft(64.44)), ("deep", deep, ft(51.03))] {
+        if (got - want).abs() > ft(1.5) {
+            error!("the house is {got:.1} cm {what}, and the drawing measures {want:.1}");
+            faults += 1;
+        }
+    }
     if faults == 0 {
+        let tall: Vec<String> = {
+            let mut heights: Vec<i32> =
+                all.iter().map(|r| (r.tall / FOOT).round() as i32).collect();
+            heights.sort_unstable();
+            heights.dedup();
+            heights.iter().map(|h| format!("{h}ft")).collect()
+        };
         info!(
-            "house: {:.0} x {:.0} cm, {} rooms ({} habitable, all >= {:.0} cm), ceilings {:.2} cm",
-            ft(68.0),
-            ft(34.5),
+            "house: {:.0} x {:.0} cm to the plan, {} rooms, ceilings {}",
+            wide,
+            deep,
             all.len(),
-            living,
-            MIN_ROOM,
-            CEILING
+            tall.join(" and ")
         );
     }
 }
