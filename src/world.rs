@@ -130,6 +130,12 @@ pub struct Solid {
     /// forty. `u32::MAX` means the box is part of the building rather than
     /// something standing in it.
     pub piece: u32,
+    /// A real surface, by name: an entry in [`FINISHES`] naming a CC0
+    /// photographic texture set under `assets/textures/`. Finished solids are
+    /// drawn with world-space planar mapping, so the texture is continuous
+    /// across every box that shares it and never stretches with a box's size.
+    /// `None` keeps the flat palette and procedural grain.
+    pub finish: Option<&'static str>,
     /// Collision without a drawing. A box that holds a made model up: the
     /// model is what you see, and this is what the fly lands on.
     pub unseen: bool,
@@ -471,6 +477,7 @@ impl Solid {
             rot: Quat::IDENTITY,
             sheer: stuff.is_glass(),
             paint: None,
+            finish: None,
             roof: false,
             glow: 0.0,
             outdoors: false,
@@ -791,6 +798,7 @@ impl Door {
             glow: 0.0,
             stuff: Stuff::Wood,
             paint: None,
+            finish: None,
             sheer: false,
             roof: false,
         }
@@ -1078,6 +1086,7 @@ impl Plugin for WorldPlugin {
         app.insert_resource(origin)
             .insert_resource(home)
             .init_resource::<Door>()
+            .add_plugins(MaterialPlugin::<TiledMaterial>::default())
             .add_systems(Startup, dress_the_set)
             // The door is written in `FixedUpdate` before the fly moves, so a fly
             // perched on it reads a panel that has already taken this tick's
@@ -1098,6 +1107,41 @@ impl Plugin for WorldPlugin {
 /// to eight bits a channel before it becomes a key, which costs nothing visible
 /// and means the deterministic grain on two neighbouring floorboards collapses
 /// to one entry when it lands on the same byte.
+
+/// The photographic surfaces, by name: `(folder, repeat cm, normal strength,
+/// swap uv)`. Each folder under `assets/textures/` holds `diffuse.jpg`,
+/// `normal.jpg` and `arm.jpg` (ambient occlusion / roughness / metallic in
+/// r/g/b — PolyHaven and ambientCG both ship that layout, and it is the glTF
+/// one). All CC0.
+const FINISHES: [(&str, f32, f32, f32); 5] = [
+    ("wood_floor", 190.0, 0.8, 0.0),
+    ("shingles", 200.0, 0.9, 0.0),
+    ("brick", 120.0, 0.9, 0.0),
+    ("concrete", 160.0, 0.7, 0.0),
+    ("bath_tile", 90.0, 0.8, 0.0),
+];
+
+/// The extension that turns a [`StandardMaterial`] into a world-tiled one:
+/// UVs come from world position projected by face normal, so the texture
+/// never stretches with a box and runs continuously across neighbours. See
+/// `assets/shaders/world_tiled.wgsl`.
+#[derive(Asset, bevy::reflect::TypePath, bevy::render::render_resource::AsBindGroup, Clone)]
+pub struct WorldTiled {
+    /// x: repeat size in cm, y: normal strength, z: swap uv axes, w: unused.
+    #[uniform(100)]
+    pub tiling: Vec4,
+    #[texture(101)]
+    #[sampler(102)]
+    pub normal: Option<Handle<Image>>,
+}
+
+impl bevy::pbr::MaterialExtension for WorldTiled {
+    fn fragment_shader() -> bevy::shader::ShaderRef {
+        "shaders/world_tiled.wgsl".into()
+    }
+}
+
+pub type TiledMaterial = bevy::pbr::ExtendedMaterial<StandardMaterial, WorldTiled>;
 
 /// A small tiling texture for one kind of surface.
 ///
@@ -1188,10 +1232,85 @@ fn dress_the_set(
     home: Res<Home>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut tiled: ResMut<Assets<TiledMaterial>>,
     mut images: ResMut<Assets<Image>>,
     asset_server: Res<AssetServer>,
 ) {
     let cube = meshes.add(Cuboid::from_length(1.0));
+    // One material per finish, shared by every solid wearing it — which is
+    // exactly what makes the texture continuous across them.
+    let mut finished: std::collections::HashMap<&'static str, Handle<TiledMaterial>> =
+        std::collections::HashMap::new();
+    // World-tiled UVs run far past one, so every map needs a repeating
+    // sampler — bevy's default is clamp-to-edge, which smears the last texel
+    // across the whole floor. Colour data stays sRGB; normal and arm maps are
+    // data and must load linear.
+    let tiled_map = |asset_server: &AssetServer, path: String, srgb: bool| -> Handle<Image> {
+        use bevy::image::{
+            ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor,
+        };
+        asset_server.load_with_settings(path, move |settings: &mut ImageLoaderSettings| {
+            settings.is_srgb = srgb;
+            settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+                address_mode_u: ImageAddressMode::Repeat,
+                address_mode_v: ImageAddressMode::Repeat,
+                ..ImageSamplerDescriptor::linear()
+            });
+        })
+    };
+    let mut dress = |name: &'static str,
+                     tiled: &mut Assets<TiledMaterial>|
+     -> Option<Handle<TiledMaterial>> {
+        let (folder, repeat, strength, swap) = *FINISHES.iter().find(|(n, _, _, _)| *n == name)?;
+        Some(
+            finished
+                .entry(name)
+                .or_insert_with(|| {
+                    tiled.add(TiledMaterial {
+                        base: StandardMaterial {
+                            // The tint multiplies the photograph. White lets
+                            // the texture speak; the slates are darkened to
+                            // the reference's near-black shingle.
+                            base_color: match name {
+                                "shingles" => Color::srgb(0.38, 0.38, 0.42),
+                                _ => Color::WHITE,
+                            },
+                            base_color_texture: Some(tiled_map(
+                                &asset_server,
+                                format!("textures/{folder}/diffuse.jpg"),
+                                true,
+                            )),
+                            // The arm map is occlusion/roughness/metallic in
+                            // r/g/b, which is the glTF layout both of bevy's
+                            // slots below expect.
+                            metallic_roughness_texture: Some(tiled_map(
+                                &asset_server,
+                                format!("textures/{folder}/arm.jpg"),
+                                false,
+                            )),
+                            occlusion_texture: Some(tiled_map(
+                                &asset_server,
+                                format!("textures/{folder}/arm.jpg"),
+                                false,
+                            )),
+                            perceptual_roughness: 1.0,
+                            metallic: 1.0,
+                            reflectance: 0.5,
+                            ..default()
+                        },
+                        extension: WorldTiled {
+                            tiling: Vec4::new(repeat, strength, swap, 0.0),
+                            normal: Some(tiled_map(
+                                &asset_server,
+                                format!("textures/{folder}/normal.jpg"),
+                                false,
+                            )),
+                        },
+                    })
+                })
+                .clone(),
+        )
+    };
     let grain: Vec<Handle<Image>> = [
         Stuff::Plaster,
         Stuff::Grass,
@@ -1226,6 +1345,19 @@ fn dress_the_set(
             continue;
         }
         if solid.unseen {
+            continue;
+        }
+        if let Some(name) = solid.finish
+            && let Some(material) = dress(name, &mut tiled)
+        {
+            commands.spawn((
+                Part { solid: i },
+                Mesh3d(cube.clone()),
+                MeshMaterial3d(material),
+                Transform::from_translation(solid.center)
+                    .with_rotation(solid.rot)
+                    .with_scale(solid.half * 2.0),
+            ));
             continue;
         }
         let colour = solid.paint.unwrap_or_else(|| solid.stuff.tint());

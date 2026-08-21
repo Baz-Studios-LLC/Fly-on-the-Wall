@@ -503,6 +503,11 @@ pub struct Opening {
     pub wide: f32,
     pub sill: f32,
     pub head: f32,
+    /// Bridge the floor gap with a threshold. Only where the floor *changes*
+    /// — wood to tile, wood to porch brick. Between two rooms with the same
+    /// floor the slabs meet invisibly, and a saddle is just a stripe across
+    /// the boards; Brett spotted three of them in one screenshot.
+    pub saddle: bool,
 }
 
 /// One straight run of wall, with holes in it.
@@ -541,15 +546,19 @@ fn wall_run(
             if e0 - s0 < 0.5 {
                 return;
             }
+            // Topping out just under the finished floor: at exactly nought
+            // it is coplanar with both rooms' slabs in every doorway, and
+            // stone fighting wood is visible in a way wood fighting wood is
+            // not.
             let (min, max) = if along_x {
                 (
                     Vec3::new(a.x + s0, -FOOTING, a.y - half),
-                    Vec3::new(a.x + e0, 0.0, a.y + half),
+                    Vec3::new(a.x + e0, -0.4, a.y + half),
                 )
             } else {
                 (
                     Vec3::new(a.x - half, -FOOTING, a.y + s0),
-                    Vec3::new(a.x + half, 0.0, a.y + e0),
+                    Vec3::new(a.x + half, -0.4, a.y + e0),
                 )
             };
             out.push(Solid::between(min, max, Stuff::Stone));
@@ -569,7 +578,7 @@ fn wall_run(
     // coplanar at the finished floor — invisible under a wall, and a stripe of
     // z-fighting in a doorway. A threshold is what a real doorway has there.
     for hole in &cuts {
-        if hole.sill > 0.01 {
+        if !hole.saddle {
             continue;
         }
         let (s0, e0) = (hole.at - hole.wide * 0.5, hole.at + hole.wide * 0.5);
@@ -800,95 +809,38 @@ fn wall_run(
 // Building it
 // ---------------------------------------------------------------------------
 
-/// A room's floor: boards, tile or concrete, by what the room is for.
-///
-/// Strips rather than one plane. It costs a few dozen solids per room, tiles the
-/// same rectangle so collision is unchanged, and it is the difference between a
-/// floor and a colour — the largest single surface in any shot of any room.
-fn lay_floor(out: &mut Vec<Solid>, r: &Room) {
-    let (stuff, base, run, tone, cross) = match (r.name, r.use_for) {
-        // The front porch is brick, per the photographs, in tight courses.
-        ("front porch", _) => (
-            Stuff::Stone,
-            Color::srgb(0.56, 0.39, 0.32),
-            20.0,
-            0.05,
-            true,
-        ),
-        // The rear porch is a broomed concrete slab.
-        ("rear porch", _) => (
-            Stuff::Stone,
-            Color::srgb(0.62, 0.62, 0.60),
-            120.0,
-            0.03,
-            false,
-        ),
-        // Tile, in squarer courses and a cooler colour.
-        (_, Use::Bath | Use::Utility) => (
-            Stuff::Stone,
-            Color::srgb(0.72, 0.73, 0.71),
-            34.0,
-            0.05,
-            true,
-        ),
-        // The garage is a poured slab: no courses at all, just a little
-        // mottling, and it sits lower than the house.
-        (_, Use::Garage) => (
-            Stuff::Stone,
-            Color::srgb(0.44, 0.44, 0.46),
-            110.0,
-            0.03,
-            false,
-        ),
-        // Mid oak, not the near-walnut this was. A dark floor and a dark rug
-        // between them made the bottom half of every interior one brown mass,
-        // and the floor is the largest surface in any room — it sets the key
-        // for everything standing on it.
-        _ => (
-            Stuff::Floorboard,
-            Color::srgb(0.58, 0.44, 0.30),
-            19.0,
-            0.06,
-            false,
-        ),
-    };
+/// A room's floor: one slab, surfaced by what the room is for.
+fn floor_finish(r: &Room) -> (Stuff, &'static str) {
+    match (r.name, r.use_for) {
+        ("front porch", _) => (Stuff::Stone, "brick"),
+        // The storage bay is garage floor — it is a bay of the garage.
+        ("rear porch", _) | ("open storage", _) => (Stuff::Stone, "concrete"),
+        (_, Use::Garage) => (Stuff::Stone, "concrete"),
+        (_, Use::Bath | Use::Utility) => (Stuff::Stone, "bath_tile"),
+        _ => (Stuff::Floorboard, "wood_floor"),
+    }
+}
 
+fn lay_floor(out: &mut Vec<Solid>, r: &Room) {
     let top = if r.use_for == Use::Garage { -6.0 } else { 0.0 };
     let lip = INNER;
     let (lo, hi) = (r.min - lip, r.max + lip);
 
-    let mut at = lo.y;
-    let mut i = 0;
-    while at < hi.y {
-        let to = (at + run).min(hi.y);
-        let mut plank = Solid::between(Vec3::new(lo.x, -SLAB, at), Vec3::new(hi.x, top, to), stuff);
-        // A hair of variation, and every fourth course a shade off, which is
-        // what stops a run of them reading as stripes.
-        let t = grain(at) * tone + if i % 4 == 0 { -tone * 0.5 } else { 0.0 };
-        plank.paint = Some(Color::srgb(
-            (base.to_srgba().red + t).clamp(0.0, 1.0),
-            (base.to_srgba().green + t * 0.85).clamp(0.0, 1.0),
-            (base.to_srgba().blue + t * 0.7).clamp(0.0, 1.0),
-        ));
-        out.push(plank);
-        // Tile is cut across as well as along, so it reads as squares.
-        if cross {
-            let mut x = lo.x;
-            while x < hi.x {
-                let nx = (x + run).min(hi.x);
-                let mut grout = Solid::between(
-                    Vec3::new(nx - 1.0, -SLAB, at),
-                    Vec3::new(nx, top + 0.2, to),
-                    stuff,
-                );
-                grout.paint = Some(Color::srgb(0.60, 0.61, 0.60));
-                out.push(grout);
-                x = nx;
-            }
-        }
-        at = to;
-        i += 1;
-    }
+    // One slab per room, wearing a photographic surface. The strips and the
+    // grout lines this used to build are in the textures now — the boards run
+    // continuously across a room because the mapping is world-space, which is
+    // something forty separately-tinted strips never quite did. Two
+    // neighbouring rooms with the same floor overlap in the wall gap, and the
+    // overlap is invisible for the same reason: identical material, identical
+    // world-derived UV, identical fragments.
+    let (stuff, finish) = floor_finish(r);
+    let mut slab = Solid::between(
+        Vec3::new(lo.x, -SLAB, lo.y),
+        Vec3::new(hi.x, top, hi.y),
+        stuff,
+    );
+    slab.finish = Some(finish);
+    out.push(slab);
 }
 
 /// Deterministic grain, from a position. Never a generator: two captures of the
@@ -1029,6 +981,7 @@ fn grounds(out: &mut Vec<Solid>) {
     let mut pave = |min: Vec3, max: Vec3, tint: Color| {
         let mut s = Solid::between(min, max, Stuff::Stone);
         s.paint = Some(tint);
+        s.finish = Some("concrete");
         s.outdoors = true;
         out.push(s);
     };
@@ -1078,12 +1031,16 @@ fn grounds(out: &mut Vec<Solid>) {
     // Two brick steps the full width of the porch mouth, up from the walk to
     // the porch slab — the photographs' brick steps, in the same muted
     // terracotta as the porch floor now wears.
-    let brick = Color::srgb(0.56, 0.39, 0.32);
-    pave(
-        Vec3::new(porch.min.x + 30.0, -11.0, porch.max.y),
-        Vec3::new(porch.max.x - 30.0, -4.5, porch.max.y + 24.0),
-        brick,
-    );
+    {
+        let mut step = Solid::between(
+            Vec3::new(porch.min.x + 30.0, -11.0, porch.max.y),
+            Vec3::new(porch.max.x - 30.0, -4.5, porch.max.y + 24.0),
+            Stuff::Stone,
+        );
+        step.finish = Some("brick");
+        step.outdoors = true;
+        out.push(step);
+    }
 
     // Foundation planting: low mulched beds with shrub masses, sited clear of
     // every opening, and a pair of narrow uprights flanking the garage door.
@@ -1628,6 +1585,7 @@ fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32
         );
         plane.rot = rot;
         plane.paint = Some(SHINGLE);
+        plane.finish = Some("shingles");
         plane.roof = true;
         out.push(plane);
 
@@ -2084,6 +2042,13 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
             }
 
             for (start, end, neighbour) in runs {
+                // Each run grows half a partition at both ends. Runs along one
+                // facade break at every interior partition, and the partition
+                // stops at the room line — which left a wall-thick vertical
+                // slot open to the sky at every junction. Brett found one in
+                // bath two with grass showing through it. Collinear
+                // neighbours each grow six centimetres and meet exactly.
+                let (start, end) = (start - INNER * 0.5, end + INNER * 0.5);
                 // The wall goes in the *gap*, not on the room's own face, so
                 // both rooms compute the same centreline and the duplicate can
                 // be recognised at all. From *both* edges, not from this
@@ -2125,11 +2090,14 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
                 if let Some(n) = neighbour
                     && open_to_each_other(r.name, n.name)
                 {
-                    // No wall — but the gap between the two rooms' floors is
-                    // real, and both floors cover it, coplanar, which is a
-                    // stripe of z-fighting right across an open plan. A flush
-                    // seam board owns the gap instead, like the transition
+                    // No wall. If both rooms wear the same floor their slabs
+                    // meet invisibly and nothing more is needed; where the
+                    // floor changes — the garage slab against its storage bay
+                    // — a flush seam board owns the gap, like the transition
                     // strip a real floor gets.
+                    if floor_finish(r).1 == floor_finish(n).1 {
+                        continue;
+                    }
                     let across = if horizontal {
                         Vec2::new(0.0, 1.0)
                     } else {
@@ -2205,11 +2173,16 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
                         Cut::Way { head } | Cut::Arch { head } => (0.0, head),
                         Cut::Wide => (0.0, tall),
                     };
+                    let floors_differ = match neighbour {
+                        Some(n) => floor_finish(r).1 != floor_finish(n).1,
+                        None => true,
+                    };
                     cut.push(Opening {
                         at: (lo + hi) * 0.5 - start,
                         wide: hi - lo,
                         sill,
                         head,
+                        saddle: sill <= 0.01 && floors_differ,
                     });
                     // The record: a world-space box for everything downstream.
                     // Windows are recorded thicker than the wall on purpose —

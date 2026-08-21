@@ -201,6 +201,7 @@ pub fn load(named: &str) -> Result<Imported, String> {
             center: Vec3::from(b.at) * UNITS_PER_METRE,
             half: Vec3::from(b.size) * 0.5 * UNITS_PER_METRE,
             rot: Quat::from_xyzw(b.turn[0], b.turn[1], b.turn[2], b.turn[3]).normalize(),
+            finish: None,
             unseen: false,
             scale: 1.0,
             settle: false,
