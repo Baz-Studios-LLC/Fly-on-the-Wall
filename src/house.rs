@@ -94,12 +94,6 @@ const CORNICE_PROUD: f32 = 3.0;
 /// this much and no more, so a sill is trim and a shelf is an escapee.
 pub const TRIM_PROUD: f32 = 20.0;
 
-const DOOR_WIDE: f32 = 92.0;
-const DOOR_HIGH: f32 = 205.0;
-const SILL: f32 = 100.0;
-const HEAD: f32 = 215.0;
-const WINDOW_WIDE: f32 = 150.0;
-
 // ---------------------------------------------------------------------------
 // The plan, in feet
 // ---------------------------------------------------------------------------
@@ -152,50 +146,54 @@ impl Room {
 /// Interior partition thickness, in feet, for chaining the plan.
 const PARTITION: f32 = INNER / FOOT;
 
-/// The drawing, as five columns of stacked rooms.
+/// The drawing, as nine columns of stacked rooms.
 ///
 /// `(clear width, where the stack starts, [(name, use, ceiling, clear depth)])`,
 /// all in **feet**, `y` running from the back of the house to the front.
 ///
-/// Every figure here is printed on the drawing. Nothing is a position: widths
-/// and depths are chained with a partition between each, so adjacent rooms share
-/// a wall exactly and **two rooms cannot overlap by construction**. Sixteen
-/// hand-entered rectangles could, and did — by between an inch and seven,
-/// which is the gap between the printed sizes and positions read off pixels at
-/// seventeen per foot. A wall built across a nine-centimetre overlap has a
-/// nine-centimetre seam in it, and at fly scale that is a doorway.
+/// Every printed figure is here. Nothing is a position: widths and depths are
+/// chained with a partition between each, so adjacent rooms share a wall
+/// exactly and **two rooms cannot overlap by construction**. Sixteen
+/// hand-entered rectangles could, and did — by between an inch and seven.
+/// A wall built across a nine-centimetre overlap has a nine-centimetre seam in
+/// it, and at fly scale that is a doorway.
 ///
 /// The printed figures tile, which is the evidence the columns are real:
 /// **garage 23'0" = master bath 8'8" + partition + master bedroom 14'0"**, and
-/// **rear porch 30'4" = kitchen 12'0" + partition + great room 18'0"**. Two
-/// dimensions on the drawing that only add up if the house is these columns.
+/// **rear porch 30'4" = kitchen 12'0" + partition + great room 18'0"**, and the
+/// whole chain lands the east face at 65.24 ft — exactly where the drawing's
+/// east wall measures. (At 16.82 px/ft; the 17.087 used before this was
+/// calibrated against the *previous* drawing and put every middle room a foot
+/// and a half too far south.)
 ///
-/// The middle two columns start nine feet back, which is the recessed rear
-/// porch: the master suite and bedroom three project past it and the back of the
-/// house is a U rather than a wall.
+/// Where the drawing is narrower than a column, the narrow figure went in and
+/// the printed room became a `SPANS` entry across several columns: the laundry
+/// is 10'-0" across columns 1–2, the master bedroom 14'-0" across 1–3. The two
+/// interior halls have no printed figures and are measured off the drawing —
+/// the mudroom hall (garage → laundry → pantry → master bedroom → kitchen) and
+/// the wing hall (great room → both bedrooms, bath two, linen).
 type Stack = &'static [(&'static str, Use, f32, f32)];
-const COLUMNS: [(f32, f32, Stack); 5] = [
+const COLUMNS: [(f32, f32, Stack); 9] = [
+    // 0: the master suite's outer column.
     (
         8.667,
         0.0,
         &[
             ("master bath", Use::Bath, 10.0, 13.0),
             ("master closet", Use::Utility, 10.0, 8.5),
-            ("open storage", Use::Utility, 10.0, 4.667),
         ],
     ),
-    (
-        14.0,
-        0.0,
-        &[
-            ("master bedroom", Use::Bed, 10.0, 15.0),
-            ("laundry", Use::Utility, 10.0, 6.333),
-            ("pantry", Use::Utility, 10.0, 4.5),
-        ],
-    ),
+    // 1: nothing of its own — the west part of the laundry, between the
+    // storage bay and the pantry. Everything on it is a span.
+    (4.02, 0.0, &[]),
+    // 2: the pantry, its printed 5'-7" width.
+    (5.58, 22.11, &[("pantry", Use::Utility, 10.0, 4.5)]),
+    // 3: the mudroom hall, measured. It is what the second BARN DOOR on the
+    // drawing opens from, and the only way from the garage into the house.
+    (3.61, 15.39, &[("mud hall", Use::Hall, 10.0, 11.57)]),
     (
         12.0,
-        19.4,
+        18.0,
         &[
             ("kitchen", Use::Kitchen, 10.0, 16.833),
             ("dining", Use::Living, 10.0, 10.333),
@@ -203,31 +201,179 @@ const COLUMNS: [(f32, f32, Stack); 5] = [
     ),
     (
         18.0,
-        19.4,
+        18.0,
         &[
             ("great room", Use::Living, 10.0, 19.167),
             ("front porch", Use::Hall, 10.0, 8.0),
         ],
     ),
-    (
-        11.0,
-        0.0,
-        &[
-            ("bedroom three", Use::Bed, 9.0, 11.0),
-            // The band the plan labels `LIN.`, measured rather than printed.
-            ("linen", Use::Utility, 9.0, 2.31),
-            ("bath two", Use::Bath, 9.0, 9.82),
-            ("bedroom two", Use::Bed, 9.0, 11.0),
-            ("office", Use::Bed, 9.0, 9.333),
-        ],
-    ),
+    // 6: the wing hall, measured. Off the great room's north-east corner,
+    // serving everything in the wing.
+    (3.4, 9.8, &[("wing hall", Use::Hall, 9.0, 12.49)]),
+    // 7: the band the plan labels `LIN.`, measured.
+    (2.0, 12.16, &[("linen", Use::Utility, 9.0, 2.29)]),
+    // 8: bath two's tub stands in its own nook east of the linen closet,
+    // open to the rest of the bath.
+    (4.81, 12.16, &[("bath two tub", Use::Bath, 9.0, 2.29)]),
 ];
 
 /// Rooms that cover more than one column: `(name, use, ceiling, first column,
 /// last column, y, depth)`.
-const SPANS: [(&str, Use, f32, usize, usize, f32, f32); 2] = [
-    ("garage", Use::Garage, 10.0, 0, 1, 27.0, 23.0),
-    ("rear porch", Use::Hall, 9.0, 2, 3, 9.4, 10.0),
+///
+/// The wing's stacks chain in `y` exactly as the columns do in `x`: bedroom
+/// three, its closet, the linen band, bath two, bedroom two's closet, bedroom
+/// two, the office — and the chain lands the office's south face at 43.40 ft,
+/// where the drawing measures it. The wing also starts 1.66 ft north of the
+/// main block, which the drawing shows as bedroom three projecting past the
+/// master suite's rear wall.
+const SPANS: [(&str, Use, f32, usize, usize, f32, f32); 11] = [
+    ("master bedroom", Use::Bed, 10.0, 1, 3, 0.0, 15.0),
+    ("laundry", Use::Utility, 10.0, 1, 2, 15.39, 6.333),
+    // Its printed 13'-1" is the width of the garage's north wall that has no
+    // wall in it: a storage bay open to the garage, not a room off the house.
+    ("open storage", Use::Utility, 10.0, 0, 1, 22.29, 4.667),
+    ("garage", Use::Garage, 10.0, 0, 3, 27.35, 23.0),
+    ("rear porch", Use::Hall, 9.0, 4, 5, 7.61, 10.0),
+    ("bedroom three", Use::Bed, 9.0, 6, 8, -1.66, 11.07),
+    ("closet three", Use::Utility, 9.0, 7, 8, 9.8, 1.97),
+    ("bath two", Use::Bath, 9.0, 7, 8, 14.84, 4.9),
+    ("closet two", Use::Utility, 9.0, 7, 8, 20.13, 2.16),
+    ("bedroom two", Use::Bed, 9.0, 6, 8, 22.68, 11.0),
+    ("office", Use::Bed, 9.0, 6, 8, 34.07, 9.33),
+];
+
+/// What a hole in a wall is.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Cut {
+    /// Sill and head heights above the floor, in centimetres.
+    Pane { sill: f32, head: f32 },
+    /// A doorway, open to the floor: hinged, sliding, bifold or overhead.
+    Way { head: f32 },
+    /// A cased opening with no leaf in it.
+    Arch { head: f32 },
+    /// Open plan: the wall simply is not there over this stretch.
+    Wide,
+}
+
+/// A standard window: sill and head, in centimetres. The photographs of the
+/// built house have low sills and tall glass — window heads aligned with the
+/// door heads right across a facade.
+const PANE: Cut = Cut::Pane {
+    sill: 70.0,
+    head: 213.0,
+};
+/// A high-silled window: over the kitchen counter, over a bath.
+const HIGH_PANE: Cut = Cut::Pane {
+    sill: 130.0,
+    head: 213.0,
+};
+const WAY: Cut = Cut::Way { head: 205.0 };
+
+/// Every opening in every wall, measured off the drawing, in feet.
+///
+/// `(room, edge, other, from, to, what)` — `edge` is which side of `room` the
+/// opening is in (`n`/`s`/`e`/`w` in drawing orientation, north at the top);
+/// `other` is the room on the far side, or `"outside"`; `from`/`to` are
+/// absolute plan coordinates along the shared edge — x for a north or south
+/// wall, y for an east or west one — so every figure here can be checked
+/// against the drawing directly.
+///
+/// This table is the *single* authority: the walls cut these holes, the
+/// glazing fills exactly the holes the walls cut, and the audit checks the
+/// same boxes. The last window bug in this house was two authorities — a wall
+/// system cutting holes where the runs were, and a glazing table hanging glass
+/// where the old envelope used to be — agreeing on nothing.
+const PORTALS: [(&str, char, &str, f32, f32, Cut); 32] = [
+    // -- Windows, exterior ---------------------------------------------
+    // The master bath's tub window: the drawing's only west opening, and the
+    // photos' near-square pair of sashes over the tub.
+    (
+        "master bath",
+        'w',
+        "outside",
+        3.98,
+        7.97,
+        Cut::Pane {
+            sill: 106.0,
+            head: 213.0,
+        },
+    ),
+    // The pair flanking the master bedroom's rear gable centreline.
+    ("master bedroom", 'n', "outside", 9.69, 12.37, PANE),
+    ("master bedroom", 'n', "outside", 19.74, 22.41, PANE),
+    ("bedroom three", 'n', "outside", 58.44, 60.94, PANE),
+    ("bath two", 'e', "outside", 15.70, 17.72, HIGH_PANE),
+    ("bedroom two", 'e', "outside", 23.25, 25.92, PANE),
+    ("office", 's', "outside", 58.44, 60.94, PANE),
+    // The dining room's front: one wide unit the glazing mullions into the
+    // photographs' three equal sashes.
+    ("dining", 's', "outside", 25.10, 33.50, PANE),
+    ("great room", 's', "front porch", 47.62, 51.13, PANE),
+    // Onto the rear porch: the kitchen's high window over the sink, and the
+    // great room's three.
+    ("kitchen", 'n', "rear porch", 26.22, 29.25, HIGH_PANE),
+    ("great room", 'n', "rear porch", 41.50, 44.47, PANE),
+    ("great room", 'n', "rear porch", 45.01, 47.98, PANE),
+    ("great room", 'n', "rear porch", 48.51, 51.49, PANE),
+    // -- Doors to the outside ------------------------------------------
+    // The double front door, off the front porch.
+    ("great room", 's', "front porch", 37.57, 42.57, WAY),
+    // The single glass door onto the rear porch.
+    ("great room", 'n', "rear porch", 36.21, 39.18, WAY),
+    // The sixteen-foot overhead door, centred on the garage.
+    (
+        "garage",
+        's',
+        "outside",
+        3.53,
+        19.53,
+        Cut::Way { head: 213.0 },
+    ),
+    // -- The master suite ----------------------------------------------
+    // Barn door on the drawing; a walk-through suite: bedroom, bath, closet.
+    ("master bedroom", 'w', "master bath", 5.71, 8.38, WAY),
+    ("master bath", 's', "master closet", 3.98, 6.42, WAY),
+    // -- The mudroom hall ----------------------------------------------
+    ("master bedroom", 's', "mud hall", 19.92, 22.59, WAY),
+    ("laundry", 'e', "mud hall", 15.64, 18.67, WAY),
+    ("pantry", 'e', "mud hall", 23.25, 25.27, WAY),
+    ("garage", 'n', "mud hall", 19.74, 22.77, WAY),
+    // The drawing's second barn door, into the kitchen.
+    ("kitchen", 'w', "mud hall", 20.81, 23.78, WAY),
+    // -- The open plan ---------------------------------------------------
+    // Kitchen and great room are one space south of the refrigerator stub.
+    ("kitchen", 'e', "great room", 20.57, 34.83, Cut::Wide),
+    // -- The wing --------------------------------------------------------
+    (
+        "great room",
+        'e',
+        "wing hall",
+        18.79,
+        21.82,
+        Cut::Arch { head: 244.0 },
+    ),
+    ("great room", 'e', "office", 34.28, 36.95, WAY),
+    ("bedroom three", 's', "wing hall", 54.58, 57.25, WAY),
+    ("bedroom two", 'n', "wing hall", 54.58, 57.25, WAY),
+    ("bath two", 'w', "wing hall", 15.16, 17.48, WAY),
+    ("linen", 'w', "wing hall", 12.54, 14.03, WAY),
+    // The bedroom closets' five-foot bifold openings, mirrored.
+    (
+        "bedroom three",
+        's',
+        "closet three",
+        59.39,
+        64.39,
+        Cut::Arch { head: 205.0 },
+    ),
+    (
+        "bedroom two",
+        'n',
+        "closet two",
+        59.39,
+        64.39,
+        Cut::Arch { head: 205.0 },
+    ),
 ];
 
 /// Where each column's clear interior starts and ends, in feet.
@@ -260,9 +406,11 @@ fn wall_colour(r: &Room) -> Color {
         (Use::Living, _) => Color::srgb(0.86, 0.83, 0.76),
         (Use::Kitchen, _) => Color::srgb(0.88, 0.87, 0.82),
         (Use::Hall, _) => Color::srgb(0.83, 0.81, 0.78),
-        (Use::Bath, "bathroom") => Color::srgb(0.78, 0.84, 0.85),
-        (Use::Bath, _) => Color::srgb(0.82, 0.85, 0.83),
-        (Use::Bed, "main bedroom") => Color::srgb(0.80, 0.80, 0.78),
+        // The children's bath goes cool; the master stays warm-neutral. The
+        // tub nook is part of bath two and must match it.
+        (Use::Bath, "master bath") => Color::srgb(0.82, 0.85, 0.83),
+        (Use::Bath, _) => Color::srgb(0.78, 0.84, 0.85),
+        (Use::Bed, "master bedroom") => Color::srgb(0.80, 0.80, 0.78),
         (Use::Bed, "bedroom two") => Color::srgb(0.76, 0.81, 0.85),
         (Use::Bed, _) => Color::srgb(0.85, 0.82, 0.74),
         (Use::Utility, _) => Color::srgb(0.87, 0.88, 0.87),
@@ -317,33 +465,6 @@ pub struct Opening {
     pub head: f32,
 }
 
-impl Opening {
-    fn door(at: f32) -> Self {
-        Opening {
-            at,
-            wide: DOOR_WIDE,
-            sill: 0.0,
-            head: DOOR_HIGH,
-        }
-    }
-    fn window(at: f32) -> Self {
-        Opening {
-            at,
-            wide: WINDOW_WIDE,
-            sill: SILL,
-            head: HEAD,
-        }
-    }
-    fn cased(at: f32, wide: f32) -> Self {
-        Opening {
-            at,
-            wide,
-            sill: 0.0,
-            head: 230.0,
-        }
-    }
-}
-
 /// One straight run of wall, with holes in it.
 ///
 /// `a` and `b` are the run's *centreline* ends. The run is axis-aligned and
@@ -362,8 +483,12 @@ fn wall_run(
     let length = if along_x { b.x - a.x } else { b.y - a.y };
     let half = thick * 0.5;
 
-    // A footing under the whole run, openings and all, from below the grass up
-    // to the house's floor level.
+    let mut cuts: Vec<Opening> = holes.to_vec();
+    cuts.sort_by(|p, q| p.at.partial_cmp(&q.at).unwrap());
+
+    // A footing under the run, from below the grass up to the house's floor
+    // level — except across an open-plan stretch, where there is no wall to
+    // seal under and the saddle below owns the gap.
     //
     // Every wall used to start at zero, which is right for every room whose
     // floor is also at zero — and wrong for the garage, whose slab is a step
@@ -372,18 +497,62 @@ fn wall_run(
     // stem wall is what a real slab sits against, and above the garage floor it
     // reads as exactly that.
     {
+        let foot = |s0: f32, e0: f32, out: &mut Vec<Solid>| {
+            if e0 - s0 < 0.5 {
+                return;
+            }
+            let (min, max) = if along_x {
+                (
+                    Vec3::new(a.x + s0, -FOOTING, a.y - half),
+                    Vec3::new(a.x + e0, 0.0, a.y + half),
+                )
+            } else {
+                (
+                    Vec3::new(a.x - half, -FOOTING, a.y + s0),
+                    Vec3::new(a.x + half, 0.0, a.y + e0),
+                )
+            };
+            out.push(Solid::between(min, max, Stuff::Stone));
+        };
+        let mut walked = 0.0;
+        for hole in &cuts {
+            if hole.sill <= 0.01 && hole.head >= height - 0.01 {
+                foot(walked, hole.at - hole.wide * 0.5, out);
+                walked = hole.at + hole.wide * 0.5;
+            }
+        }
+        foot(walked, length, out);
+    }
+
+    // A saddle across the gap in every floor-level opening. The gap between
+    // two rooms is covered by both rooms' floors and by the footing, all
+    // coplanar at the finished floor — invisible under a wall, and a stripe of
+    // z-fighting in a doorway. A threshold is what a real doorway has there.
+    for hole in &cuts {
+        if hole.sill > 0.01 {
+            continue;
+        }
+        let (s0, e0) = (hole.at - hole.wide * 0.5, hole.at + hole.wide * 0.5);
+        let deep = half + 0.6;
         let (min, max) = if along_x {
             (
-                Vec3::new(a.x.min(b.x), -FOOTING, a.y - half),
-                Vec3::new(a.x.max(b.x), 0.0, a.y + half),
+                Vec3::new(a.x + s0, -SLAB, a.y - deep),
+                Vec3::new(a.x + e0, 0.25, a.y + deep),
             )
         } else {
             (
-                Vec3::new(a.x - half, -FOOTING, a.y.min(b.y)),
-                Vec3::new(a.x + half, 0.0, a.y.max(b.y)),
+                Vec3::new(a.x - deep, -SLAB, a.y + s0),
+                Vec3::new(a.x + deep, 0.25, a.y + e0),
             )
         };
-        out.push(Solid::between(min, max, Stuff::Stone));
+        let stone = thick >= OUTER - 0.01;
+        let mut saddle = Solid::between(min, max, if stone { Stuff::Stone } else { Stuff::Wood });
+        saddle.paint = Some(if stone {
+            Color::srgb(0.66, 0.67, 0.65)
+        } else {
+            Color::srgb(0.52, 0.40, 0.28)
+        });
+        out.push(saddle);
     }
 
     let piece = |s: f32, e: f32, low: f32, high: f32, out: &mut Vec<Solid>| {
@@ -419,18 +588,27 @@ fn wall_run(
                 )
             };
             let mut leaf = Solid::between(hmin.min(hmax), hmin.max(hmax), stuff);
-            leaf.paint = room_at(probe).map(|room| wall_colour(&room));
+            // A face looking into a room wears that room's paint; a face
+            // looking outdoors — truly outside, or onto a porch — is the
+            // photographs' white siding.
+            leaf.paint = Some(match room_at(probe) {
+                Some(room) if !outdoors(room.name) => wall_colour(&room),
+                _ => Color::srgb(0.92, 0.92, 0.93),
+            });
             out.push(leaf);
         }
 
-        // Lap siding, on whichever face of an exterior wall looks outward.
+        // Board-and-batten, on whichever face of an exterior wall looks
+        // outward — including the walls at the back of each porch.
         //
-        // The whole building was flat cream plaster. Boards are the cheapest
-        // thing that puts a scale on an elevation: they tell you how big the
-        // house is before you have looked at anything else in the frame. Only
-        // exterior walls get them, and "exterior" is not a flag anyone has to
-        // remember to set — it is a probe thirty centimetres off each face,
-        // asking whether that is still indoors.
+        // The photographs of the built house are unanimous: white vertical
+        // board-and-batten on every elevation, battens on roughly 16-inch
+        // centres, siding running to grade. It replaced lap boards, which were
+        // an invention. The flat board field is the wall face itself; the
+        // battens are what throw the vertical shadow lines that put a scale on
+        // an elevation. "Exterior" is not a flag anyone has to remember to set
+        // — it is a probe thirty centimetres off each face, asking whether
+        // that is a room.
         if thick >= OUTER - 0.01 {
             for face in [-1.0f32, 1.0] {
                 let probe = if along_x {
@@ -438,93 +616,86 @@ fn wall_run(
                 } else {
                     Vec2::new(a.x + face * (half + 30.0), (a.y + s + a.y + e) * 0.5)
                 };
-                if inside_envelope(probe) {
+                if room_at(probe).is_some_and(|room| !outdoors(room.name)) {
                     continue;
                 }
-                // Boards lap, and a lapped board is not flat against the
-                // wall: its bottom edge stands proud of its top, which is what
-                // throws the shadow line that makes siding read as siding.
-                //
-                // Two wrong versions before this one, both of which stippled
-                // the whole north elevation. Leaving a gap between courses
-                // exposes the top face of every board — those face up, the sun
-                // is up, and a hundred lit slivers three centimetres wide alias
-                // into what looks exactly like shadow acne. Closing the gap by
-                // overlapping them instead put every board's front face on the
-                // same plane as its neighbour's, which is z-fighting in
-                // three-centimetre bands. Tilting each board solves both: the
-                // tops are covered and no two faces are coplanar.
-                const BOARD: f32 = 18.0;
-                const TILT: f32 = 0.15;
-                let courses = ((high - low) / BOARD).floor().max(1.0) as usize;
-                for k in 0..courses {
-                    let y = low + BOARD * k as f32;
-                    if y + BOARD * 1.4 > high {
-                        break;
-                    }
-                    let n = grain(a.x + a.y + s + y * 2.3);
-                    let size = if along_x {
-                        Vec3::new(e - s, BOARD * 1.35, 3.4)
+                // Battens land on a global grid, so they stay aligned across
+                // the separate pieces either side of a window and across
+                // separate runs of the same facade.
+                const SPACE: f32 = 40.0;
+                const BATTEN: f32 = 6.0;
+                let along0 = if along_x { a.x } else { a.y };
+                let mut k = ((along0 + s + BATTEN * 0.5) / SPACE).ceil();
+                while k * SPACE < along0 + e - BATTEN * 0.5 {
+                    let at = k * SPACE - along0;
+                    k += 1.0;
+                    let (bmin, bmax) = if along_x {
+                        (
+                            Vec3::new(a.x + at - BATTEN * 0.5, low, a.y + face * half),
+                            Vec3::new(a.x + at + BATTEN * 0.5, high, a.y + face * (half + 2.2)),
+                        )
                     } else {
-                        Vec3::new(3.4, BOARD * 1.35, e - s)
+                        (
+                            Vec3::new(a.x + face * half, low, a.y + at - BATTEN * 0.5),
+                            Vec3::new(a.x + face * (half + 2.2), high, a.y + at + BATTEN * 0.5),
+                        )
                     };
-                    let mut board = Solid::between(-size * 0.5, size * 0.5, Stuff::Wood);
-                    // Sitting *on* the course line, not centred on it. A
-                    // board is taller than the pitch, so centring it hangs its
-                    // bottom edge three centimetres below where the run starts
-                    // — which above a window means three centimetres of
-                    // cladding inside the opening. The window law said so.
-                    let mid_y = y + BOARD * 0.675;
-                    board.center = if along_x {
-                        Vec3::new(a.x + (s + e) * 0.5, mid_y, a.y + face * (half + 1.9))
-                    } else {
-                        Vec3::new(a.x + face * (half + 1.9), mid_y, a.y + (s + e) * 0.5)
-                    };
-                    board.rot = if along_x {
-                        Quat::from_rotation_x(face * TILT)
-                    } else {
-                        Quat::from_rotation_z(-face * TILT)
-                    };
-                    board.paint = Some(Color::srgb(
-                        0.80 + n * 0.012,
-                        0.785 + n * 0.012,
-                        0.745 + n * 0.010,
-                    ));
-                    out.push(board);
+                    let mut batten = Solid::between(bmin.min(bmax), bmin.max(bmax), Stuff::Wood);
+                    batten.paint = Some(Color::srgb(0.93, 0.93, 0.94));
+                    out.push(batten);
                 }
             }
         }
 
-        // Cornice, on any piece that reaches the ceiling.
-        if high >= CEILING - 0.01 && low < CEILING - CORNICE_HIGH {
-            for face in [-1.0f32, 1.0] {
-                // Stepped, like the skirting. A cornice run as one square
-                // section reads as a stripe of paint where the wall meets the
-                // ceiling; two steps and it reads as a moulding, because the
-                // lower one is in shadow and the upper one is not.
-                for (bottom, top, proud) in [
+        // Cornice, on any face that reaches its own room's ceiling.
+        //
+        // Per face, off the same probe as the paint: the two rooms either side
+        // of one wall can have different ceilings, and a 9-foot room's cornice
+        // belongs at 9 feet even when the wall itself carries on up to a
+        // 10-foot neighbour. An outdoor face gets none — eaves are the roof's
+        // job.
+        for face in [-1.0f32, 1.0] {
+            let probe = if along_x {
+                Vec2::new((a.x + s + a.x + e) * 0.5, a.y + face * (half + 30.0))
+            } else {
+                Vec2::new(a.x + face * (half + 30.0), (a.y + s + a.y + e) * 0.5)
+            };
+            let Some(room) = room_at(probe) else {
+                continue;
+            };
+            if outdoors(room.name) {
+                continue;
+            }
+            let crown = room.tall.min(height);
+            if high < crown - 0.01 || low >= crown - CORNICE_HIGH {
+                continue;
+            }
+            // Stepped, like the skirting. A cornice run as one square
+            // section reads as a stripe of paint where the wall meets the
+            // ceiling; two steps and it reads as a moulding, because the
+            // lower one is in shadow and the upper one is not.
+            for (bottom, top, proud) in [
+                (
+                    crown - CORNICE_HIGH,
+                    crown - CORNICE_HIGH + 2.4,
+                    CORNICE_PROUD - 1.4,
+                ),
+                (crown - CORNICE_HIGH + 2.4, crown, CORNICE_PROUD),
+            ] {
+                let (cmin, cmax) = if along_x {
                     (
-                        CEILING - CORNICE_HIGH,
-                        CEILING - CORNICE_HIGH + 2.4,
-                        CORNICE_PROUD - 1.4,
-                    ),
-                    (CEILING - CORNICE_HIGH + 2.4, CEILING, CORNICE_PROUD),
-                ] {
-                    let (cmin, cmax) = if along_x {
-                        (
-                            Vec3::new(a.x + s, bottom, a.y + face * half),
-                            Vec3::new(a.x + e, top, a.y + face * (half + proud)),
-                        )
-                    } else {
-                        (
-                            Vec3::new(a.x + face * half, bottom, a.y + s),
-                            Vec3::new(a.x + face * (half + proud), top, a.y + e),
-                        )
-                    };
-                    let mut trim = Solid::between(cmin.min(cmax), cmin.max(cmax), Stuff::Wood);
-                    trim.paint = Some(Color::srgb(0.93, 0.92, 0.90));
-                    out.push(trim);
-                }
+                        Vec3::new(a.x + s, bottom, a.y + face * half),
+                        Vec3::new(a.x + e, top, a.y + face * (half + proud)),
+                    )
+                } else {
+                    (
+                        Vec3::new(a.x + face * half, bottom, a.y + s),
+                        Vec3::new(a.x + face * (half + proud), top, a.y + e),
+                    )
+                };
+                let mut trim = Solid::between(cmin.min(cmax), cmin.max(cmax), Stuff::Wood);
+                trim.paint = Some(Color::srgb(0.93, 0.92, 0.90));
+                out.push(trim);
             }
         }
 
@@ -536,6 +707,15 @@ fn wall_run(
         // were. Both faces, since a partition has a room on each side.
         if low <= 0.01 && high > SKIRT_HIGH {
             for face in [-1.0f32, 1.0] {
+                // Only indoors: outside, the siding runs to grade.
+                let probe = if along_x {
+                    Vec2::new((a.x + s + a.x + e) * 0.5, a.y + face * (half + 30.0))
+                } else {
+                    Vec2::new(a.x + face * (half + 30.0), (a.y + s + a.y + e) * 0.5)
+                };
+                if !room_at(probe).is_some_and(|room| !outdoors(room.name)) {
+                    continue;
+                }
                 // A profile, not a plank. Skirting is a board with something on
                 // top of it — here the board, then a bead set back from its
                 // face — and the step between the two is what catches a line of
@@ -564,9 +744,6 @@ fn wall_run(
         }
     };
 
-    let mut cuts: Vec<Opening> = holes.to_vec();
-    cuts.sort_by(|p, q| p.at.partial_cmp(&q.at).unwrap());
-
     let mut walked = 0.0;
     for hole in &cuts {
         let start = hole.at - hole.wide * 0.5;
@@ -583,22 +760,31 @@ fn wall_run(
 // Building it
 // ---------------------------------------------------------------------------
 
-/// Window positions in feet along their wall, shared by the openings and the
-/// glazing so the two cannot drift apart.
-const NORTH_WINDOWS: [f32; 4] = [6.0, 21.0, 29.0, 40.0];
-const SOUTH_WINDOWS: [f32; 4] = [6.0, 21.0, 30.0, 41.0];
-const WEST_WINDOWS: [f32; 3] = [6.0, 17.0, 29.0];
-const EAST_WINDOW: f32 = 29.0;
-
 /// A room's floor: boards, tile or concrete, by what the room is for.
 ///
 /// Strips rather than one plane. It costs a few dozen solids per room, tiles the
 /// same rectangle so collision is unchanged, and it is the difference between a
 /// floor and a colour — the largest single surface in any shot of any room.
 fn lay_floor(out: &mut Vec<Solid>, r: &Room) {
-    let (stuff, base, run, tone, cross) = match r.use_for {
+    let (stuff, base, run, tone, cross) = match (r.name, r.use_for) {
+        // The front porch is brick, per the photographs, in tight courses.
+        ("front porch", _) => (
+            Stuff::Stone,
+            Color::srgb(0.56, 0.39, 0.32),
+            20.0,
+            0.05,
+            true,
+        ),
+        // The rear porch is a broomed concrete slab.
+        ("rear porch", _) => (
+            Stuff::Stone,
+            Color::srgb(0.62, 0.62, 0.60),
+            120.0,
+            0.03,
+            false,
+        ),
         // Tile, in squarer courses and a cooler colour.
-        Use::Bath | Use::Utility => (
+        (_, Use::Bath | Use::Utility) => (
             Stuff::Stone,
             Color::srgb(0.72, 0.73, 0.71),
             34.0,
@@ -607,7 +793,7 @@ fn lay_floor(out: &mut Vec<Solid>, r: &Room) {
         ),
         // The garage is a poured slab: no courses at all, just a little
         // mottling, and it sits lower than the house.
-        Use::Garage => (
+        (_, Use::Garage) => (
             Stuff::Stone,
             Color::srgb(0.44, 0.44, 0.46),
             110.0,
@@ -701,7 +887,7 @@ fn window_trim(out: &mut Vec<Solid>) {
             } else {
                 Vec2::new(mid_x + face * 40.0, mid_z)
             };
-            if inside_envelope(probe) {
+            if room_at(probe).is_some_and(|room| !outdoors(room.name)) {
                 continue;
             }
             let out_face = if along_x {
@@ -723,8 +909,9 @@ fn window_trim(out: &mut Vec<Solid>) {
                 b.paint = Some(trim);
                 out.push(b);
             };
-            let high = hi.y - lo.y.max(SILL);
-            let cy = (SILL + HEAD) * 0.5;
+            let (sill_y, head_y) = (lo.y, hi.y);
+            let high = head_y - sill_y;
+            let cy = (sill_y + head_y) * 0.5;
             if along_x {
                 for side in [-1.0f32, 1.0] {
                     put(
@@ -738,7 +925,7 @@ fn window_trim(out: &mut Vec<Solid>) {
                 }
                 put(
                     mid_x,
-                    HEAD + board * 0.5,
+                    head_y + board * 0.5,
                     out_face,
                     wide + board * 2.0,
                     board,
@@ -746,7 +933,7 @@ fn window_trim(out: &mut Vec<Solid>) {
                 );
                 put(
                     mid_x,
-                    SILL - 4.0,
+                    sill_y - 4.0,
                     out_face + face * 1.5,
                     wide + board * 2.6,
                     8.0,
@@ -765,7 +952,7 @@ fn window_trim(out: &mut Vec<Solid>) {
                 }
                 put(
                     out_face,
-                    HEAD + board * 0.5,
+                    head_y + board * 0.5,
                     mid_z,
                     6.0,
                     board,
@@ -773,7 +960,7 @@ fn window_trim(out: &mut Vec<Solid>) {
                 );
                 put(
                     out_face + face * 1.5,
-                    SILL - 4.0,
+                    sill_y - 4.0,
                     mid_z,
                     9.0,
                     8.0,
@@ -1091,7 +1278,7 @@ fn neighbourhood(out: &mut Vec<Solid>) {
         // and the plan view frames on everything that is not outdoors, so five
         // neighbours' roofs were pulling the whole drawing out to a thumbnail.
         let before = out.len();
-        gable_roof(out, min, max, along_x, top + SLAB + 8.0);
+        gable_roof(out, min, max, along_x, top + SLAB + 8.0, PITCH);
         for solid in &mut out[before..] {
             solid.outdoors = true;
         }
@@ -1307,7 +1494,7 @@ const FASCIA_DEEP: f32 = 20.0;
 
 const SHINGLE: Color = Color::srgb(0.27, 0.25, 0.24);
 const TRIM: Color = Color::srgb(0.90, 0.89, 0.85);
-const SIDING: Color = Color::srgb(0.74, 0.73, 0.69);
+const SIDING: Color = Color::srgb(0.90, 0.90, 0.91);
 
 /// A gabled roof over one rectangle, ridge along whichever axis is asked for.
 ///
@@ -1317,7 +1504,7 @@ const SIDING: Color = Color::srgb(0.74, 0.73, 0.69);
 /// leaves a staircase along the rake, which is what the barge boards are for —
 /// they are a real piece of a real roof and they cover the one artifact this
 /// construction cannot avoid.
-fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32) {
+fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32, pitch: f32) {
     // `a` runs along the ridge, `c` across it.
     let (a0, a1, c0, c1) = if along_x {
         (lo.x, hi.x, lo.y, hi.y)
@@ -1343,7 +1530,7 @@ fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32
     let (ec0, ec1) = (c0 - OVERHANG, c1 + OVERHANG);
     let ridge_c = (ec0 + ec1) * 0.5;
     let half = (ec1 - ec0) * 0.5;
-    let rise = half * PITCH;
+    let rise = half * pitch;
     let ridge_y = eave + rise;
     let slope = (half * half + rise * rise).sqrt();
     let theta = rise.atan2(half);
@@ -1433,7 +1620,7 @@ fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32
         // The gable stands on the wall it caps, and never wider than that wall:
         // the roof's half-span includes the overhang, and a gable built out to
         // *that* would hang in mid-air past the corner of the house.
-        let base = CEILING;
+        let base = eave - SLAB - 8.0;
         let wall_half = half - OVERHANG;
         for k in 0..COURSES {
             let y0 = base + (ridge_y - ROOF_THICK - base) * k as f32 / COURSES as f32;
@@ -1443,7 +1630,7 @@ fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32
             // at the top edge instead leaves a triangular gap per course, and
             // eighteen of those in a row is a row of shark's teeth along the
             // rake — which is exactly how the first capture came back.
-            let reach = ((ridge_y - ROOF_THICK - y0) / PITCH).clamp(0.0, wall_half);
+            let reach = ((ridge_y - ROOF_THICK - y0) / pitch).clamp(0.0, wall_half);
             if reach < 1.0 {
                 continue;
             }
@@ -1482,31 +1669,96 @@ fn gable_roof(out: &mut Vec<Solid>, lo: Vec2, hi: Vec2, along_x: bool, eave: f32
     }
 }
 
-/// The whole roof: a long gable down the house, and a second one turned
-/// ninety degrees over the garage so its end faces the drive, which is what an
-/// attached garage on a plan this shape actually gets built with.
+/// The roof, in the three volumes the photographs of the built house show.
+///
+/// One north-south ridge runs the whole west bar, from the master bedroom's
+/// rear gable to the garage's front one — the drawing makes them the same
+/// width, which is how the photos can show one clean gable at each end. The
+/// main east-west ridge covers the middle block, its rear slope running down
+/// over the recessed rear porch and its front slope over the front porch, so
+/// both porches stand under the main roof exactly as built. The east wing
+/// carries its own lower ridge over its 9-foot walls, which is the step down
+/// every photograph shows. The middle ridge stands tallest, the bar next, the
+/// wing lowest.
 fn roof(out: &mut Vec<Solid>) {
-    let (w, e, n, so, garage_south, house_east) = envelope();
-    let eave = CEILING + SLAB + 8.0;
-    gable_roof(out, Vec2::new(w, n), Vec2::new(house_east, so), true, eave);
+    let h = OUTER;
+    let garage = room("garage");
+    let porch_front = room("front porch");
+    let porch_rear = room("rear porch");
+    let wing_n = room("bedroom three");
+    let wing_s = room("office");
+
+    // The west bar: master suite through garage, gables north and south,
+    // steep like the photographs' garage gable.
     gable_roof(
         out,
-        Vec2::new(house_east, n),
-        Vec2::new(e, garage_south),
+        Vec2::new(-h, -h),
+        Vec2::new(garage.max.x + INNER, garage.max.y + h),
         false,
-        eave,
+        ft(10.0) + SLAB + 8.0,
+        9.0 / 12.0,
     );
+    // The middle block: ridge east-west, eaves over both porches. Its gable
+    // ends rise above the bar and the wing as clad triangles.
+    gable_roof(
+        out,
+        Vec2::new(garage.max.x, porch_rear.min.y),
+        Vec2::new(wing_n.min.x, porch_front.max.y + h),
+        true,
+        ft(10.0) + SLAB + 8.0,
+        6.0 / 12.0,
+    );
+    // The east wing continues the main ridge east at a stepped-down height:
+    // ridge east-west, slopes facing front and back, and the wide low gable
+    // on the east face that the side photograph shows. Its west gable end is
+    // buried inside the middle block's taller one.
+    gable_roof(
+        out,
+        Vec2::new(wing_n.min.x - INNER, wing_n.min.y - h),
+        Vec2::new(wing_n.max.x + h, wing_s.max.y + h),
+        true,
+        ft(9.0) + SLAB + 8.0,
+        4.0 / 12.0,
+    );
+    // The entry cross-gable: the steep front-facing gable over the porch,
+    // nearly the garage gable's size, its own ridge running back into the
+    // main south slope — and its peak just showing over the main ridge from
+    // the back, exactly as the photographs have it.
+    gable_roof(
+        out,
+        Vec2::new(porch_front.min.x, porch_front.max.y - ft(11.0)),
+        Vec2::new(porch_front.max.x, porch_front.max.y + h),
+        false,
+        ft(10.0) + SLAB + 8.0,
+        12.0 / 12.0,
+    );
+    gable_windows(out);
 
-    // Downpipes at the outside corners, from the gutter to a shoe at the
-    // ground. Three brackets each, because a pipe drawn as one box reads as a
-    // pipe drawn as one box.
+    // The headers the porch posts carry, closing the gap between each porch's
+    // ceiling and the main roof's eave: the white-trimmed beam line straight
+    // across each porch in the photographs.
+    porch_headers(out);
+
+    // Downpipes at outside corners, from the gutter to a shoe at the ground.
+    // Three brackets each, because a pipe drawn as one box reads as a pipe
+    // drawn as one box.
+    let eave = ft(10.0) + SLAB + 8.0;
     let drop = eave - FASCIA_DEEP - 6.0;
     for (x, z) in [
-        (w - OVERHANG + 8.0, n - OVERHANG + 8.0),
-        (w - OVERHANG + 8.0, so + OVERHANG - 8.0),
-        (house_east - 10.0, so + OVERHANG - 8.0),
-        (e + OVERHANG - 8.0, n - OVERHANG + 8.0),
-        (e + OVERHANG - 8.0, garage_south + OVERHANG - 8.0),
+        (-h - OVERHANG + 8.0, -h - OVERHANG + 8.0),
+        (-h - OVERHANG + 8.0, garage.max.y + h + OVERHANG - 8.0),
+        (
+            garage.max.x + INNER - 10.0,
+            porch_front.max.y + h + OVERHANG - 8.0,
+        ),
+        (
+            wing_n.max.x + h + OVERHANG - 8.0,
+            wing_n.min.y - h - OVERHANG + 8.0,
+        ),
+        (
+            wing_n.max.x + h + OVERHANG - 8.0,
+            wing_s.max.y + h + OVERHANG - 8.0,
+        ),
     ] {
         let mut pipe = Solid::between(
             Vec3::new(x - 5.0, -8.0, z - 5.0),
@@ -1538,7 +1790,102 @@ fn roof(out: &mut Vec<Solid>) {
     }
 }
 
-/// Every window the derived walls actually cut, as world-space boxes.
+/// The windows in the gable fields, from the photographs: a mulled triple in
+/// the entry cross-gable, and one tall narrow sash high in the garage gable.
+/// Applied to the gable face rather than cut through it — there is only attic
+/// behind, and what the street reads is the black frame on the white field.
+fn gable_windows(out: &mut Vec<Solid>) {
+    let black = Color::srgb(0.10, 0.10, 0.11);
+    let mut unit = |cx: f32, face_y: f32, y0: f32, y1: f32, wide: f32, lites: usize| {
+        let rail = 5.0;
+        let each = wide / lites as f32;
+        for i in 0..lites {
+            let x0 = cx - wide * 0.5 + each * i as f32;
+            let mut frame = |fx0: f32, fy0: f32, fx1: f32, fy1: f32, stuff: Stuff, paint| {
+                let mut solid = Solid::between(
+                    Vec3::new(fx0, fy0, face_y),
+                    Vec3::new(fx1, fy1, face_y + 4.0),
+                    stuff,
+                );
+                solid.paint = paint;
+                solid.roof = true;
+                out.push(solid);
+            };
+            frame(x0, y0, x0 + rail, y1, Stuff::Wood, Some(black));
+            frame(
+                x0 + each - rail,
+                y0,
+                x0 + each,
+                y1,
+                Stuff::Wood,
+                Some(black),
+            );
+            frame(x0, y0, x0 + each, y0 + rail, Stuff::Wood, Some(black));
+            frame(x0, y1 - rail, x0 + each, y1, Stuff::Wood, Some(black));
+            let mid = (y0 + y1) * 0.5;
+            frame(
+                x0,
+                mid - 2.0,
+                x0 + each,
+                mid + 2.0,
+                Stuff::Wood,
+                Some(black),
+            );
+            frame(
+                x0 + rail,
+                y0 + rail,
+                x0 + each - rail,
+                y1 - rail,
+                Stuff::Glass,
+                None,
+            );
+        }
+    };
+    // The entry gable's triple, centred over the porch.
+    let porch = room("front porch");
+    let face = porch.max.y + OUTER + OUTER * 0.5 + 1.5;
+    unit(porch.middle().x, face, 355.0, 450.0, 200.0, 3);
+    // The garage gable's single, tall and narrow.
+    let garage = room("garage");
+    let face = garage.max.y + OUTER + OUTER * 0.5 + 1.5;
+    unit(garage.middle().x, face, 360.0, 495.0, 62.0, 1);
+}
+
+/// The header beam across each porch's open side, sitting on the posts,
+/// closing the band between the porch ceiling and the roof above it.
+fn porch_headers(out: &mut Vec<Solid>) {
+    for (name, along_x) in [("rear porch", true), ("front porch", true)] {
+        let r = room(name);
+        let line = if name == "rear porch" {
+            r.min.y
+        } else {
+            r.max.y
+        };
+        let _ = along_x;
+        let mut beam = Solid::between(
+            Vec3::new(r.min.x, r.tall - 2.0, line - 9.0),
+            Vec3::new(r.max.x, r.tall + 60.0, line + 9.0),
+            Stuff::Wood,
+        );
+        beam.paint = Some(TRIM);
+        beam.roof = true;
+        out.push(beam);
+    }
+}
+
+/// What kind of hole a wall cut, for the record below.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Hole {
+    Pane,
+    Doorway,
+    Arch,
+    Front,
+    Back,
+    Vehicle,
+    Wide,
+}
+
+/// Every opening the derived walls actually cut, as world-space boxes.
 ///
 /// Recorded rather than tabulated. Trim, glazing and the law that stops a
 /// picture being hung over a window all used to read constant lists of
@@ -1546,9 +1893,20 @@ fn roof(out: &mut Vec<Solid>) {
 /// came from the plan instead, the frames stayed where the old walls had been
 /// and hung in mid-air with daylight around them.
 ///
-/// One source now: the wall that cut the hole says where the hole is.
-static GLAZING: std::sync::LazyLock<std::sync::Mutex<Vec<(Vec3, Vec3)>>> =
+/// One source now: `PORTALS` says what to cut, the wall that cut the hole
+/// records where the hole is, and everything downstream reads the record.
+static CUT_BOXES: std::sync::LazyLock<std::sync::Mutex<Vec<(Hole, Vec3, Vec3)>>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+fn cut_boxes(kind: Hole) -> Vec<(Vec3, Vec3)> {
+    CUT_BOXES
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(k, _, _)| *k == kind)
+        .map(|&(_, lo, hi)| (lo, hi))
+        .collect()
+}
 
 /// Which pairs of rooms the plan leaves open to each other.
 ///
@@ -1556,9 +1914,15 @@ static GLAZING: std::sync::LazyLock<std::sync::Mutex<Vec<(Vec3, Vec3)>>> =
 /// line between them at all: open plan reads as an absence of ink.
 fn open_to_each_other(a: &str, b: &str) -> bool {
     const OPEN: [(&str, &str); 3] = [
+        // No wall is drawn between the kitchen and the dining room at all;
+        // kitchen to great room keeps its refrigerator stub, so that pair is a
+        // `Wide` portal instead.
         ("kitchen", "dining"),
-        ("dining", "great room"),
-        ("kitchen", "great room"),
+        // The storage bay's printed width is exactly the stretch of the
+        // garage's north wall that is not there.
+        ("garage", "open storage"),
+        // The tub stands in its own nook of bath two.
+        ("bath two", "bath two tub"),
     ];
     OPEN.iter()
         .any(|&(x, y)| (a == x && b == y) || (a == y && b == x))
@@ -1591,7 +1955,8 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
     let all = rooms();
     let mut done: std::collections::HashSet<(i32, i32, i32, i32)> = Default::default();
     let (mut built, mut shared, mut holes_cut) = (0, 0, 0);
-    GLAZING.lock().unwrap().clear();
+    let mut used = [false; PORTALS.len()];
+    CUT_BOXES.lock().unwrap().clear();
 
     for r in &all {
         // (runs along x, the edge's own line, the span, which way is outward)
@@ -1650,9 +2015,25 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
             for (start, end, neighbour) in runs {
                 // The wall goes in the *gap*, not on the room's own face, so
                 // both rooms compute the same centreline and the duplicate can
-                // be recognised at all.
-                let half = if neighbour.is_some() { INNER } else { OUTER } * 0.5;
-                let mid = line + out * half;
+                // be recognised at all. From *both* edges, not from this
+                // room's edge plus a constant: the measured figures in the
+                // plan are rounded to the centimetre, so gaps are 12 cm give
+                // or take a millimetre, and a millimetre is enough for the
+                // two offers to land in different dedupe buckets — which is
+                // every partition built twice again.
+                let mid = match neighbour {
+                    Some(n) => {
+                        let near = if horizontal {
+                            if out > 0.0 { n.min.y } else { n.max.y }
+                        } else if out > 0.0 {
+                            n.min.x
+                        } else {
+                            n.max.x
+                        };
+                        (line + near) * 0.5
+                    }
+                    None => line + out * OUTER * 0.5,
+                };
                 let (p, q) = if horizontal {
                     (Vec2::new(start, mid), Vec2::new(end, mid))
                 } else {
@@ -1670,7 +2051,42 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
                 }
                 done.insert(key);
 
-                if neighbour.is_some_and(|n| open_to_each_other(r.name, n.name)) {
+                if let Some(n) = neighbour
+                    && open_to_each_other(r.name, n.name)
+                {
+                    // No wall — but the gap between the two rooms' floors is
+                    // real, and both floors cover it, coplanar, which is a
+                    // stripe of z-fighting right across an open plan. A flush
+                    // seam board owns the gap instead, like the transition
+                    // strip a real floor gets.
+                    let across = if horizontal {
+                        Vec2::new(0.0, 1.0)
+                    } else {
+                        Vec2::new(1.0, 0.0)
+                    } * (INNER * 0.5 + 0.6);
+                    let (ga, gb) = if horizontal {
+                        (Vec2::new(start, mid), Vec2::new(end, mid))
+                    } else {
+                        (Vec2::new(mid, start), Vec2::new(mid, end))
+                    };
+                    let (lo, hi) = (ga - across, gb + across);
+                    let wet = matches!(r.use_for, Use::Bath | Use::Utility | Use::Garage);
+                    let mut seam = Solid::between(
+                        Vec3::new(lo.x.min(hi.x), -SLAB, lo.y.min(hi.y)),
+                        Vec3::new(lo.x.max(hi.x), 0.25, lo.y.max(hi.y)),
+                        if wet { Stuff::Stone } else { Stuff::Wood },
+                    );
+                    seam.paint = Some(if wet {
+                        Color::srgb(0.66, 0.67, 0.65)
+                    } else {
+                        Color::srgb(0.52, 0.40, 0.28)
+                    });
+                    s.push(seam);
+                    continue;
+                }
+                // A porch's open sides have no wall at all — posts hold that
+                // stretch of roof up instead.
+                if outdoors(r.name) && neighbour.is_none_or(|n| outdoors(n.name)) {
                     continue;
                 }
                 let span = (q - p).length();
@@ -1679,39 +2095,95 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
                 }
                 let inside = neighbour.is_some_and(|n| !outdoors(n.name)) && !outdoors(r.name);
                 let tall = neighbour.map_or(r.tall, |n| r.tall.max(n.tall));
+                let thick = if inside { INNER } else { OUTER };
+
+                // Which way this edge faces, in the drawing's orientation, so
+                // the openings measured off the drawing can find their wall.
+                let edge = match (horizontal, out > 0.0) {
+                    (true, false) => 'n',
+                    (true, true) => 's',
+                    (false, false) => 'w',
+                    (false, true) => 'e',
+                };
+                let flip = |e: char| match e {
+                    'n' => 's',
+                    's' => 'n',
+                    'w' => 'e',
+                    _ => 'w',
+                };
 
                 let mut cut: Vec<Opening> = Vec::new();
-                if neighbour.is_some() {
-                    if span > DOOR_WIDE + 40.0 {
-                        cut.push(Opening::door(span * 0.5 - DOOR_WIDE * 0.5));
+                for (i, &(a, on, b, lo, hi, what)) in PORTALS.iter().enumerate() {
+                    // A portal names one room's edge; the same wall is offered
+                    // from both sides, so match it from either.
+                    let here = (a == r.name
+                        && on == edge
+                        && neighbour.map_or(b == "outside", |n| b == n.name))
+                        || neighbour
+                            .is_some_and(|n| a == n.name && b == r.name && flip(on) == edge);
+                    if !here {
+                        continue;
                     }
-                } else if span > WINDOW_WIDE + 90.0 && !outdoors(r.name) {
-                    cut.push(Opening::window(span * 0.5 - WINDOW_WIDE * 0.5));
-                    // Remember it, so the frame and the glass go where the hole
-                    // is rather than where a table says it should be.
+                    let (lo, hi) = (ft(lo).max(start), ft(hi).min(end));
+                    if hi - lo < 2.0 {
+                        continue;
+                    }
+                    used[i] = true;
+                    let (sill, head) = match what {
+                        Cut::Pane { sill, head } => (sill, head),
+                        Cut::Way { head } | Cut::Arch { head } => (0.0, head),
+                        Cut::Wide => (0.0, tall),
+                    };
+                    cut.push(Opening {
+                        at: (lo + hi) * 0.5 - start,
+                        wide: hi - lo,
+                        sill,
+                        head,
+                    });
+                    // The record: a world-space box for everything downstream.
+                    // Windows are recorded thicker than the wall on purpose —
+                    // the audit probes the reveal against them — doorways at
+                    // the wall's own thickness.
                     let along = (q - p) / span;
-                    let at = p + along * (span * 0.5);
-                    let across = Vec2::new(-along.y, along.x) * OUTER;
-                    let reach = along * (WINDOW_WIDE * 0.5);
-                    let lo = at - reach - across;
-                    let hi = at + reach + across;
-                    GLAZING.lock().unwrap().push((
-                        Vec3::new(lo.x.min(hi.x), SILL, lo.y.min(hi.y)),
-                        Vec3::new(lo.x.max(hi.x), HEAD, lo.y.max(hi.y)),
+                    let deep = match what {
+                        Cut::Pane { .. } => OUTER,
+                        _ => thick * 0.5,
+                    };
+                    let across = Vec2::new(-along.y, along.x) * deep;
+                    let (bl, bh) = (
+                        p + along * (lo - start) - across,
+                        p + along * (hi - start) + across,
+                    );
+                    let kind = match what {
+                        Cut::Pane { .. } => Hole::Pane,
+                        Cut::Way { .. } if a == "garage" && b == "outside" => Hole::Vehicle,
+                        Cut::Way { .. } if b == "front porch" => Hole::Front,
+                        Cut::Way { .. } if b == "rear porch" => Hole::Back,
+                        Cut::Way { .. } => Hole::Doorway,
+                        Cut::Arch { .. } => Hole::Arch,
+                        Cut::Wide => Hole::Wide,
+                    };
+                    CUT_BOXES.lock().unwrap().push((
+                        kind,
+                        Vec3::new(bl.x.min(bh.x), sill, bl.y.min(bh.y)),
+                        Vec3::new(bl.x.max(bh.x), head, bl.y.max(bh.y)),
                     ));
                 }
                 holes_cut += cut.len();
                 built += 1;
-                wall_run(
-                    s,
-                    p,
-                    q,
-                    if inside { INNER } else { OUTER },
-                    tall,
-                    Stuff::Plaster,
-                    &cut,
-                );
+                wall_run(s, p, q, thick, tall, Stuff::Plaster, &cut);
             }
+        }
+    }
+    // Every opening in the table must have found its wall. One that has not is
+    // a typo against the drawing — a mismeasured edge, a misnamed room — and
+    // it refuses loudly, exactly as a mis-sized room does.
+    for (i, p) in PORTALS.iter().enumerate() {
+        if !used[i] {
+            error!(
+                "the {} → {} opening at {:.1}–{:.1} ft matched no wall — the table disagrees with the plan",
+                p.0, p.2, p.3, p.4
+            );
         }
     }
     // Every partition is offered twice, once by each room it separates, so
@@ -1724,10 +2196,196 @@ fn walls_from_plan(s: &mut Vec<Solid>) {
     );
 }
 
+/// Every door to the outside, shut, as part of the shell. The fly does not go
+/// outside — the house is the whole world — so these are never ajar: the white
+/// carriage door across the garage, the slate double front doors with their
+/// glass lites, and the full-glass rear door. Same law as the sashes.
+fn door_leaves(out: &mut Vec<Solid>) {
+    let black = Color::srgb(0.10, 0.10, 0.11);
+    let white = Color::srgb(0.92, 0.92, 0.93);
+
+    // The garage's sixteen-foot carriage door: a white field, four six-lite
+    // window panels across the top, and an X-buck brace on each lower panel.
+    {
+        let (lo, hi) = vehicle_door();
+        let mid = (lo.z + hi.z) * 0.5;
+        let mut slab = Solid::between(
+            Vec3::new(lo.x, 0.0, mid - 2.5),
+            Vec3::new(hi.x, hi.y, mid + 2.5),
+            Stuff::Wood,
+        );
+        slab.paint = Some(white);
+        out.push(slab);
+        let face = mid + 2.5;
+        let panel = (hi.x - lo.x) / 4.0;
+        for i in 0..4 {
+            let x0 = lo.x + panel * i as f32 + 9.0;
+            let x1 = lo.x + panel * (i as f32 + 1.0) - 9.0;
+            // The lite along the top.
+            let (y0, y1) = (hi.y - 46.0, hi.y - 12.0);
+            let mut pane = Solid::between(
+                Vec3::new(x0 + 3.0, y0 + 3.0, face),
+                Vec3::new(x1 - 3.0, y1 - 3.0, face + 1.2),
+                Stuff::Glass,
+            );
+            pane.roof = false;
+            out.push(pane);
+            for (fx0, fy0, fx1, fy1) in [
+                (x0, y0, x1, y0 + 3.0),
+                (x0, y1 - 3.0, x1, y1),
+                (x0, y0, x0 + 3.0, y1),
+                (x1 - 3.0, y0, x1, y1),
+            ] {
+                let mut bar = Solid::between(
+                    Vec3::new(fx0, fy0, face),
+                    Vec3::new(fx1, fy1, face + 1.6),
+                    Stuff::Wood,
+                );
+                bar.paint = Some(black);
+                out.push(bar);
+            }
+            // The X-buck on the panel below.
+            let cy = (hi.y - 46.0) * 0.5;
+            let reach = ((x1 - x0) * 0.5).min(cy - 8.0);
+            for lean in [-1.0f32, 1.0] {
+                let mut board = Solid::between(
+                    Vec3::new(-reach, -5.5, 0.0),
+                    Vec3::new(reach, 5.5, 1.4),
+                    Stuff::Wood,
+                );
+                board.center = Vec3::new((x0 + x1) * 0.5, cy, face + 0.7);
+                board.rot = Quat::from_rotation_z(lean * (cy - 8.0).atan2(reach));
+                board.paint = Some(white);
+                out.push(board);
+            }
+        }
+    }
+
+    // The double front doors: slate green-grey, four glass lites over two
+    // panels on each leaf, lever handles at the meeting stiles.
+    {
+        let (lo, hi) = front_door();
+        let mid = (lo.z + hi.z) * 0.5;
+        let slate = Color::srgb(0.30, 0.33, 0.31);
+        let leaf_w = (hi.x - lo.x) * 0.5 - 1.0;
+        for side in [0.0f32, 1.0] {
+            let x0 = lo.x + side * ((hi.x - lo.x) * 0.5 + 1.0);
+            let x1 = x0 + leaf_w;
+            let mut leaf = Solid::between(
+                Vec3::new(x0, 0.0, mid - 2.2),
+                Vec3::new(x1, hi.y - 1.0, mid + 2.2),
+                Stuff::Wood,
+            );
+            leaf.paint = Some(slate);
+            out.push(leaf);
+            let face = mid + 2.2;
+            // Four lites in the upper half.
+            let (gx0, gx1) = (x0 + 9.0, x1 - 9.0);
+            let (gy0, gy1) = (hi.y * 0.52, hi.y - 14.0);
+            let mut pane = Solid::between(
+                Vec3::new(gx0, gy0, face - 0.6),
+                Vec3::new(gx1, gy1, face + 0.6),
+                Stuff::Glass,
+            );
+            pane.roof = false;
+            out.push(pane);
+            let (mx, my) = ((gx0 + gx1) * 0.5, (gy0 + gy1) * 0.5);
+            for (bx0, by0, bx1, by1) in [
+                (mx - 1.8, gy0, mx + 1.8, gy1),
+                (gx0, my - 1.8, gx1, my + 1.8),
+            ] {
+                let mut muntin = Solid::between(
+                    Vec3::new(bx0, by0, face + 0.6),
+                    Vec3::new(bx1, by1, face + 1.4),
+                    Stuff::Wood,
+                );
+                muntin.paint = Some(slate);
+                out.push(muntin);
+            }
+            // Two raised panels below.
+            for k in 0..2 {
+                let py0 = 14.0 + k as f32 * (hi.y * 0.52 - 34.0) * 0.5;
+                let py1 = py0 + (hi.y * 0.52 - 34.0) * 0.5 - 8.0;
+                let mut raised = Solid::between(
+                    Vec3::new(gx0, py0, face),
+                    Vec3::new(gx1, py1, face + 1.0),
+                    Stuff::Wood,
+                );
+                raised.paint = Some(slate);
+                out.push(raised);
+            }
+            // The lever, on the meeting stile.
+            let hx = if side < 0.5 { x1 - 6.0 } else { x0 + 6.0 };
+            let mut lever = Solid::between(
+                Vec3::new(hx - 2.0, 96.0, face),
+                Vec3::new(hx + 2.0, 110.0, face + 2.4),
+                Stuff::Metal,
+            );
+            lever.paint = Some(Color::srgb(0.75, 0.75, 0.74));
+            out.push(lever);
+        }
+    }
+
+    // The rear door: one full-view glass leaf in a dark frame.
+    for (lo, hi) in cut_boxes(Hole::Back) {
+        let mid = (lo.z + hi.z) * 0.5;
+        let (y0, y1) = (0.0, hi.y - 1.0);
+        for (fx0, fy0, fx1, fy1) in [
+            (lo.x, y0, lo.x + 7.0, y1),
+            (hi.x - 7.0, y0, hi.x, y1),
+            (lo.x, y0, hi.x, y0 + 10.0),
+            (lo.x, y1 - 10.0, hi.x, y1),
+        ] {
+            let mut bar = Solid::between(
+                Vec3::new(fx0, fy0, mid - 2.2),
+                Vec3::new(fx1, fy1, mid + 2.2),
+                Stuff::Wood,
+            );
+            bar.paint = Some(black);
+            out.push(bar);
+        }
+        let pane = Solid::between(
+            Vec3::new(lo.x + 6.0, y0 + 9.0, mid - 1.0),
+            Vec3::new(hi.x - 6.0, y1 - 9.0, mid + 1.0),
+            Stuff::Glass,
+        );
+        out.push(pane);
+    }
+}
+
+/// The posts that carry the roof across each porch's open side.
+///
+/// The photographs: the front porch stands on two square white posts at its
+/// open corners; the rear porch's thirty-foot opening is divided into four
+/// bays by three square cedar-toned posts.
+fn porch_posts(out: &mut Vec<Solid>) {
+    let fp = room("front porch");
+    for x in [fp.min.x + 12.0, fp.max.x - 12.0] {
+        let mut post = Solid::between(
+            Vec3::new(x - 10.0, 0.0, fp.max.y - 20.0),
+            Vec3::new(x + 10.0, fp.tall, fp.max.y),
+            Stuff::Wood,
+        );
+        post.paint = Some(Color::srgb(0.93, 0.93, 0.94));
+        out.push(post);
+    }
+    let rp = room("rear porch");
+    for f in [0.25, 0.5, 0.75] {
+        let x = rp.min.x + (rp.max.x - rp.min.x) * f;
+        let mut post = Solid::between(
+            Vec3::new(x - 7.5, 0.0, rp.min.y),
+            Vec3::new(x + 7.5, rp.tall, rp.min.y + 15.0),
+            Stuff::Wood,
+        );
+        post.paint = Some(Color::srgb(0.64, 0.45, 0.30));
+        out.push(post);
+    }
+}
+
 pub fn build() -> Home {
     let mut s: Vec<Solid> = Vec::new();
     let top = CEILING;
-    let (w, e, n, so, garage_south, house_east) = envelope();
+    let (w, e, n, so, _garage_south, _house_east) = envelope();
 
     // -- The ground the house stands on ------------------------------------
     //
@@ -1755,12 +2413,20 @@ pub fn build() -> Home {
 
     // -- Walls, derived from the plan --------------------------------------
     walls_from_plan(&mut s);
+    porch_posts(&mut s);
 
     // -- Ceilings, one per room -------------------------------------------
-    for r in rooms() {
+    for (i, r) in rooms().iter().enumerate() {
+        // A hair of per-room height. Ceiling slabs overrun their rooms so no
+        // seam can open above a wall — which makes two open-plan neighbours'
+        // slabs coplanar where they overlap, and that is a stripe of
+        // z-fighting overhead. A third of a millimetre is invisible and ends
+        // the tie. Downward, not up: a slab lifted off the wall tops opens a
+        // slit into the attic that reads as a dark stripe along the cornice.
+        let hair = (i % 5 + 1) as f32 * 0.03;
         let mut slab = Solid::between(
-            Vec3::new(r.min.x - INNER, r.tall, r.min.y - INNER),
-            Vec3::new(r.max.x + INNER, r.tall + SLAB, r.max.y + INNER),
+            Vec3::new(r.min.x - INNER, r.tall - hair, r.min.y - INNER),
+            Vec3::new(r.max.x + INNER, r.tall + SLAB - hair, r.max.y + INNER),
             Stuff::Plaster,
         );
         // Ceilings are painted white, and brighter than any wall under them.
@@ -1802,6 +2468,7 @@ pub fn build() -> Home {
     }
     window_trim(&mut s);
     glaze(&mut s);
+    door_leaves(&mut s);
     fixtures(&mut s);
     // **Off by default while the shell is being rebuilt to the plan.**
     //
@@ -1826,99 +2493,93 @@ pub fn build() -> Home {
     }
 }
 
-/// A pane in every window opening.
+/// A sash in every window opening the walls actually cut.
 ///
 /// Real glass: a fly can land on it, walk it, and be fooled by it, which is the
 /// most recognisable thing a housefly does indoors. `world` keeps it out of the
 /// shadow pass, or every window would be a hole that let no light through.
-/// Double-hung sashes, all of them shut.
 ///
-/// Every window was a single sheet of glass filling its hole; a real one is two
-/// sashes with a meeting rail between them.
-///
-/// One was briefly left up, on the theory that a raised sash is how a fly gets
-/// into a house. Brett's call is that the fly does not go outside — the house
-/// is the whole world — so every sash is down. That is the better game anyway:
-/// the street is right there through the glass and can never be reached, which
-/// is exactly what a window means to a fly.
+/// The photographs of the built house set the style: black sashes, one
+/// horizontal meeting rail, no muntin grids, every sash shut. One was briefly
+/// left up, on the theory that a raised sash is how a fly gets into a house.
+/// Brett's call is that the fly does not go outside — the house is the whole
+/// world — so every sash is down. That is the better game anyway: the street
+/// is right there through the glass and can never be reached, which is exactly
+/// what a window means to a fly.
 fn glaze(s: &mut Vec<Solid>) {
-    let (w, _e, n, so, _gs, house_east) = envelope();
-    let half = WINDOW_WIDE * 0.5;
-    let frame = Color::srgb(0.93, 0.92, 0.89);
+    let black = Color::srgb(0.10, 0.10, 0.11);
 
-    // `at` is the centre of the opening in the plane of the wall.
-    let sash = |out: &mut Vec<Solid>, at: Vec3, along_x: bool, lift: f32| {
-        let meet = (SILL + HEAD) * 0.5;
-        let rail = 5.0;
-        let put = |out: &mut Vec<Solid>,
-                   along: f32,
-                   wide: f32,
-                   y0: f32,
-                   y1: f32,
-                   thick: f32,
-                   paint: Option<Color>| {
-            let (min, max) = if along_x {
-                (
-                    Vec3::new(at.x + along - wide * 0.5, y0, at.z - thick * 0.5),
-                    Vec3::new(at.x + along + wide * 0.5, y1, at.z + thick * 0.5),
-                )
+    for (lo, hi) in window_openings() {
+        let along_x = (hi.x - lo.x) > (hi.z - lo.z);
+        let (sill, head) = (lo.y, hi.y);
+        let wide = if along_x { hi.x - lo.x } else { hi.z - lo.z };
+        let mid = (lo + hi) * 0.5;
+
+        // A wide opening is a mulled unit of equal sashes — the dining room's
+        // front is the drawing's triple — and the doubled stiles where two
+        // sashes meet read as the mullions.
+        let lites = (wide / 110.0).ceil().max(1.0);
+        let each = wide / lites;
+
+        for i in 0..lites as usize {
+            let shift = -wide * 0.5 + each * (i as f32 + 0.5);
+            let at = if along_x {
+                Vec3::new(mid.x + shift, 0.0, mid.z)
             } else {
-                (
-                    Vec3::new(at.x - thick * 0.5, y0, at.z + along - wide * 0.5),
-                    Vec3::new(at.x + thick * 0.5, y1, at.z + along + wide * 0.5),
-                )
+                Vec3::new(mid.x, 0.0, mid.z + shift)
             };
-            let mut solid = Solid::between(
-                min,
-                max,
-                if paint.is_some() {
-                    Stuff::Wood
+            let rail = 4.5;
+            let meet = (sill + head) * 0.5;
+            let put = |out: &mut Vec<Solid>,
+                       along: f32,
+                       w: f32,
+                       y0: f32,
+                       y1: f32,
+                       thick: f32,
+                       paint: Option<Color>| {
+                let (bmin, bmax) = if along_x {
+                    (
+                        Vec3::new(at.x + along - w * 0.5, y0, at.z - thick * 0.5),
+                        Vec3::new(at.x + along + w * 0.5, y1, at.z + thick * 0.5),
+                    )
                 } else {
-                    Stuff::Glass
-                },
-            );
-            solid.paint = paint;
-            out.push(solid);
-        };
-
-        // Lower sash, raised by `lift`. Upper sash, always shut.
-        for (y0, y1, up) in [(SILL, meet, lift), (meet - rail, HEAD, 0.0)] {
-            let (a, b) = (y0 + up, y1 + up);
-            put(
-                out,
-                0.0,
-                WINDOW_WIDE - rail * 2.0,
-                a + rail,
-                b - rail,
-                2.0,
-                None,
-            );
-            for side in [-1.0f32, 1.0] {
-                put(
-                    out,
-                    side * (half - rail * 0.5),
-                    rail,
-                    a,
-                    b,
-                    5.0,
-                    Some(frame),
+                    (
+                        Vec3::new(at.x - thick * 0.5, y0, at.z + along - w * 0.5),
+                        Vec3::new(at.x + thick * 0.5, y1, at.z + along + w * 0.5),
+                    )
+                };
+                let mut solid = Solid::between(
+                    bmin,
+                    bmax,
+                    if paint.is_some() {
+                        Stuff::Wood
+                    } else {
+                        Stuff::Glass
+                    },
                 );
-            }
-            put(out, 0.0, WINDOW_WIDE, a, a + rail, 5.0, Some(frame));
-            put(out, 0.0, WINDOW_WIDE, b - rail, b, 5.0, Some(frame));
-        }
-    };
+                solid.paint = paint;
+                out.push(solid);
+            };
 
-    for &x in &NORTH_WINDOWS {
-        sash(s, Vec3::new(ft(x), 0.0, n), true, 0.0);
+            // Lower sash and upper sash, both shut, meeting rail between.
+            for (y0, y1) in [(sill, meet), (meet - rail, head)] {
+                put(s, 0.0, each - rail * 2.0, y0 + rail, y1 - rail, 1.6, None);
+                for side in [-1.0f32, 1.0] {
+                    put(
+                        s,
+                        side * (each * 0.5 - rail * 0.5),
+                        rail,
+                        y0,
+                        y1,
+                        4.5,
+                        Some(black),
+                    );
+                }
+                put(s, 0.0, each, y0, y0 + rail, 4.5, Some(black));
+                put(s, 0.0, each, y1 - rail, y1, 4.5, Some(black));
+            }
+        }
     }
-    for &x in &SOUTH_WINDOWS {
-        sash(s, Vec3::new(ft(x), 0.0, so), true, 0.0);
-    }
-    for &z in &WEST_WINDOWS {
-        sash(s, Vec3::new(w, 0.0, ft(z)), false, 0.0);
-    }
-    sash(s, Vec3::new(house_east, 0.0, ft(EAST_WINDOW)), false, 0.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1931,43 +2592,18 @@ fn glaze(s: &mut Vec<Solid>) {
 /// rather than remembered. Twice in one pass a kitchen fitting was placed over
 /// glass — first a run of wall cabinets, then a cooker hood — and both times it
 /// was invisible in the plan and unmissable from inside the room.
-/// Every hinged interior doorway, in world centimetres.
-///
-/// All of them are in walls that run north to south, so all of them hinge about
-/// a vertical axis at one end of the opening.
+/// Every hinged interior doorway, in world centimetres — recorded by the wall
+/// that cut it. The rear glass door onto the porch is among them.
 pub fn interior_doors() -> Vec<(Vec3, Vec3)> {
-    let (_w, _e, _n, _so, _gs, house_east) = envelope();
-    let half = DOOR_WIDE * 0.5;
-    let mut out = Vec::new();
-    for (x, zs, t) in [
-        (ft(12.0), [6.0f32, 17.0, 29.0].as_slice(), INNER),
-        (ft(33.67), [3.3f32, 14.0, 28.0].as_slice(), INNER),
-        (house_east, [3.3f32].as_slice(), OUTER),
-    ] {
-        for &z in zs {
-            out.push((
-                Vec3::new(x - t * 0.5, 0.0, ft(z) - half),
-                Vec3::new(x + t * 0.5, DOOR_HIGH, ft(z) + half),
-            ));
-        }
-    }
-    out
+    cut_boxes(Hole::Doorway)
 }
 
-/// The wide cased openings between the hall and the middle of the house. No
-/// leaves — but they are still holes in a wall, and a hole in a wall in a
-/// finished house has a lining and an architrave round it.
+/// The cased openings: the wing hall's arch off the great room and the two
+/// bedroom closets' bifold openings. No leaves — but they are still holes in a
+/// wall, and a hole in a wall in a finished house has a lining and an
+/// architrave round it.
 pub fn cased_openings() -> Vec<(Vec3, Vec3)> {
-    [(7.0f32, 6.0f32), (25.0, 8.0)]
-        .into_iter()
-        .map(|(z, wide)| {
-            let half = ft(wide) * 0.5;
-            (
-                Vec3::new(ft(16.0) - INNER * 0.5, 0.0, ft(z) - half),
-                Vec3::new(ft(16.0) + INNER * 0.5, 230.0, ft(z) + half),
-            )
-        })
-        .collect()
+    cut_boxes(Hole::Arch)
 }
 
 /// Every hole in the building: windows, interior doors, the wide cased
@@ -1981,21 +2617,19 @@ pub fn all_openings() -> Vec<(Vec3, Vec3)> {
     let mut out = window_openings();
     out.extend(interior_doors());
     out.extend(cased_openings());
+    out.extend(cut_boxes(Hole::Back));
     out.push(front_door());
     out.push(vehicle_door());
     out
 }
 
-/// The front door's opening, in world centimetres. The only way in or out of
-/// this house that is not glazed shut.
+/// The front door's opening, in world centimetres: the double door off the
+/// front porch into the great room.
 pub fn front_door() -> (Vec3, Vec3) {
-    let (w, _, _, so, _, _) = envelope();
-    let _ = w;
-    let half = DOOR_WIDE * 0.5;
-    (
-        Vec3::new(ft(25.0) - half, 0.0, so - OUTER * 0.5),
-        Vec3::new(ft(25.0) + half, DOOR_HIGH, so + OUTER * 0.5),
-    )
+    cut_boxes(Hole::Front)
+        .into_iter()
+        .next()
+        .expect("the walls cut the front door before anyone asked for it")
 }
 
 /// The vehicle door's opening, in world centimetres.
@@ -2003,12 +2637,10 @@ pub fn front_door() -> (Vec3, Vec3) {
 /// It is the one hole in the house big enough to drive through, and the only
 /// one that needs a leaf built to fit it rather than a curtain hung beside it.
 pub fn vehicle_door() -> (Vec3, Vec3) {
-    let (_, _, _, _, garage_south, _) = envelope();
-    let half = ft(16.0) * 0.5;
-    (
-        Vec3::new(ft(57.0) - half, 0.0, garage_south - OUTER * 0.5),
-        Vec3::new(ft(57.0) + half, 230.0, garage_south + OUTER * 0.5),
-    )
+    cut_boxes(Hole::Vehicle)
+        .into_iter()
+        .next()
+        .expect("the walls cut the vehicle door before anyone asked for it")
 }
 
 /// The thickness of an exterior wall, which anything hung on the inside of one
@@ -2036,7 +2668,7 @@ pub fn bounds() -> (Vec2, Vec2) {
 }
 
 pub fn window_openings() -> Vec<(Vec3, Vec3)> {
-    GLAZING.lock().unwrap().clone()
+    cut_boxes(Hole::Pane)
 }
 
 // ---------------------------------------------------------------------------
@@ -2496,9 +3128,11 @@ pub fn fixtures(out: &mut Vec<Solid>) {
         }
         let at = r.middle();
         let wide = if r.use_for == Use::Garage { 52.0 } else { 42.0 };
+        // From the room's own ceiling — a 9-foot room's light hung at the
+        // 10-foot constant floats above its own plaster.
         octagon(
             out,
-            Vec3::new(at.x, CEILING - 2.5, at.y),
+            Vec3::new(at.x, r.tall - 2.5, at.y),
             wide + 8.0,
             5.0,
             Color::srgb(0.86, 0.86, 0.84),
@@ -2506,7 +3140,7 @@ pub fn fixtures(out: &mut Vec<Solid>) {
         );
         octagon(
             out,
-            Vec3::new(at.x, CEILING - 8.0, at.y),
+            Vec3::new(at.x, r.tall - 8.0, at.y),
             wide,
             8.0,
             Color::srgb(1.0, 0.97, 0.90),
@@ -2606,7 +3240,7 @@ pub fn light_it(commands: &mut Commands) {
                 shadow_normal_bias: 5.0,
                 ..default()
             },
-            Transform::from_xyz(at.x, CEILING - 6.0, at.y)
+            Transform::from_xyz(at.x, r.tall - 6.0, at.y)
                 .looking_at(Vec3::new(at.x, 0.0, at.y), Vec3::Z),
         ));
 
@@ -2633,7 +3267,7 @@ pub fn light_it(commands: &mut Commands) {
                 ..default()
             },
             Transform::from_xyz(at.x, 92.0, at.y)
-                .looking_at(Vec3::new(at.x, CEILING, at.y), Vec3::Z),
+                .looking_at(Vec3::new(at.x, r.tall, at.y), Vec3::Z),
         ));
     }
 }
